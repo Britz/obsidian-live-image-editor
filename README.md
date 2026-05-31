@@ -30,8 +30,8 @@ Obsidian's native wiki-link syntax (`![[image.png|300]]`) is not affected and co
 
 ## Installation
 
-1. Download the latest release from [Releases](https://github.com/Britz/obsidian-live-image-menu/releases)
-2. Extract into your vault's `.obsidian/plugins/live-image-editor/` directory
+1. Download the latest release from [Releases](https://github.com/Britz/obsidian-live-image-editor/releases)
+2. Extract into your vault's `.obsidian/plugins/obsidian-live-image-editor/` directory
 3. Enable the plugin in Settings > Community Plugins
 
 ## Building from source
@@ -41,7 +41,7 @@ npm install
 npm run build
 ```
 
-Copy `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/plugins/live-image-editor/`.
+Copy `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/plugins/obsidian-live-image-editor/`.
 
 ## Development
 
