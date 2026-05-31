@@ -1,0 +1,10 @@
+{
+  "id": "live-image-editor",
+  "name": "Live Image Editor",
+  "version": "0.1.0",
+  "minAppVersion": "0.15.0",
+  "description": "Non-destructive image editing for Obsidian. Crop, rotate, flip, resize, and apply CSS filters — all live, without modifying the original file.",
+  "author": "britz",
+  "authorUrl": "https://github.com/Britz",
+  "isDesktopOnly": false
+}

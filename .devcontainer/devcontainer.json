@@ -1,0 +1,16 @@
+{
+  "name": "Live Image Editor",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  "runArgs": ["--userns=keep-id"],
+  "containerUser": "node",
+  "remoteUser": "node",
+  "postCreateCommand": "npm install",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}

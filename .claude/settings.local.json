@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.obsidian.md)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npx --yes @devcontainers/cli exec --workspace-folder /Users/jobr03/Workspace/github.com/britz/image-toolbar --docker-path podman npm run build)",
+      "Bash(npx --yes @devcontainers/cli exec --workspace-folder /Users/jobr03/Workspace/github.com/britz/image-toolbar --docker-path podman npm install)"
+    ]
+  }
+}

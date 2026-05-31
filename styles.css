@@ -1,0 +1,312 @@
+/* Toolbar */
+.lie-toolbar {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.lie-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.lie-toolbar-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.lie-toolbar-btn:active {
+  background: var(--background-modifier-active-hover);
+}
+
+.lie-toolbar-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Crop container (rendered output) */
+.lie-crop-container {
+  position: relative;
+  line-height: 0;
+}
+
+/* Crop Editor Overlay */
+.lie-crop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.lie-crop-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.lie-crop-workspace {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.lie-crop-frame-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80vw;
+  height: 60vh;
+}
+
+.lie-crop-image-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.lie-crop-source-img {
+  position: absolute;
+  max-width: none;
+  max-height: none;
+  opacity: 0.4;
+  cursor: grab;
+  user-select: none;
+}
+
+.lie-crop-source-img:active {
+  cursor: grabbing;
+}
+
+.lie-crop-frame {
+  position: relative;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+  z-index: 2;
+}
+
+.lie-crop-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 2px;
+  z-index: 3;
+}
+
+.lie-crop-handle-nw { top: -6px; left: -6px; cursor: nw-resize; }
+.lie-crop-handle-ne { top: -6px; right: -6px; cursor: ne-resize; }
+.lie-crop-handle-sw { bottom: -6px; left: -6px; cursor: sw-resize; }
+.lie-crop-handle-se { bottom: -6px; right: -6px; cursor: se-resize; }
+.lie-crop-handle-n { top: -6px; left: 50%; transform: translateX(-50%); cursor: n-resize; }
+.lie-crop-handle-s { bottom: -6px; left: 50%; transform: translateX(-50%); cursor: s-resize; }
+.lie-crop-handle-e { top: 50%; right: -6px; transform: translateY(-50%); cursor: e-resize; }
+.lie-crop-handle-w { top: 50%; left: -6px; transform: translateY(-50%); cursor: w-resize; }
+
+.lie-crop-rotation-handle {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  cursor: crosshair;
+  z-index: 3;
+}
+
+.lie-crop-rotation-handle::before {
+  content: "";
+  position: absolute;
+  bottom: -12px;
+  left: 50%;
+  width: 1px;
+  height: 10px;
+  background: #fff;
+  transform: translateX(-50%);
+}
+
+.lie-crop-controls {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  z-index: 2;
+}
+
+.lie-crop-presets {
+  display: flex;
+  gap: 4px;
+}
+
+.lie-crop-preset-btn,
+.lie-crop-confirm,
+.lie-crop-cancel {
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.lie-crop-preset-btn:hover,
+.lie-crop-confirm:hover,
+.lie-crop-cancel:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.lie-crop-confirm {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+}
+
+/* Filter Panel */
+.lie-filter-panel {
+  width: 220px;
+  padding: 12px;
+  background: var(--background-primary-alt);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.lie-filter-histogram {
+  margin-bottom: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  padding: 4px;
+}
+
+.lie-filter-histogram canvas {
+  width: 100%;
+  height: 60px;
+  display: block;
+}
+
+.lie-filter-presets {
+  margin-bottom: 12px;
+}
+
+.lie-filter-section-label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.lie-filter-preset-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.lie-filter-preset-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-normal);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.lie-filter-preset-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.lie-filter-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lie-filter-slider-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 40px;
+  align-items: center;
+  gap: 6px;
+}
+
+.lie-filter-slider-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.lie-filter-slider-input {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+}
+
+.lie-filter-slider-value {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Class Dropdown */
+.lie-class-dropdown {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  padding: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  min-width: 120px;
+}
+
+.lie-class-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-normal);
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.lie-class-dropdown-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.lie-class-dropdown-item.is-active {
+  color: var(--interactive-accent);
+  font-weight: 600;
+}
+
+/* Size Modal */
+.lie-size-modal input[type="number"] {
+  width: 100px;
+}
