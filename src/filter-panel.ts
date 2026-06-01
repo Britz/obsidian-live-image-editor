@@ -1,5 +1,20 @@
-import { FilterData, getFilterDefaults } from "./transforms";
+import { FilterData, getFilterDefaults, temperatureAdjust } from "./transforms";
 import { t, TranslationKey } from "./i18n";
+import { AnchoredSubmenu } from "./anchored-submenu";
+
+// How the panel was dismissed: keep the change, or throw it away.
+export type FilterPanelClose = "commit" | "cancel";
+
+export interface FilterPanelCallbacks {
+  // Apply the working filter to the live image WITHOUT persisting (live preview).
+  onPreview: (filter: FilterData) => void;
+  // Persist the working filter into the document (confirm / close-to-keep).
+  onCommit: (filter: FilterData) => void;
+  // Restore the image to the filter it had when the panel opened (cancel / Esc).
+  onCancel: () => void;
+  // The panel element was removed — clear any reference the owner holds.
+  onClose: () => void;
+}
 
 interface FilterSlider {
   key: keyof FilterData;
@@ -36,66 +51,76 @@ const PRESETS: Preset[] = [
 ];
 
 export class FilterPanel {
-  private el: HTMLElement | null = null;
+  private submenu: AnchoredSubmenu | null = null;
+  private body: HTMLElement | null = null;
   private values: Required<FilterData>;
   private histogramCanvas: HTMLCanvasElement | null = null;
   private img: HTMLImageElement;
-  private onChange: (filter: FilterData) => void;
-  private onClose: () => void;
+  private callbacks: FilterPanelCallbacks;
+  // Temperature is a virtual control (F6): it nudges hue/saturate/brightness
+  // relative to a baseline captured when the slider is grabbed, and is never
+  // stored as its own value.
+  private temperature = 0;
+  private tempBaseline: { hueRotate: number; saturate: number; brightness: number } | null = null;
 
   constructor(
     img: HTMLImageElement,
     existingFilter: FilterData | undefined,
-    onChange: (filter: FilterData) => void,
-    onClose: () => void
+    callbacks: FilterPanelCallbacks
   ) {
     this.img = img;
-    this.onChange = onChange;
-    this.onClose = onClose;
+    this.callbacks = callbacks;
     this.values = { ...getFilterDefaults(), ...existingFilter };
   }
 
-  open(anchorEl: HTMLElement): void {
-    this.close();
+  // Open via the SHARED anchored sub-menu (D8/D10/T9): same greyed-toolbar / icon
+  // confirm-cancel / Esc=cancel behaviour as the size & crop menus — only the
+  // placement differs (beside the image, because the panel is large, D8). The panel
+  // is a toggle and forms one active region with the image+toolbar (D7).
+  open(anchorEl: HTMLElement, toolbarEl?: HTMLElement | null): void {
+    if (this.submenu) return;
 
-    const panel = document.createElement("div");
-    panel.classList.add("lie-filter-panel");
+    const body = document.createElement("div");
+    body.classList.add("lie-filter-body");
+    body.appendChild(this.buildHistogram());
+    body.appendChild(this.buildPresets());
+    body.appendChild(this.buildSliders());
+    this.body = body;
 
-    panel.appendChild(this.buildHistogram());
-    panel.appendChild(this.buildPresets());
-    panel.appendChild(this.buildSliders());
-
-    const rect = anchorEl.getBoundingClientRect();
-    panel.style.position = "fixed";
-    panel.style.top = `${rect.top}px`;
-    panel.style.left = `${rect.right + 8}px`;
-
-    document.body.appendChild(panel);
-    this.el = panel;
+    const submenu = new AnchoredSubmenu();
+    submenu.open({
+      body,
+      placement: "beside-image",
+      anchor: anchorEl,
+      toolbar: toolbarEl ?? null,
+      title: t("filters"),
+      rootClass: "lie-filter-panel",
+      onCommit: () => this.callbacks.onCommit(this.currentFilter()),
+      onCancel: () => this.callbacks.onCancel(),
+      onClose: () => { this.submenu = null; this.body = null; this.callbacks.onClose(); },
+    });
+    this.submenu = submenu;
 
     this.updateHistogram();
-
-    document.addEventListener("mousedown", this.handleClickOutside);
-    document.addEventListener("keydown", this.handleKeyDown);
   }
 
-  close(): void {
-    document.removeEventListener("mousedown", this.handleClickOutside);
-    document.removeEventListener("keydown", this.handleKeyDown);
-    this.el?.remove();
-    this.el = null;
-    this.onClose();
+  // Dismiss the panel. "commit" persists the working filter; "cancel" reverts the
+  // live preview to the filter the image had on open. Idempotent (AnchoredSubmenu
+  // guards against double-fire).
+  close(action: FilterPanelClose = "commit"): void {
+    this.submenu?.close(action);
   }
 
-  private handleClickOutside = (e: MouseEvent): void => {
-    if (this.el && !this.el.contains(e.target as Node)) {
-      this.close();
+  // The non-default working values, ready to persist.
+  private currentFilter(): FilterData {
+    const defaults = getFilterDefaults();
+    const filter: FilterData = {};
+    for (const slider of SLIDERS) {
+      const val = this.values[slider.key];
+      if (val !== defaults[slider.key]) filter[slider.key] = val;
     }
-  };
-
-  private handleKeyDown = (e: KeyboardEvent): void => {
-    if (e.key === "Escape") this.close();
-  };
+    return filter;
+  }
 
   private buildHistogram(): HTMLElement {
     const container = document.createElement("div");
@@ -129,15 +154,95 @@ export class FilterPanel {
     return container;
   }
 
+  // Sliders grouped Light / Color / Effect (D5). Temperature lives in Color (F6).
   private buildSliders(): HTMLElement {
     const container = document.createElement("div");
     container.classList.add("lie-filter-sliders");
 
-    for (const slider of SLIDERS) {
-      container.appendChild(this.buildSlider(slider));
+    const groups: { label: TranslationKey; keys: (keyof FilterData)[]; temp?: boolean }[] = [
+      { label: "groupLight", keys: ["brightness", "contrast"] },
+      { label: "groupColor", keys: ["saturate", "hueRotate"], temp: true },
+      { label: "groupEffect", keys: ["blur", "grayscale", "sepia"] },
+    ];
+
+    for (const group of groups) {
+      const section = document.createElement("div");
+      section.classList.add("lie-filter-group");
+
+      const label = document.createElement("span");
+      label.classList.add("lie-filter-section-label");
+      label.textContent = t(group.label);
+      section.appendChild(label);
+
+      for (const key of group.keys) {
+        const slider = SLIDERS.find((s) => s.key === key);
+        if (slider) section.appendChild(this.buildSlider(slider));
+      }
+      if (group.temp) section.appendChild(this.buildTemperatureSlider());
+
+      container.appendChild(section);
     }
 
     return container;
+  }
+
+  // The virtual Temperature control. It nudges hue/saturate/brightness relative to
+  // a baseline captured when the gesture starts (F6), and snaps back when returned
+  // to 0. It is never persisted as its own value.
+  private buildTemperatureSlider(): HTMLElement {
+    const row = document.createElement("div");
+    row.classList.add("lie-filter-slider-row");
+
+    const label = document.createElement("span");
+    label.classList.add("lie-filter-slider-label");
+    label.textContent = t("temperature");
+
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "-100";
+    input.max = "100";
+    input.step = "1";
+    input.value = String(this.temperature);
+    input.classList.add("lie-filter-slider-input");
+
+    const valueDisplay = document.createElement("span");
+    valueDisplay.classList.add("lie-filter-slider-value");
+    valueDisplay.textContent = String(this.temperature);
+
+    const captureBaseline = (): void => {
+      this.tempBaseline = {
+        hueRotate: this.values.hueRotate,
+        saturate: this.values.saturate,
+        brightness: this.values.brightness,
+      };
+    };
+    input.addEventListener("pointerdown", captureBaseline);
+    input.addEventListener("keydown", () => { if (!this.tempBaseline) captureBaseline(); });
+
+    input.addEventListener("input", () => {
+      if (!this.tempBaseline) captureBaseline();
+      this.temperature = parseFloat(input.value);
+      valueDisplay.textContent = String(Math.round(this.temperature));
+      const adj = temperatureAdjust(this.tempBaseline!, this.temperature);
+      this.values.hueRotate = adj.hueRotate;
+      this.values.saturate = adj.saturate;
+      this.values.brightness = adj.brightness;
+      this.refreshSliders();
+      this.emitPreview();
+      this.updateHistogram();
+    });
+
+    input.addEventListener("dblclick", () => {
+      this.temperature = 0;
+      input.value = "0";
+      valueDisplay.textContent = "0";
+      this.tempBaseline = null;
+    });
+
+    row.appendChild(label);
+    row.appendChild(input);
+    row.appendChild(valueDisplay);
+    return row;
   }
 
   private buildSlider(config: FilterSlider): HTMLElement {
@@ -164,7 +269,7 @@ export class FilterPanel {
       const val = parseFloat(input.value);
       this.values[config.key] = val;
       valueDisplay.textContent = this.formatValue(val, config);
-      this.emitChange();
+      this.emitPreview();
       this.updateHistogram();
     });
 
@@ -172,7 +277,7 @@ export class FilterPanel {
       this.values[config.key] = config.default;
       input.value = String(config.default);
       valueDisplay.textContent = this.formatValue(config.default, config);
-      this.emitChange();
+      this.emitPreview();
       this.updateHistogram();
     });
 
@@ -191,14 +296,14 @@ export class FilterPanel {
     const defaults = getFilterDefaults();
     this.values = { ...defaults, ...preset.values };
     this.refreshSliders();
-    this.emitChange();
+    this.emitPreview();
     this.updateHistogram();
   }
 
   private refreshSliders(): void {
-    if (!this.el) return;
-    const inputs = this.el.querySelectorAll(".lie-filter-slider-input");
-    const valueDisplays = this.el.querySelectorAll(".lie-filter-slider-value");
+    if (!this.body) return;
+    const inputs = this.body.querySelectorAll(".lie-filter-slider-input");
+    const valueDisplays = this.body.querySelectorAll(".lie-filter-slider-value");
 
     let i = 0;
     for (const slider of SLIDERS) {
@@ -213,16 +318,11 @@ export class FilterPanel {
     }
   }
 
-  private emitChange(): void {
-    const defaults = getFilterDefaults();
-    const filtered: FilterData = {};
-    for (const slider of SLIDERS) {
-      const val = this.values[slider.key];
-      if (val !== defaults[slider.key]) {
-        filtered[slider.key] = val;
-      }
-    }
-    this.onChange(filtered);
+  // Live preview only — never writes to the document. The image's filter vars are
+  // set straight on the DOM, so the change is visible immediately and doesn't wait
+  // on (or get lost in) an embed re-render. Persistence happens once, on commit.
+  private emitPreview(): void {
+    this.callbacks.onPreview(this.currentFilter());
   }
 
   private updateHistogram(): void {

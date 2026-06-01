@@ -1,4 +1,6 @@
 import { CropData } from "./transforms";
+import { snapAngle, snapScale, snapTranslate, toCropData } from "./crop-editor-logic";
+import { AnchoredSubmenu } from "./anchored-submenu";
 import { t } from "./i18n";
 
 interface Point {
@@ -15,8 +17,17 @@ const ASPECT_RATIOS: Record<AspectRatio, number | null> = {
   "1:1": 1,
 };
 
+/**
+ * In-place crop editor (D11): the crop UI overlays the image at its exact current
+ * position/size — no jump, no centered modal, no full-page dialog. The original
+ * shows under a resizable frame (semi-transparent outside, full opacity inside);
+ * it can be dragged, rotated, scaled and the frame resized, all snapping live to
+ * whole pixels / 0.1° (F7). The aspect presets + confirm/cancel live in the shared
+ * anchored sub-menu under the toolbar (D8/D10/T9), which greys the toolbar.
+ */
 export class CropEditor {
   private overlay: HTMLElement | null = null;
+  private controls: AnchoredSubmenu | null = null;
   private img: HTMLImageElement;
   private onConfirm: (crop: CropData) => void;
   private onCancel: () => void;
@@ -25,9 +36,10 @@ export class CropEditor {
   private imgScale = 1;
   private imgRotation = 0;
 
-  private frameWidth: number;
-  private frameHeight: number;
+  private frameWidth = 0;
+  private frameHeight = 0;
   private aspectRatio: AspectRatio = "free";
+  private hasExistingCrop: boolean;
 
   private isDraggingImage = false;
   private isResizingFrame = false;
@@ -45,6 +57,7 @@ export class CropEditor {
     this.img = img;
     this.onConfirm = onConfirm;
     this.onCancel = onCancel;
+    this.hasExistingCrop = !!existingCrop;
 
     if (existingCrop) {
       this.imgTranslate = { x: -existingCrop.x, y: -existingCrop.y };
@@ -52,19 +65,34 @@ export class CropEditor {
       this.imgScale = existingCrop.scale;
       this.frameWidth = existingCrop.w;
       this.frameHeight = existingCrop.h;
-    } else {
-      this.frameWidth = Math.min(img.naturalWidth, 400);
-      this.frameHeight = Math.min(img.naturalHeight, 300);
     }
   }
 
-  open(): void {
+  open(toolbarEl?: HTMLElement | null): void {
+    const rect = this.img.getBoundingClientRect();
+
+    // No existing crop: start with the frame covering the whole displayed image
+    // and the source scaled to match it exactly — so activation causes no jump.
+    if (!this.hasExistingCrop) {
+      this.frameWidth = Math.round(rect.width);
+      this.frameHeight = Math.round(rect.height);
+      this.imgScale = snapScale(rect.width / (this.img.naturalWidth || rect.width));
+    }
+
     this.overlay = document.createElement("div");
     this.overlay.classList.add("lie-crop-overlay");
     this.overlay.innerHTML = this.buildHTML();
+    // Position the workspace OVER the image, in place (D11).
+    const fc = this.overlay as HTMLElement;
+    fc.style.position = "fixed";
+    fc.style.left = `${rect.left}px`;
+    fc.style.top = `${rect.top}px`;
+    fc.style.width = `${rect.width}px`;
+    fc.style.height = `${rect.height}px`;
     document.body.appendChild(this.overlay);
 
     this.bindEvents();
+    this.openControls(toolbarEl);
     this.updateImageTransform();
     this.updateFrameSize();
   }
@@ -72,43 +100,58 @@ export class CropEditor {
   close(): void {
     this.overlay?.remove();
     this.overlay = null;
+    document.removeEventListener("pointermove", this.onPointerMove);
+    document.removeEventListener("pointerup", this.onPointerUp);
+    this.controls?.close("cancel");
   }
 
   private buildHTML(): string {
     return `
-      <div class="lie-crop-backdrop"></div>
-      <div class="lie-crop-workspace">
-        <div class="lie-crop-frame-container">
-          <div class="lie-crop-image-layer">
-            <img src="${this.img.src}" class="lie-crop-source-img" draggable="false">
-          </div>
-          <div class="lie-crop-mask"></div>
-          <div class="lie-crop-frame">
-            <div class="lie-crop-handle lie-crop-handle-nw" data-handle="nw"></div>
-            <div class="lie-crop-handle lie-crop-handle-ne" data-handle="ne"></div>
-            <div class="lie-crop-handle lie-crop-handle-sw" data-handle="sw"></div>
-            <div class="lie-crop-handle lie-crop-handle-se" data-handle="se"></div>
-            <div class="lie-crop-handle lie-crop-handle-n" data-handle="n"></div>
-            <div class="lie-crop-handle lie-crop-handle-s" data-handle="s"></div>
-            <div class="lie-crop-handle lie-crop-handle-e" data-handle="e"></div>
-            <div class="lie-crop-handle lie-crop-handle-w" data-handle="w"></div>
-            <div class="lie-crop-rotation-handle" data-handle="rotate"></div>
-          </div>
-        </div>
-        <div class="lie-crop-controls">
-          <div class="lie-crop-presets">
-            <button class="lie-crop-preset-btn" data-ratio="free">Free</button>
-            <button class="lie-crop-preset-btn" data-ratio="16:9">16:9</button>
-            <button class="lie-crop-preset-btn" data-ratio="4:3">4:3</button>
-            <button class="lie-crop-preset-btn" data-ratio="1:1">1:1</button>
-          </div>
-          <div class="lie-crop-actions">
-            <button class="lie-crop-confirm">${t("apply")}</button>
-            <button class="lie-crop-cancel">${t("cancel")}</button>
-          </div>
-        </div>
+      <div class="lie-crop-image-layer">
+        <img src="${this.img.src}" class="lie-crop-source-img" draggable="false">
+      </div>
+      <div class="lie-crop-frame">
+        <div class="lie-crop-handle lie-crop-handle-nw" data-handle="nw"></div>
+        <div class="lie-crop-handle lie-crop-handle-ne" data-handle="ne"></div>
+        <div class="lie-crop-handle lie-crop-handle-sw" data-handle="sw"></div>
+        <div class="lie-crop-handle lie-crop-handle-se" data-handle="se"></div>
+        <div class="lie-crop-handle lie-crop-handle-n" data-handle="n"></div>
+        <div class="lie-crop-handle lie-crop-handle-s" data-handle="s"></div>
+        <div class="lie-crop-handle lie-crop-handle-e" data-handle="e"></div>
+        <div class="lie-crop-handle lie-crop-handle-w" data-handle="w"></div>
+        <div class="lie-crop-rotation-handle" data-handle="rotate"></div>
       </div>
     `;
+  }
+
+  // The aspect presets + confirm/cancel as the shared anchored sub-menu (D8/D10/T9):
+  // compact, under the toolbar, greyed toolbar, icon confirm/cancel, Esc = cancel.
+  private openControls(toolbarEl?: HTMLElement | null): void {
+    const body = document.createElement("div");
+    body.classList.add("lie-crop-presets");
+    for (const ratio of Object.keys(ASPECT_RATIOS) as AspectRatio[]) {
+      const btn = document.createElement("button");
+      btn.classList.add("lie-crop-preset-btn");
+      btn.textContent = ratio === "free" ? t("free") : ratio;
+      btn.addEventListener("click", () => {
+        this.aspectRatio = ratio;
+        this.applyAspectRatio();
+      });
+      body.appendChild(btn);
+    }
+
+    const controls = new AnchoredSubmenu();
+    controls.open({
+      body,
+      placement: "under-toolbar",
+      anchor: toolbarEl ?? this.img,
+      toolbar: toolbarEl ?? null,
+      title: t("crop"),
+      onCommit: () => this.confirm(),
+      onCancel: () => { this.close(); this.onCancel(); },
+      onClose: () => { this.controls = null; },
+    });
+    this.controls = controls;
   }
 
   private bindEvents(): void {
@@ -116,40 +159,20 @@ export class CropEditor {
 
     const sourceImg = this.overlay.querySelector(".lie-crop-source-img") as HTMLElement;
     const frame = this.overlay.querySelector(".lie-crop-frame") as HTMLElement;
-    const confirmBtn = this.overlay.querySelector(".lie-crop-confirm") as HTMLElement;
-    const cancelBtn = this.overlay.querySelector(".lie-crop-cancel") as HTMLElement;
 
-    sourceImg.addEventListener("pointerdown", (e) => this.startImageDrag(e));
-    frame.addEventListener("pointerdown", (e) => this.startFrameInteraction(e));
+    sourceImg.addEventListener("pointerdown", (e) => this.startImageDrag(e as PointerEvent));
+    frame.addEventListener("pointerdown", (e) => this.startFrameInteraction(e as PointerEvent));
 
     document.addEventListener("pointermove", this.onPointerMove);
     document.addEventListener("pointerup", this.onPointerUp);
 
-    confirmBtn.addEventListener("click", () => this.confirm());
-    cancelBtn.addEventListener("click", () => { this.close(); this.onCancel(); });
-
     sourceImg.addEventListener("wheel", (e) => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.95 : 1.05;
-      this.imgScale = Math.max(0.1, Math.min(10, this.imgScale * delta));
+      this.imgScale = snapScale(Math.max(0.1, Math.min(10, this.imgScale * delta)));
       this.updateImageTransform();
     });
-
-    const presetBtns = this.overlay.querySelectorAll(".lie-crop-preset-btn");
-    for (const btn of Array.from(presetBtns)) {
-      btn.addEventListener("click", () => {
-        this.aspectRatio = (btn as HTMLElement).dataset["ratio"] as AspectRatio;
-        this.applyAspectRatio();
-      });
-    }
-
-    document.addEventListener("keydown", this.onKeyDown);
   }
-
-  private onKeyDown = (e: KeyboardEvent): void => {
-    if (e.key === "Enter") { this.confirm(); }
-    if (e.key === "Escape") { this.close(); this.onCancel(); }
-  };
 
   private startImageDrag(e: PointerEvent): void {
     e.preventDefault();
@@ -186,16 +209,15 @@ export class CropEditor {
       const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       const angle = Math.atan2(e.clientY - center.y, e.clientX - center.x) * (180 / Math.PI);
       const startAngle = Math.atan2(this.dragStart.y - center.y, this.dragStart.x - center.x) * (180 / Math.PI);
-      this.imgRotation += angle - startAngle;
+      // Snap rotation to 0.1° steps LIVE (F7) so the cut never falls mid-angle.
+      this.imgRotation = snapAngle(this.imgRotation + (angle - startAngle));
       this.dragStart = { x: e.clientX, y: e.clientY };
       this.updateImageTransform();
     } else if (this.isDraggingImage) {
       const dx = e.clientX - this.dragStart.x;
       const dy = e.clientY - this.dragStart.y;
-      this.imgTranslate = {
-        x: this.dragStartTranslate.x + dx,
-        y: this.dragStartTranslate.y + dy,
-      };
+      // Snap position to whole pixels LIVE (F7) so the cut never falls mid-pixel.
+      this.imgTranslate = snapTranslate(this.dragStartTranslate.x + dx, this.dragStartTranslate.y + dy);
       this.updateImageTransform();
     } else if (this.isResizingFrame) {
       const dx = e.clientX - this.dragStart.x;
@@ -248,33 +270,27 @@ export class CropEditor {
   private updateImageTransform(): void {
     const img = this.overlay?.querySelector(".lie-crop-source-img") as HTMLElement | null;
     if (!img) return;
-    img.style.transform = `translate(${this.imgTranslate.x}px, ${this.imgTranslate.y}px) rotate(${Math.round(this.imgRotation * 10) / 10}deg) scale(${this.imgScale})`;
+    img.style.transform = `translate(${this.imgTranslate.x}px, ${this.imgTranslate.y}px) rotate(${snapAngle(this.imgRotation)}deg) scale(${this.imgScale})`;
   }
 
   private updateFrameSize(): void {
     const frame = this.overlay?.querySelector(".lie-crop-frame") as HTMLElement | null;
-    const mask = this.overlay?.querySelector(".lie-crop-mask") as HTMLElement | null;
-    const container = this.overlay?.querySelector(".lie-crop-frame-container") as HTMLElement | null;
-    if (!frame || !mask || !container) return;
-
+    if (!frame) return;
     frame.style.width = `${this.frameWidth}px`;
     frame.style.height = `${this.frameHeight}px`;
   }
 
   private confirm(): void {
-    const cropData: CropData = {
-      x: Math.round(-this.imgTranslate.x),
-      y: Math.round(-this.imgTranslate.y),
-      w: Math.round(this.frameWidth),
-      h: Math.round(this.frameHeight),
-      rotate: Math.round(this.imgRotation * 10) / 10,
-      scale: Math.round(this.imgScale * 1000) / 1000,
-    };
-
-    this.close();
+    const cropData: CropData = toCropData(
+      this.imgTranslate,
+      { w: this.frameWidth, h: this.frameHeight },
+      this.imgRotation,
+      this.imgScale
+    );
+    this.overlay?.remove();
+    this.overlay = null;
     document.removeEventListener("pointermove", this.onPointerMove);
     document.removeEventListener("pointerup", this.onPointerUp);
-    document.removeEventListener("keydown", this.onKeyDown);
     this.onConfirm(cropData);
   }
 }
