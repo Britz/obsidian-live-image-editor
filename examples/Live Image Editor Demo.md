@@ -10,7 +10,7 @@ the **TOP** marker make rotation and flips easy to read at a glance.
 
 ## Original
 
-![](images/sample-landscape.png){.lie-img style="--lie-rotate: 90deg;"}
+![](images/sample-landscape.png)
 
 ## Rotate (quarter turns)
 
