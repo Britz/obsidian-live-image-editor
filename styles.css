@@ -37,44 +37,220 @@
   height: 16px;
 }
 
+/* Grouped toolbar (D3): a group's buttons sit in an inline span; when folded the
+   span is hidden and a single trigger button is shown instead. Never wraps. */
+.lie-toolbar {
+  flex-wrap: nowrap;
+}
+.lie-toolbar-group {
+  display: inline-flex;
+  gap: 2px;
+}
+
+/* The folded-group / layout submenu palette (D3). A plain button popup — distinct
+   from the modal anchored sub-menu (D8). Fully visible, never clipped (D9). */
+.lie-group-popup {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 240px;
+  gap: 2px;
+  padding: 4px 6px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/*
+ * Portable transform rendering (attr_list + CSS custom properties).
+ * This block is intentionally self-contained: copy it into a MkDocs/Material
+ * theme stylesheet and `![alt](img){.lie-img style="--lie-rotate: 90deg;"}`
+ * renders the same outside Obsidian — no plugin required.
+ */
+img.lie-img {
+  transform:
+    rotate(var(--lie-rotate, 0deg))
+    scaleX(var(--lie-flip-h, 1))
+    scaleY(var(--lie-flip-v, 1));
+  filter:
+    brightness(var(--lie-brightness, 1))
+    contrast(var(--lie-contrast, 1))
+    saturate(var(--lie-saturate, 1))
+    hue-rotate(var(--lie-hue, 0deg))
+    blur(var(--lie-blur, 0))
+    grayscale(var(--lie-grayscale, 0))
+    sepia(var(--lie-sepia, 0));
+}
+
+img.lie-inline {
+  display: inline;
+  vertical-align: middle;
+}
+
+/* Image embeds (native + our live-preview wrapper) miss this spacing. */
+.image-embed {
+  padding-top: 3px;
+}
+
+/* Anchor the absolute chrome (resize handle, toolbar) to the widget. Obsidian's
+   .internal-embed sets `contain: paint`, which paint-clips children to the embed
+   box — so a toolbar wider than a small/rotated image gets visually cut at the
+   image edge even though it's laid out fully. Drop the containment so it paints. */
+.lie-lp-embed {
+  position: relative;
+}
+
+/* Editing toolbar living at the top of the image (anchored to the image box, not
+   the outer container), hover-revealed like the chrome, with a bit of inset from
+   the image edge. */
+.lie-lp-embed .image-wrapper {
+  position: relative;
+}
+
+.lie-lp-embed .lie-toolbar-in-image {
+  position: absolute;
+  top: 12px;
+  /* Left-aligned to the image, not centered: a small (rotated/resized) image is
+     narrower than the toolbar, and centering pushed it off the column's left edge
+     where the editor's scroll container clipped it. Left-aligned it starts at the
+     image edge and extends right, staying inside the column. */
+  left: 12px;
+  z-index: 10;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+  pointer-events: none;
+}
+
+.lie-lp-embed:hover .lie-toolbar-in-image {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Set the <> (edit source) button apart from the transform actions. */
+.lie-toolbar-in-image .lie-toolbar-edit {
+  margin-left: 10px;
+}
+
+/* When revealed, the embed container behaves like a regular full-width line: block
+   (Obsidian renders embeds as flex — !important is needed to beat its deep editor
+   selector) so the editable link stacks ABOVE the image, starts at the normal text
+   margin and spans the content width, instead of sitting beside it / image-width. */
+.lie-lp-embed.lie-lp-revealed {
+  display: block !important;
+  width: 100%;
+  text-align: left;
+}
+
+/* Revealed link source (the <> toggle): the editable raw link shown ABOVE the
+   image. Borderless, full content width, auto-height — reads like the surrounding
+   document text and wraps fully, not a boxed/resizable textfield. */
+.lie-link-editor {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: var(--font-text-size);
+  line-height: var(--line-height-normal);
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.lie-link-editor:focus {
+  outline: none;
+}
+
+/* AUTO reveal mode (F5): the editor is present but only shown together with the
+   toolbar — i.e. while the image is hovered. Until then the image looks normal;
+   on hover the container becomes the full-width revealed line AND shows the editor.
+   ON keeps it always shown (lie-lp-revealed); OFF doesn't render it at all. */
+.lie-lp-reveal-auto .lie-link-editor {
+  display: none;
+}
+.lie-lp-embed.lie-lp-reveal-auto:hover {
+  display: block !important;
+  width: 100%;
+  text-align: left;
+}
+.lie-lp-embed.lie-lp-reveal-auto:hover .lie-link-editor {
+  display: block;
+}
+
+/* The <> control reflects its tri-state mode via colour + a small badge (D4). */
+.lie-toolbar-edit {
+  position: relative;
+}
+.lie-reveal-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 700;
+  padding: 1px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.lie-toolbar-edit.lie-reveal-on {
+  color: var(--interactive-accent);
+}
+.lie-toolbar-edit.lie-reveal-on .lie-reveal-badge {
+  color: var(--interactive-accent);
+}
+.lie-toolbar-edit.lie-reveal-off {
+  color: var(--text-faint);
+}
+.lie-toolbar-edit.lie-reveal-off .lie-reveal-badge {
+  color: var(--text-faint);
+}
+.lie-toolbar-edit.lie-reveal-auto .lie-reveal-badge {
+  color: var(--text-muted);
+}
+
+/* Rotation reflow box: reserves the rotated bounding box in layout so a
+   quarter-turned image doesn't overflow or leave empty space. The image is
+   centered and may overflow this box un-rotated, but its rotated pixels fit. */
+.lie-rotate-box {
+  display: inline-block;
+  position: relative;
+  vertical-align: baseline;
+  overflow: visible;
+}
+
+.lie-rotate-box > img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  max-width: none;
+}
+
+/* Obsidian's embed containers are display:inline and won't take the height of
+   the rotated box — make the ones holding a rotated image shrink-wrap it. */
+.internal-embed:has(.lie-rotate-box),
+.image-embed:has(.lie-rotate-box),
+.image-wrapper:has(.lie-rotate-box) {
+  display: inline-block;
+}
+
 /* Crop container (rendered output) */
 .lie-crop-container {
   position: relative;
   line-height: 0;
 }
 
-/* Crop Editor Overlay */
+/* In-place crop overlay (D11): positioned over the image at its exact rect (set
+   inline in JS), NOT a centered modal. The frame's box-shadow dims everything
+   outside it (semi-transparent outside, full opacity inside). */
 .lie-crop-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.lie-crop-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-}
-
-.lie-crop-workspace {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-}
-
-.lie-crop-frame-container {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 80vw;
-  height: 60vh;
+  /* position/left/top/width/height are set inline to the image's rect. */
+  z-index: 1000;
 }
 
 .lie-crop-image-layer {
@@ -88,9 +264,15 @@
 
 .lie-crop-source-img {
   position: absolute;
+  top: 0;
+  left: 0;
   max-width: none;
   max-height: none;
-  opacity: 0.4;
+  /* Top-left origin + translate→rotate→scale order, identical to the renderer's
+     crop transform (renderer.ts wrapWithCropContainer) so the editor preview and
+     the committed result match to the pixel. */
+  transform-origin: top left;
+  opacity: 0.5;
   cursor: grab;
   user-select: none;
 }
@@ -100,8 +282,11 @@
 }
 
 .lie-crop-frame {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
   border: 2px solid #fff;
+  /* The cut window: full opacity inside, everything outside dimmed (D11). */
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
   z-index: 2;
 }
@@ -148,52 +333,50 @@
   transform: translateX(-50%);
 }
 
-.lie-crop-controls {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  z-index: 2;
-}
-
+/* Aspect presets in the crop sub-menu body (confirm/cancel are the shared
+   submenu's icons). Themed for the light sub-menu background. */
 .lie-crop-presets {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
-.lie-crop-preset-btn,
-.lie-crop-confirm,
-.lie-crop-cancel {
-  padding: 6px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+.lie-crop-preset-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--background-modifier-border);
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--background-primary);
+  color: var(--text-normal);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-ui-smaller);
 }
 
-.lie-crop-preset-btn:hover,
-.lie-crop-confirm:hover,
-.lie-crop-cancel:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.lie-crop-confirm {
-  background: var(--interactive-accent);
-  border-color: var(--interactive-accent);
+.lie-crop-preset-btn:hover {
+  background: var(--background-modifier-hover);
 }
 
 /* Filter Panel */
 .lie-filter-panel {
-  width: 220px;
+  /* D9: shown in full, never internally scrolled. Width sizes to content so
+     translated (i18n) labels always fit — min-width keeps it from collapsing,
+     max-content lets longer locales widen it instead of clipping/scrolling. */
+  width: max-content;
+  min-width: 220px;
+  max-width: 360px;
   padding: 12px;
   background: var(--background-primary-alt);
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   z-index: 1001;
-  max-height: 80vh;
-  overflow-y: auto;
+}
+
+/* Body content (histogram / presets / sliders). The title + icon confirm/cancel
+   header is now provided by the shared AnchoredSubmenu (D8/D10/T9). */
+.lie-filter-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .lie-filter-histogram {
@@ -248,8 +431,10 @@
 }
 
 .lie-filter-slider-row {
+  /* Label column sizes to content (capped) so translated labels never clip (D9);
+     the slider keeps a usable minimum width via the input below. */
   display: grid;
-  grid-template-columns: 70px 1fr 40px;
+  grid-template-columns: minmax(60px, max-content) 1fr 40px;
   align-items: center;
   gap: 6px;
 }
@@ -257,10 +442,12 @@
 .lie-filter-slider-label {
   font-size: 11px;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .lie-filter-slider-input {
   width: 100%;
+  min-width: 120px;
   height: 4px;
   cursor: pointer;
 }
@@ -306,7 +493,94 @@
   font-weight: 600;
 }
 
-/* Size Modal */
-.lie-size-modal input[type="number"] {
-  width: 100px;
+/* Shared anchored sub-menu (D8/D9/D10) — used by custom-size and crop. Never
+   clipped, never internally scrolled; width sizes to content so translations fit. */
+.lie-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: max-content;
+  max-width: 360px;
+  padding: 8px 10px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 1001;
+}
+
+.lie-submenu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lie-submenu-title {
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+}
+
+.lie-submenu-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.lie-submenu-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+.lie-submenu-icon-btn:hover {
+  background: var(--background-modifier-hover);
+}
+.lie-submenu-confirm:hover {
+  color: var(--interactive-accent);
+}
+
+/* Toolbar greyed out + inert while a sub-menu is open (D8). */
+.lie-toolbar-inactive {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Custom-size sub-menu body (D8): quick choices + custom width entry. */
+.lie-size-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lie-size-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lie-size-choice {
+  padding: 3px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+}
+.lie-size-choice:hover {
+  background: var(--background-modifier-hover);
+}
+.lie-size-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lie-size-input {
+  width: 90px;
 }
