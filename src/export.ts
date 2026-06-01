@@ -97,6 +97,8 @@ export async function exportImage(
   const baseName = originalPath.replace(/\.[^.]+$/, "");
   const exportPath = `${baseName}-edited.${ext}`;
 
-  await vault.createBinary(exportPath, new Uint8Array(buffer));
+  // blob.arrayBuffer() already yields an ArrayBuffer, which is exactly what
+  // createBinary wants — wrapping it in a Uint8Array only breaks the type.
+  await vault.createBinary(exportPath, buffer);
   return exportPath;
 }
