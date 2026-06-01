@@ -1,86 +1,102 @@
 import { Editor } from "obsidian";
-import { ImageTransform, serializeTransform } from "./transforms";
+import { ImageTransform, serializeTransform, parseAltText } from "./transforms";
 
-interface ImageLocation {
+export interface ImageLocation {
   line: number;
-  start: number;
-  end: number;
+  start: number;    // start of the embed
+  headEnd: number;  // end of the embed head (the ]] or ) ), i.e. start of any {…} block
+  end: number;      // end of the embed incl. a trailing {…} block
   isWikiLink: boolean;
-  filename: string;
-  altText: string;
+  filename: string; // path as written in the embed (preserved)
+  params: string;   // content of the {…} transform block, "" if none
+}
+
+// Transforms are stored in a trailing {…} attribute block so the link itself —
+// caption (markdown alt) and native size (wikilink pipe) — stays untouched:
+//   ![caption](path){rotate:90}
+//   ![[image.png|300]]{rotate:90}
+const WIKI_EMBED = /!\[\[([^\]]+?)\]\](\{([^}]*)\})?/g;
+const MD_EMBED = /!\[[^\]]*\]\(([^)]+)\)(\{([^}]*)\})?/g;
+
+function basename(path: string): string {
+  // For wikilinks the inner text may carry a |size/|alt suffix.
+  const file = path.split("|")[0] ?? path;
+  try {
+    return decodeURIComponent(file).split(/[/\\]/).pop() ?? file;
+  } catch {
+    return file.split(/[/\\]/).pop() ?? file;
+  }
 }
 
 export function findImageInSource(editor: Editor, img: HTMLImageElement): ImageLocation | null {
   const src = getImageFilename(img);
   if (!src) return null;
 
-  const lineCount = editor.lineCount();
-  const escaped = src.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (let i = 0; i < editor.lineCount(); i++) {
+    const loc = matchInLine(editor.getLine(i), i, src);
+    if (loc) return loc;
+  }
+  return null;
+}
 
-  const mdRegex = new RegExp(`!\\[([^\\]]*)\\]\\(${escaped}\\)`);
-  const wikiRegex = new RegExp(`!\\[\\[${escaped}(\\|[^\\]]*)?\\]\\]`);
+// Exported so the post processor can resolve params from a section's source.
+export function findImageInText(text: string, src: string): ImageLocation | null {
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const loc = matchInLine(lines[i] ?? "", i, src);
+    if (loc) return loc;
+  }
+  return null;
+}
 
-  for (let i = 0; i < lineCount; i++) {
-    const line = editor.getLine(i);
+function matchInLine(line: string, lineNo: number, src: string): ImageLocation | null {
+  for (const { regex, isWiki } of [
+    { regex: WIKI_EMBED, isWiki: true },
+    { regex: MD_EMBED, isWiki: false },
+  ]) {
+    regex.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(line)) !== null) {
+      const path = m[1] ?? "";
+      if (basename(path) !== src) continue;
 
-    const mdMatch = mdRegex.exec(line);
-    if (mdMatch) {
+      const block = m[2] ?? "";
+      const end = m.index + m[0].length;
       return {
-        line: i,
-        start: mdMatch.index,
-        end: mdMatch.index + mdMatch[0].length,
-        isWikiLink: false,
-        filename: src,
-        altText: mdMatch[1] ?? "",
-      };
-    }
-
-    const wikiMatch = wikiRegex.exec(line);
-    if (wikiMatch) {
-      const altPart = wikiMatch[1] ? wikiMatch[1].slice(1) : "";
-      return {
-        line: i,
-        start: wikiMatch.index,
-        end: wikiMatch.index + wikiMatch[0].length,
-        isWikiLink: true,
-        filename: src,
-        altText: altPart,
+        line: lineNo,
+        start: m.index,
+        headEnd: end - block.length,
+        end,
+        isWikiLink: isWiki,
+        filename: path,
+        params: m[3] ?? "",
       };
     }
   }
-
   return null;
 }
 
 export function updateImageSource(
   editor: Editor,
   location: ImageLocation,
-  transform: ImageTransform,
-  convertWikiLinks: boolean
+  transform: ImageTransform
 ): void {
-  const newAlt = serializeTransform(transform);
-  let replacement: string;
+  const params = serializeTransform(transform);
+  const block = params ? `{${params}}` : "";
 
-  if (location.isWikiLink && convertWikiLinks && newAlt) {
-    replacement = `![${newAlt}](${location.filename})`;
-  } else if (location.isWikiLink) {
-    if (newAlt) {
-      replacement = `![[${location.filename}|${newAlt}]]`;
-    } else {
-      replacement = `![[${location.filename}]]`;
-    }
-  } else {
-    replacement = `![${newAlt}](${location.filename})`;
-  }
-
+  // Replace only the {…} region; the link head (caption, path, size) is kept.
   editor.replaceRange(
-    replacement,
-    { line: location.line, ch: location.start },
+    block,
+    { line: location.line, ch: location.headEnd },
     { line: location.line, ch: location.end }
   );
 }
 
-function getImageFilename(img: HTMLImageElement): string | null {
+export function parseLocationTransform(location: ImageLocation): ImageTransform {
+  return parseAltText(location.params);
+}
+
+export function getImageFilename(img: HTMLImageElement): string | null {
   const src = img.getAttribute("src") ?? "";
   if (!src) return null;
 
