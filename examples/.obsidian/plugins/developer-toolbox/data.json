@@ -1,0 +1,47 @@
+{
+  "version": 3,
+  "storageRoot": "_dev-tools",
+  "tools": {
+    "issue-capture": {
+      "enabled": true,
+      "immediateSettleMs": 300,
+      "delayedCaptureSeconds": 5,
+      "defaultIssueType": "defect",
+      "screenshotSubfolder": "dev-screenshots",
+      "saveIssueFile": true,
+      "issueSubfolder": "dev-issues",
+      "redactHomePath": true,
+      "includePluginList": true,
+      "includeVaultName": true,
+      "pathStyle": "vault-relative",
+      "saveAnnotationDraft": true,
+      "annotationDraft": null
+    },
+    "reloader": {
+      "enabled": true,
+      "devPluginIds": [
+        "obsidian-live-image-editor"
+      ],
+      "autoWatch": true,
+      "watchDebounceMs": 250,
+      "showDiagnostics": true,
+      "writeLog": false,
+      "logSubfolder": "dev-logs"
+    },
+    "state-inspector": {
+      "enabled": true,
+      "includeVaultName": true,
+      "includePluginList": true,
+      "pathStyle": "vault-relative"
+    },
+    "icon-browser": {
+      "enabled": true
+    },
+    "css-var-inspector": {
+      "enabled": true
+    },
+    "command-inspector": {
+      "enabled": true
+    }
+  }
+}

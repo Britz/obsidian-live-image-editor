@@ -1,0 +1,525 @@
+/* Developer Toolbox styles. Per-tool styles are appended in subsequent commits. */
+
+/* Hide via higher specificity rather than forcing the override: the countdown
+   notice sets display: flex below, so the hide rule must outrank a single-class
+   selector. */
+.toolbox-countdown-notice.toolbox-hidden {
+	display: none;
+}
+
+.toolbox-countdown-notice {
+	position: fixed;
+	right: 16px;
+	bottom: 16px;
+	z-index: var(--layer-popover, 1000);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 8px 14px;
+	font: 13px/1.4 var(--font-interface);
+	box-shadow: var(--shadow-s);
+	display: flex;
+	gap: 6px;
+	align-items: baseline;
+}
+
+.toolbox-countdown-notice-counter {
+	font-weight: 600;
+	font-size: 16px;
+}
+
+.toolbox-stacked-row {
+	margin: 12px 0;
+}
+
+.toolbox-stacked-row-header {
+	margin-bottom: 6px;
+}
+
+.toolbox-stacked-row-name {
+	font-weight: 600;
+}
+
+.toolbox-stacked-row-desc {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.toolbox-stacked-row-content {
+	width: 100%;
+}
+
+.toolbox-issue-dialog {
+	min-width: min(800px, 90vw);
+}
+
+.toolbox-issue-screenshot {
+	max-width: 100%;
+	max-height: 360px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	display: block;
+	background: var(--background-secondary);
+}
+
+.toolbox-issue-description-textarea,
+.toolbox-issue-payload-textarea {
+	width: 100%;
+	min-height: 6em;
+	font-family: var(--font-monospace);
+	resize: vertical;
+}
+
+.toolbox-issue-payload-textarea {
+	min-height: 9em;
+	background: var(--background-secondary);
+}
+
+.toolbox-state-inspector-blob {
+	width: 100%;
+	min-height: 9em;
+	font-family: var(--font-monospace);
+	resize: vertical;
+	background: var(--background-secondary);
+}
+
+.toolbox-icon-search {
+	width: 100%;
+	margin-bottom: 8px;
+}
+
+.toolbox-icon-count {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	margin-bottom: 8px;
+}
+
+.toolbox-icon-grid {
+	max-height: 50vh;
+	overflow-y: auto;
+}
+
+.toolbox-icon-row {
+	display: flex;
+	gap: 4px;
+}
+
+/* Fills the trailing slots of a partial last row so real cells keep their width. */
+.toolbox-icon-cell-spacer {
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+.toolbox-icon-cell {
+	display: flex;
+	flex: 1 1 0;
+	min-width: 0;
+	height: 100%;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 8px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+	overflow: hidden;
+}
+
+.toolbox-icon-cell:hover {
+	background: var(--background-modifier-hover);
+}
+
+.toolbox-icon-preview {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-normal);
+}
+
+.toolbox-icon-preview svg {
+	width: 24px;
+	height: 24px;
+}
+
+.toolbox-icon-label {
+	font-size: var(--font-ui-smaller);
+	font-family: var(--font-monospace);
+	color: var(--text-muted);
+	text-align: center;
+	line-height: 1.2;
+	word-break: break-all;
+	overflow: hidden;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+}
+
+.toolbox-cssvar-search {
+	width: 100%;
+	margin-bottom: 8px;
+}
+
+.toolbox-cssvar-count {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	margin-bottom: 8px;
+}
+
+.toolbox-cssvar-list {
+	max-height: 50vh;
+	overflow-y: auto;
+}
+
+.toolbox-cssvar-row {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	padding: 0 6px;
+	border-radius: 4px;
+	cursor: pointer;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-small);
+	overflow: hidden;
+}
+
+.toolbox-cssvar-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.toolbox-cssvar-name {
+	color: var(--text-accent);
+	flex: 0 0 32%;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.toolbox-cssvar-value {
+	color: var(--text-muted);
+	flex: 1 1 68%;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.toolbox-cmd-search {
+	width: 100%;
+	margin-bottom: 8px;
+}
+
+.toolbox-cmd-count {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	margin-bottom: 8px;
+}
+
+.toolbox-cmd-list {
+	max-height: 50vh;
+	overflow-y: auto;
+}
+
+.toolbox-cmd-row {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	padding: 0 6px;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: var(--font-ui-small);
+	overflow: hidden;
+}
+
+.toolbox-cmd-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.toolbox-cmd-id {
+	color: var(--text-accent);
+	font-family: var(--font-monospace);
+	flex: 1 1 46%;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.toolbox-cmd-plugin {
+	color: var(--text-muted);
+	flex: 0 0 26%;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.toolbox-cmd-hotkey {
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+	flex: 0 0 26%;
+	text-align: right;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Virtual list: a sizer reserves the full scroll height; the rows layer is
+   translated to the current window so only the visible rows are in the DOM. */
+.toolbox-vlist-sizer {
+	position: relative;
+	width: 100%;
+}
+
+.toolbox-vlist-rows {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+}
+
+.toolbox-vlist-row {
+	box-sizing: border-box;
+	width: 100%;
+}
+
+/* Shared wider modal for the inspector tools so long values and IDs do not wrap
+   in the default narrow modal. */
+.toolbox-inspector-dialog {
+	width: min(900px, 92vw);
+	max-width: min(900px, 92vw);
+}
+
+.toolbox-issue-context-list > div {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+}
+
+.toolbox-issue-buttons {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	margin-top: 16px;
+}
+
+.toolbox-issue-folder-input {
+	width: 100%;
+}
+
+.toolbox-annotation-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 6px;
+	margin-bottom: 6px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	align-items: center;
+}
+
+.toolbox-annotation-tool,
+.toolbox-annotation-action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	background: transparent;
+	cursor: pointer;
+	color: var(--text-normal);
+}
+
+.toolbox-annotation-tool:hover,
+.toolbox-annotation-action:hover {
+	background: var(--background-modifier-hover);
+}
+
+.toolbox-annotation-tool.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.toolbox-annotation-colors {
+	display: inline-flex;
+	gap: 4px;
+	margin-left: 6px;
+	padding-left: 6px;
+	border-left: 1px solid var(--background-modifier-border);
+}
+
+.toolbox-annotation-color {
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: 2px solid var(--background-modifier-border);
+	border-radius: 50%;
+	cursor: pointer;
+	background: var(--background-primary);
+}
+
+.toolbox-annotation-color[data-color="#ef4444"] { background: #ef4444; }
+.toolbox-annotation-color[data-color="#f97316"] { background: #f97316; }
+.toolbox-annotation-color[data-color="#eab308"] { background: #eab308; }
+.toolbox-annotation-color[data-color="#22c55e"] { background: #22c55e; }
+.toolbox-annotation-color[data-color="#3b82f6"] { background: #3b82f6; }
+.toolbox-annotation-color[data-color="#a855f7"] { background: #a855f7; }
+.toolbox-annotation-color[data-color="#ffffff"] { background: #ffffff; }
+.toolbox-annotation-color[data-color="#000000"] { background: #000000; }
+
+.toolbox-annotation-color.is-active {
+	border-color: var(--text-accent);
+	box-shadow: 0 0 0 2px var(--text-accent);
+}
+
+.toolbox-annotation-color:hover {
+	transform: scale(1.1);
+}
+
+.toolbox-annotation-actions {
+	display: inline-flex;
+	gap: 4px;
+	margin-left: auto;
+	padding-left: 6px;
+	border-left: 1px solid var(--background-modifier-border);
+}
+
+.toolbox-annotation-widths {
+	display: inline-flex;
+	gap: 4px;
+	margin-left: 6px;
+	padding-left: 6px;
+	border-left: 1px solid var(--background-modifier-border);
+	align-items: center;
+}
+
+.toolbox-annotation-width {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	background: transparent;
+	cursor: pointer;
+}
+
+.toolbox-annotation-width:hover {
+	background: var(--background-modifier-hover);
+}
+
+.toolbox-annotation-width.is-active {
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+}
+
+.toolbox-annotation-width.is-active .toolbox-annotation-width-bar {
+	background: var(--text-on-accent);
+}
+
+.toolbox-annotation-width-bar {
+	display: block;
+	width: 18px;
+	background: var(--text-normal);
+	border-radius: 999px;
+}
+
+.toolbox-annotation-width-bar-thin { height: 2px; }
+.toolbox-annotation-width-bar-medium { height: 4px; }
+.toolbox-annotation-width-bar-thick { height: 7px; }
+
+.toolbox-annotation-stage {
+	position: relative;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	overflow: hidden;
+	background: var(--background-secondary);
+	min-height: 200px;
+	max-height: 60vh;
+}
+
+.toolbox-annotation-stage canvas {
+	display: block;
+	max-width: 100%;
+}
+
+.toolbox-annotation-stage.is-select-mode {
+	cursor: default;
+}
+
+.toolbox-annotation-action.is-disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.toolbox-annotation-action.is-disabled:hover {
+	background: transparent;
+}
+
+.toolbox-annotation-text-editor {
+	position: absolute;
+	min-width: 120px;
+	min-height: 1.4em;
+	padding: 2px 4px;
+	background: rgba(255, 255, 255, 0.85);
+	border: 2px dashed var(--text-accent);
+	font-family: sans-serif;
+	font-weight: 700;
+	line-height: 1.2;
+	resize: both;
+	overflow: auto;
+	z-index: 5;
+}
+
+
+.toolbox-reloader-empty {
+	color: var(--text-muted);
+	margin: 0.5em 0;
+}
+
+.toolbox-version-footer {
+	display: flex;
+	gap: 0.6em;
+	align-items: center;
+	margin-top: 1.5em;
+	padding-top: 0.8em;
+	border-top: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.toolbox-reloader-dirty,
+.toolbox-reloader-dirty svg {
+	color: var(--text-warning);
+}
+
+.toolbox-reloader-dirty {
+	animation: toolbox-reloader-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes toolbox-reloader-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.45;
+	}
+}
+
+.toolbox-reloader-done,
+.toolbox-reloader-done svg {
+	color: var(--text-success);
+}
+
+.toolbox-reloader-status {
+	cursor: pointer;
+}
+
+.toolbox-reloader-log-input {
+	width: 100%;
+}
