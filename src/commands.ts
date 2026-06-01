@@ -8,7 +8,7 @@ export interface CommandHandler {
   flipH(): void;
   flipV(): void;
   crop(): void;
-  openFilters(): void;
+  toggleFilters(): void;
   sizeSmall(): void;
   sizeMedium(): void;
   sizeLarge(): void;
@@ -29,7 +29,7 @@ export function registerCommands(plugin: Plugin, handler: CommandHandler): void 
     { id: "flip-h", name: t("flipH"), action: () => handler.flipH() },
     { id: "flip-v", name: t("flipV"), action: () => handler.flipV() },
     { id: "crop", name: t("crop"), action: () => handler.crop() },
-    { id: "filters", name: t("filters"), action: () => handler.openFilters() },
+    { id: "filters", name: t("filters"), action: () => handler.toggleFilters() },
     { id: "size-small", name: "Size: Small", action: () => handler.sizeSmall() },
     { id: "size-medium", name: "Size: Medium", action: () => handler.sizeMedium() },
     { id: "size-large", name: "Size: Large", action: () => handler.sizeLarge() },

@@ -1,23 +1,22 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import { t } from "./i18n";
 import type LiveImageEditorPlugin from "./main";
+import {
+  getEditingToolbarStatus, addEditingToolbarButtons, removeEditingToolbarButtons,
+} from "./editing-toolbar-integration";
 
 export interface LieSettings {
   showToolbar: boolean;
-  convertWikiLinks: boolean;
   disabledInternalClasses: string[];
   disabledSnippetClasses: string[];
   editingToolbarEnabled: boolean;
-  language: string;
 }
 
 export const DEFAULT_SETTINGS: LieSettings = {
   showToolbar: true,
-  convertWikiLinks: true,
   disabledInternalClasses: [],
   disabledSnippetClasses: [],
   editingToolbarEnabled: false,
-  language: "auto",
 };
 
 export class LieSettingTab extends PluginSettingTab {
@@ -45,15 +44,6 @@ export class LieSettingTab extends PluginSettingTab {
           });
       });
 
-    new Setting(containerEl)
-      .setName(t("settingsConvertWikiLinks"))
-      .addToggle((toggle) => {
-        toggle.setValue(this.plugin.settings.convertWikiLinks)
-          .onChange(async (v) => {
-            this.plugin.settings.convertWikiLinks = v;
-            await this.plugin.saveSettings();
-          });
-      });
 
     // Snippets section
     containerEl.createEl("h3", { text: t("settingsSnippets") });
@@ -98,18 +88,28 @@ export class LieSettingTab extends PluginSettingTab {
           });
       });
 
-    // Editing Toolbar Integration
+    // Editing Toolbar Integration (T7/F12): optional, off by default, version-gated.
     containerEl.createEl("h3", { text: t("settingsEditingToolbar") });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const etPlugin = (this.app as Record<string, any>).plugins?.getPlugin?.("editing-toolbar");
-    const etInstalled = !!etPlugin;
+    const status = getEditingToolbarStatus(this.app);
 
     new Setting(containerEl)
       .setName("Status")
-      .setDesc(etInstalled ? t("settingsEditingToolbarInstalled") : t("settingsEditingToolbarNotInstalled"));
+      .setDesc(
+        status.installed
+          ? `${t("settingsEditingToolbarInstalled")}${status.version ? ` (v${status.version})` : ""}`
+          : t("settingsEditingToolbarNotInstalled")
+      );
 
-    if (etInstalled) {
+    if (status.installed && !status.tested) {
+      const warn = containerEl.createEl("p", {
+        text: t("settingsEditingToolbarVersionWarning"),
+        cls: "setting-item-description",
+      });
+      warn.style.color = "var(--text-error)";
+    }
+
+    if (status.installed) {
       new Setting(containerEl)
         .setName(t("settingsEditingToolbarEnable"))
         .addToggle((toggle) => {
@@ -117,24 +117,26 @@ export class LieSettingTab extends PluginSettingTab {
             .onChange(async (v) => {
               this.plugin.settings.editingToolbarEnabled = v;
               await this.plugin.saveSettings();
+              // Applying buttons only when the version is tested; otherwise the
+              // toggle just records intent (warning shown above).
+              if (v && status.tested) await addEditingToolbarButtons(this.app);
+              if (!v) await removeEditingToolbarButtons(this.app);
+              this.display();
             });
         });
+
+      if (this.plugin.settings.editingToolbarEnabled && status.tested) {
+        new Setting(containerEl)
+          .addButton((btn) => {
+            btn.setButtonText(t("settingsAddButtons"))
+              .onClick(async () => { await addEditingToolbarButtons(this.app); });
+          })
+          .addButton((btn) => {
+            btn.setButtonText(t("settingsRemoveButtons"))
+              .onClick(async () => { await removeEditingToolbarButtons(this.app); });
+          });
+      }
     }
 
-    // Language
-    containerEl.createEl("h3", { text: t("settingsLanguage") });
-    new Setting(containerEl)
-      .setName(t("settingsLanguage"))
-      .addDropdown((dropdown) => {
-        dropdown
-          .addOption("auto", t("settingsLanguageAuto"))
-          .addOption("en", "English")
-          .addOption("de", "Deutsch")
-          .setValue(this.plugin.settings.language)
-          .onChange(async (v) => {
-            this.plugin.settings.language = v;
-            await this.plugin.saveSettings();
-          });
-      });
   }
 }
