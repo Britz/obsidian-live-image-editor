@@ -20,7 +20,7 @@
     "reloader": {
       "enabled": true,
       "devPluginIds": [
-        "obsidian-live-image-editor"
+        "live-image-editor"
       ],
       "autoWatch": true,
       "watchDebounceMs": 250,

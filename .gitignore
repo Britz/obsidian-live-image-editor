@@ -8,4 +8,4 @@ main.js
 # config (plugins/snippets/app.json) but not the per-machine layout/settings.
 **/.obsidian/workspace.json
 **/.obsidian/workspace-mobile.json
-examples/.obsidian/plugins/obsidian-live-image-editor/data.json
+examples/.obsidian/plugins/live-image-editor/data.json

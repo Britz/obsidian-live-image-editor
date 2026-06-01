@@ -7,7 +7,7 @@ import { App } from "obsidian";
 // an image is in context. Everything here is feature-detected and defensive: if the
 // other plugin's shape differs, we no-op rather than throw.
 
-const PLUGIN_ID = "obsidian-live-image-editor";
+const PLUGIN_ID = "live-image-editor";
 const EDITING_TOOLBAR_ID = "editing-toolbar";
 
 // Versions of editing-toolbar this integration has been validated against.

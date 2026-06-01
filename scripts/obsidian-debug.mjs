@@ -14,7 +14,7 @@
 //   node scripts/obsidian-debug.mjs --eval '<expr>'  # evaluate once, print, exit
 //
 // Examples:
-//   node scripts/obsidian-debug.mjs --eval 'app.plugins.plugins["obsidian-live-image-editor"]?.manifest.version'
+//   node scripts/obsidian-debug.mjs --eval 'app.plugins.plugins["live-image-editor"]?.manifest.version'
 //   node scripts/obsidian-debug.mjs --eval 'document.querySelectorAll("img.lie-img").length'
 //
 // Environment:
