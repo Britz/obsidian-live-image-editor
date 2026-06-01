@@ -1,15 +1,22 @@
 {
   "name": "Live Image Editor",
-  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
-  "runArgs": ["--userns=keep-id"],
-  "containerUser": "node",
-  "remoteUser": "node",
-  "postCreateCommand": "npm install",
+  "dockerFile": "DockerFile",
+  "mounts": [
+		"source=${devcontainerId}-claude,target=/home/${localEnv:USER}/.claude,type=volume"
+	],
+  "initializeCommand": "./scripts/prebuild.sh",
+  "containerUser": "${localEnv:USER}",
+  "remoteUser": "${localEnv:USER}",
+  "postCreateCommand": "sudo chown -R \"$(id -u)\":\"$(id -g)\" \"$HOME/.claude\"",
   "customizations": {
     "vscode": {
       "extensions": [
         "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode"
+        "esbenp.prettier-vscode",
+        "Anthropic.claude-code",
+        "vitest.explorer",
+        "ms-vscode.js-debug",
+        "EditorConfig.EditorConfig"
       ]
     }
   }

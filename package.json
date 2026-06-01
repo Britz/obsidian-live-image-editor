@@ -5,7 +5,11 @@
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
+    "dev:vault": "OBSIDIAN_PLUGIN_DIR=examples/.obsidian/plugins/obsidian-live-image-editor node esbuild.config.mjs",
+    "check:watch": "tsc -noEmit --watch --preserveWatchOutput",
     "build": "tsc -noEmit && node esbuild.config.mjs production",
+    "build:dev": "node esbuild.config.mjs dev",
+    "debug:obsidian": "node scripts/obsidian-debug.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src/",

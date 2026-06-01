@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
     "inlineSourceMap": true,
     "inlineSources": true,
     "module": "ESNext",
@@ -9,10 +8,11 @@
     "noImplicitAny": true,
     "noImplicitReturns": true,
     "noUncheckedIndexedAccess": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "importHelpers": true,
     "isolatedModules": true,
     "strictNullChecks": true,
+    "types": ["node"],
     "lib": ["ES2021", "DOM", "DOM.Iterable"]
   },
   "include": ["src/**/*.ts"]

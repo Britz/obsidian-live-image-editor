@@ -1,3 +1,11 @@
 node_modules/
 main.js
 *.js.map
+.devcontainer/.env
+**.DS_Store
+
+# Obsidian per-vault local state (regenerated on open) — keep the committed debug
+# config (plugins/snippets/app.json) but not the per-machine layout/settings.
+**/.obsidian/workspace.json
+**/.obsidian/workspace-mobile.json
+examples/.obsidian/plugins/obsidian-live-image-editor/data.json
