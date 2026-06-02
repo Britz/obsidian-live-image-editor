@@ -28,23 +28,28 @@ describe("lineDecorations", () => {
     expect(lineDecorations("![a](b.png)", 0, false)).toEqual([]);
   });
 
-  it("renders one block widget for an embed+block line in live preview", () => {
+  it("renders one block widget for an embed+block line in live preview (params = attr content, no braces)", () => {
     expect(lineDecorations(embedBlock, 0, true)).toEqual([
-      { kind: "widget", from: 0, to: 15, embed: "![a](b.png)", params: "{.x}" },
+      { kind: "widget", from: 0, to: 15, embed: "![a](b.png)", params: ".x" },
     ]);
   });
 
   it("offsets the widget by lineFrom", () => {
     const decos = lineDecorations(embedBlock, 100, true);
     expect(decos).toEqual([
-      { kind: "widget", from: 100, to: 115, embed: "![a](b.png)", params: "{.x}" },
+      { kind: "widget", from: 100, to: 115, embed: "![a](b.png)", params: ".x" },
     ]);
   });
 
   it("handles a wikilink embed in live preview", () => {
     expect(lineDecorations("![[img.png|x]]{.y}", 0, true)).toEqual([
-      { kind: "widget", from: 0, to: 18, embed: "![[img.png|x]]", params: "{.y}" },
+      { kind: "widget", from: 0, to: 18, embed: "![[img.png|x]]", params: ".y" },
     ]);
+  });
+
+  it("strips braces so standalone classes survive (regression: .lie-left was dropped in live preview)", () => {
+    const decos = lineDecorations('![](a.png){.lie-left style="width: 180px;"}', 0, true);
+    expect(decos[0]).toMatchObject({ kind: "widget", params: '.lie-left style="width: 180px;"' });
   });
 
   it("marks the {…} as link syntax in source mode (braces = formatting, inside = url)", () => {

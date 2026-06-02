@@ -95,6 +95,12 @@ export class FilterPanel {
       toolbar: toolbarEl ?? null,
       title: t("filters"),
       rootClass: "lie-filter-panel",
+      allowFlip: false,                  // never flip onto the file explorer (Bug 3)
+      hideWhenAnchorOffscreen: true,     // track the image; hide when it scrolls away
+      // Show/hide with the toolbar's hover while staying part of the active region
+      // (B4/D6/D7): the live-preview embed is the hover region. In reading view
+      // there's no embed → undefined → the panel stays shown until dismissed.
+      hoverRegion: anchorEl.closest<HTMLElement>(".lie-lp-embed") ?? undefined,
       onCommit: () => this.callbacks.onCommit(this.currentFilter()),
       onCancel: () => this.callbacks.onCancel(),
       onClose: () => { this.submenu = null; this.body = null; this.callbacks.onClose(); },
@@ -260,6 +266,9 @@ export class FilterPanel {
     input.step = String(config.step);
     input.value = String(this.values[config.key] ?? config.default);
     input.classList.add("lie-filter-slider-input");
+    // Tag by key so refreshSliders() matches by key, not DOM index — the virtual
+    // temperature slider shares the row markup but is NOT a SLIDERS entry (Bug 8).
+    input.dataset["key"] = String(config.key);
 
     const valueDisplay = document.createElement("span");
     valueDisplay.classList.add("lie-filter-slider-value");
@@ -302,19 +311,20 @@ export class FilterPanel {
 
   private refreshSliders(): void {
     if (!this.body) return;
-    const inputs = this.body.querySelectorAll(".lie-filter-slider-input");
-    const valueDisplays = this.body.querySelectorAll(".lie-filter-slider-value");
-
-    let i = 0;
+    // Match each input by its data-key (NOT by DOM index) so the virtual
+    // temperature slider — which shares the row markup but isn't in SLIDERS — is
+    // left untouched (Bug 8).
     for (const slider of SLIDERS) {
-      const input = inputs[i] as HTMLInputElement | undefined;
-      const display = valueDisplays[i] as HTMLElement | undefined;
+      const input = this.body.querySelector<HTMLInputElement>(
+        `.lie-filter-slider-input[data-key="${slider.key}"]`
+      );
+      const row = input?.closest(".lie-filter-slider-row");
+      const display = row?.querySelector<HTMLElement>(".lie-filter-slider-value");
       if (input && display) {
         const val = this.values[slider.key] ?? slider.default;
         input.value = String(val);
         display.textContent = this.formatValue(val, slider);
       }
-      i++;
     }
   }
 

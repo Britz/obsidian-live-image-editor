@@ -7,6 +7,7 @@ import {
 
 export interface LieSettings {
   showToolbar: boolean;
+  showCaptions: boolean;
   disabledInternalClasses: string[];
   disabledSnippetClasses: string[];
   editingToolbarEnabled: boolean;
@@ -14,6 +15,7 @@ export interface LieSettings {
 
 export const DEFAULT_SETTINGS: LieSettings = {
   showToolbar: true,
+  showCaptions: false,
   disabledInternalClasses: [],
   disabledSnippetClasses: [],
   editingToolbarEnabled: false,
@@ -40,6 +42,17 @@ export class LieSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.showToolbar)
           .onChange(async (v) => {
             this.plugin.settings.showToolbar = v;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName(t("settingsCaptions"))
+      .setDesc(t("settingsCaptionsDesc"))
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.showCaptions)
+          .onChange(async (v) => {
+            this.plugin.settings.showCaptions = v;
             await this.plugin.saveSettings();
           });
       });

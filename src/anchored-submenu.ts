@@ -21,10 +21,29 @@ export interface SubmenuOptions {
   onCommit: () => void;
   // Discard the working state (revert any live preview). Called on cancel / Esc.
   onCancel: () => void;
+  // Optional per-panel reset: resets ONLY this panel's working state (e.g. just the
+  // size, or just the crop) and updates the live preview — NOT the whole transform
+  // like the toolbar's reset-all. The panel stays open. Shown as a header icon.
+  onReset?: () => void;
   // The panel element was removed — clear any reference the owner holds.
   onClose?: () => void;
   // Extra class on the root, e.g. to widen the filter panel.
   rootClass?: string;
+  // Beside-image only: allow flipping to the left of the anchor when it would
+  // overflow the right edge. The filter panel sets this false so it never lands on
+  // the left over the file explorer (Bug 3). Defaults to true.
+  allowFlip?: boolean;
+  // Hide (instead of clamp-sticking) when the anchor scrolls out of view, and
+  // re-show when it returns — so the panel tracks the image and disappears with it
+  // rather than clinging to a corner (Bug 3).
+  hideWhenAnchorOffscreen?: boolean;
+  // Bind the panel's visibility to hover (D6/D7/B4): the panel is visible only
+  // while the pointer is over this region (the image+toolbar) OR over the panel
+  // itself, and hidden otherwise — so it shows/hides WITH the toolbar while still
+  // counting as part of the active region (interacting with it keeps it open). This
+  // is visibility, not dismissal; the panel stays "open" until the trigger is
+  // clicked again or context is lost.
+  hoverRegion?: HTMLElement;
 }
 
 /**
@@ -39,6 +58,10 @@ export class AnchoredSubmenu {
   private toolbar: HTMLElement | null = null;
   private opts: SubmenuOptions | null = null;
   private closed = false;
+  private offscreen = false;
+  private hoverShown = true; // overridden by hoverRegion binding
+  private hoverTimer = 0;
+  private hoverCleanup: (() => void) | null = null;
 
   isOpen(): boolean {
     return this.el !== null;
@@ -65,6 +88,7 @@ export class AnchoredSubmenu {
     document.body.appendChild(panel);
     this.el = panel;
 
+    this.bindHover(panel, opts.hoverRegion);
     this.reposition();
     panel.style.visibility = "";
 
@@ -77,9 +101,59 @@ export class AnchoredSubmenu {
     window.addEventListener("scroll", this.reposition, true);
   }
 
+  // The panel shows/hides with the toolbar's hover (B4) while still counting as
+  // part of the active region (D7): visible while the pointer is over the image
+  // region OR the panel; a short grace delay lets the pointer travel between them.
+  private bindHover(panel: HTMLElement, region?: HTMLElement): void {
+    if (!region) { this.hoverShown = true; return; }
+    this.hoverShown = true; // opened by a click while hovering
+    const enter = (): void => {
+      window.clearTimeout(this.hoverTimer);
+      this.hoverShown = true;
+      this.updateVisibility();
+    };
+    const leave = (): void => {
+      window.clearTimeout(this.hoverTimer);
+      this.hoverTimer = window.setTimeout(() => {
+        this.hoverShown = false;
+        this.updateVisibility();
+      }, 160);
+    };
+    region.addEventListener("mouseenter", enter);
+    region.addEventListener("mouseleave", leave);
+    panel.addEventListener("mouseenter", enter);
+    panel.addEventListener("mouseleave", leave);
+    this.hoverCleanup = () => {
+      region.removeEventListener("mouseenter", enter);
+      region.removeEventListener("mouseleave", leave);
+      panel.removeEventListener("mouseenter", enter);
+      panel.removeEventListener("mouseleave", leave);
+    };
+  }
+
   // Recompute placement against the current anchor/viewport (also on scroll/resize
-  // so the menu tracks the image, since the toolbar scrolls with it — D1).
+  // so the menu tracks the image, since the toolbar scrolls with it — D1), then
+  // resolve visibility (offscreen + hover) and place only while visible.
   private reposition = (): void => {
+    this.updateVisibility();
+  };
+
+  private updateVisibility(): void {
+    if (!this.el || !this.opts) return;
+    // The anchor was removed from the DOM (e.g. the live-preview widget that owns it
+    // was destroyed when its image scrolled out of the CM6 viewport). Self-close so
+    // the panel doesn't linger orphaned against a detached anchor, leaking its hover
+    // and window scroll/resize listeners — the owner's onClose clears its reference.
+    if (!this.opts.anchor.isConnected) { this.close("commit"); return; }
+    const a = this.opts.anchor.getBoundingClientRect();
+    this.offscreen = !!this.opts.hideWhenAnchorOffscreen && (a.bottom <= 0 || a.top >= window.innerHeight);
+
+    const show = !this.offscreen && (this.hoverShown || !this.opts.hoverRegion);
+    this.el.style.display = show ? "" : "none";
+    if (show) this.place();
+  }
+
+  private place(): void {
     if (!this.el || !this.opts) return;
     const a = this.opts.anchor.getBoundingClientRect();
     const anchorRect: Rect = {
@@ -89,16 +163,22 @@ export class AnchoredSubmenu {
       anchorRect,
       { width: this.el.offsetWidth, height: this.el.offsetHeight },
       this.opts.placement,
-      { width: window.innerWidth, height: window.innerHeight }
+      { width: window.innerWidth, height: window.innerHeight },
+      undefined,
+      undefined,
+      this.opts.allowFlip ?? true
     );
     this.el.style.top = `${top}px`;
     this.el.style.left = `${left}px`;
-  };
+  }
 
   // Idempotent: a context-loss dismiss and an icon click can't double-fire.
   close(action: SubmenuClose = "commit"): void {
     if (this.closed) return;
     this.closed = true;
+    window.clearTimeout(this.hoverTimer);
+    this.hoverCleanup?.();
+    this.hoverCleanup = null;
     document.removeEventListener("keydown", this.handleKeyDown, true);
     window.removeEventListener("resize", this.reposition);
     window.removeEventListener("scroll", this.reposition, true);
@@ -133,6 +213,17 @@ export class AnchoredSubmenu {
 
     const actions = document.createElement("div");
     actions.classList.add("lie-submenu-actions");
+
+    // Optional per-panel reset (resets only this panel's working state, keeps open).
+    if (this.opts?.onReset) {
+      const reset = document.createElement("button");
+      reset.classList.add("lie-submenu-icon-btn", "lie-submenu-reset");
+      reset.setAttribute("aria-label", t("resetThis"));
+      reset.title = t("resetThis");
+      setIcon(reset, "undo-2");
+      reset.addEventListener("click", () => this.opts?.onReset?.());
+      actions.appendChild(reset);
+    }
 
     const cancel = document.createElement("button");
     cancel.classList.add("lie-submenu-icon-btn", "lie-submenu-cancel");

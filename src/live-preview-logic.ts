@@ -21,6 +21,10 @@ export function cycleRevealMode(mode: RevealMode): RevealMode {
 }
 
 export type LineDecoration =
+  // `params` is the attr_list CONTENT, WITHOUT the surrounding `{…}` braces — i.e.
+  // exactly what parseAltText expects (the reading-view path strips them too). Passing
+  // the braces would make the leading `.class` token (e.g. `{.lie-left`) unparseable,
+  // silently dropping standalone classes in live preview while `style="…"` still works.
   | { kind: "widget"; from: number; to: number; embed: string; params: string }
   | { kind: "mark"; from: number; to: number; class: string };
 
@@ -38,7 +42,9 @@ export function lineDecorations(lineText: string, lineFrom: number, isLivePrevie
   // render inline with {} stuck behind it. The <> reveal therefore lives inside the
   // widget (editable raw link above the image), never by falling back to native.
   if (isLivePreview) {
-    return [{ kind: "widget", from: lineFrom, to: lineFrom + lineText.length, embed: match[2] ?? "", params: match[3] ?? "" }];
+    // Strip the `{…}` braces so `params` is the bare attr content (see LineDecoration).
+    const block = match[3];
+    return [{ kind: "widget", from: lineFrom, to: lineFrom + lineText.length, embed: match[2] ?? "", params: block ? block.slice(1, -1) : "" }];
   }
 
   // Source mode: only mark when there's actually a {…} block.

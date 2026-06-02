@@ -10,9 +10,16 @@ const DEFAULT_CLASSES: Omit<InternalClass, "enabled">[] = [
   { name: "small", css: `img.${PREFIX}-small { max-width: 200px; height: auto; }` },
   { name: "medium", css: `img.${PREFIX}-medium { max-width: 400px; height: auto; }` },
   { name: "large", css: `img.${PREFIX}-large { max-width: 800px; height: auto; }` },
-  { name: "left", css: `img.${PREFIX}-left, .lie-crop-container.${PREFIX}-left { float: left; margin-right: 1em; margin-bottom: 0.5em; }` },
-  { name: "right", css: `img.${PREFIX}-right, .lie-crop-container.${PREFIX}-right { float: right; margin-left: 1em; margin-bottom: 0.5em; }` },
-  { name: "center", css: `img.${PREFIX}-center, .lie-crop-container.${PREFIX}-center { display: block; margin-left: auto; margin-right: auto; }` },
+  // Alignment must act on the block that participates in document flow. For a
+  // plain reading-view image that's the img itself; inside our live-preview widget
+  // (and reading-view embeds) the img sits in a flex container, so float/auto-margin
+  // on the img is ignored — we target the embed container via :has() (Bug 11).
+  { name: "left", css: `img.${PREFIX}-left { float: left; margin: 0 1em 0.5em 0; }
+.lie-lp-embed:has(.${PREFIX}-left), .image-embed:has(img.${PREFIX}-left) { float: left !important; clear: none; display: inline-block !important; width: max-content; margin: 0 1em 0.5em 0; }` },
+  { name: "right", css: `img.${PREFIX}-right { float: right; margin: 0 0 0.5em 1em; }
+.lie-lp-embed:has(.${PREFIX}-right), .image-embed:has(img.${PREFIX}-right) { float: right !important; clear: none; display: inline-block !important; width: max-content; margin: 0 0 0.5em 1em; }` },
+  { name: "center", css: `img.${PREFIX}-center { display: block; margin-left: auto; margin-right: auto; }
+.lie-lp-embed:has(.${PREFIX}-center), .image-embed:has(img.${PREFIX}-center) { float: none !important; display: block !important; width: max-content; margin-left: auto; margin-right: auto; }` },
   { name: "inline", css: `img.${PREFIX}-inline { display: inline; vertical-align: middle; }` },
   { name: "rounded", css: `img.${PREFIX}-rounded { border-radius: 8px; }` },
   { name: "shadow", css: `img.${PREFIX}-shadow { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }` },

@@ -1,19 +1,21 @@
 import { Plugin, MarkdownView, MarkdownPostProcessorContext, Notice, Editor } from "obsidian";
 import { ImageTransform, FilterData, parseAltText, serializeTransform } from "./transforms";
-import { applyTransformToImage, applyFilterVars } from "./renderer";
+import { applyTransformToImage, applyFilterVars, unwrapBox } from "./renderer";
 import { ImageToolbar, ToolbarItem, ToolbarButton, ToolbarGroup } from "./toolbar";
 import { findImageInSource, findImageInText, getImageFilename, ImageLocation } from "./image-resolver";
 import { CropEditor } from "./crop-editor";
 import { FilterPanel } from "./filter-panel";
 import { AnchoredSubmenu } from "./anchored-submenu";
-import { buildSizeBody } from "./size-submenu";
-import { exportImage } from "./export";
+import { buildSizeBody, SizeState } from "./size-submenu";
+import { renderTransformedImage, suggestExportPath, saveExport } from "./export";
 import { scanSnippets, SnippetClass } from "./snippet-scanner";
 import { StylesInjector } from "./styles-injector";
 import { registerCommands, CommandHandler } from "./commands";
 import { LieSettings, DEFAULT_SETTINGS, LieSettingTab } from "./settings";
-import { createLivePreviewExtension } from "./live-preview";
+import { createLivePreviewExtension, refreshDecorations } from "./live-preview";
+import { captionFromAlt, createCaption, CaptionHandle } from "./caption";
 import { Prec } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { setLocale, detectLocale, t } from "./i18n";
 import { convertEmbedLine, desiredFormat, LinkFormat } from "./link-format";
 import { TFile } from "obsidian";
@@ -54,7 +56,8 @@ export default class LiveImageEditorPlugin extends Plugin {
         createLivePreviewExtension(
           this.app,
           () => this.app.workspace.getActiveFile()?.path ?? "",
-          (img) => this.toolbarItemsForImage(img)
+          (img) => this.toolbarItemsForImage(img),
+          () => this.settings.showCaptions
         )
       )
     );
@@ -105,6 +108,22 @@ export default class LiveImageEditorPlugin extends Plugin {
     await this.saveData(this.settings);
     this.stylesInjector.inject(this.settings.disabledInternalClasses);
     this.initLocale();
+    // Captions toggle live: force every live-preview editor to rebuild its widgets,
+    // and re-run the reading-view render so captions appear/disappear immediately.
+    this.refreshLivePreviewDecorations();
+    this.reconcileFromSource();
+  }
+
+  // Tell every open live-preview editor to rebuild its decorations (e.g. after the
+  // show-captions setting changed — nothing in the document changed, so only an
+  // explicit effect triggers a rebuild).
+  private refreshLivePreviewDecorations(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (!(view instanceof MarkdownView)) continue;
+      const cm = (view.editor as unknown as { cm?: EditorView }).cm;
+      cm?.dispatch({ effects: refreshDecorations.of() });
+    }
   }
 
   getSnippetClasses(): SnippetClass[] {
@@ -127,43 +146,45 @@ export default class LiveImageEditorPlugin extends Plugin {
     setLocale(detectLocale());
   }
 
-  private postProcessor(el: HTMLElement, _ctx: MarkdownPostProcessorContext): void {
+  private postProcessor(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
+    const sourcePath = ctx.sourcePath || this.app.workspace.getActiveFile()?.path || "";
     // Internal embeds: the <span class="internal-embed"> exists at post-process
     // time, but Obsidian injects the <img> asynchronously — so we anchor on the
     // embed (+ its trailing {…} text node) and apply once the image appears.
     for (const embed of Array.from(el.querySelectorAll(".internal-embed"))) {
-      this.processBlock(embed as HTMLElement, () => embed.querySelector("img"));
+      this.processBlock(embed as HTMLElement, () => embed.querySelector("img"), sourcePath);
     }
     // External markdown images render as a plain <img> straight away.
     for (const img of Array.from(el.querySelectorAll("img"))) {
       if (img.closest(".internal-embed")) continue;
-      this.processBlock(img as HTMLElement, () => img as HTMLImageElement);
+      this.processBlock(img as HTMLElement, () => img as HTMLImageElement, sourcePath);
     }
   }
 
   // Transforms live in a trailing {…} block, which Obsidian renders as a plain
   // text node right after the embed. Parse it, strip the text so it isn't shown,
-  // and apply the transform to the (possibly async-loaded) image.
-  private processBlock(anchor: HTMLElement, getImg: () => HTMLImageElement | null): void {
+  // and apply the transform to the (possibly async-loaded) image. A caption (the
+  // alt text) is applied independently of any transform — a plain `![cap](img)`
+  // with no {…} block still gets a caption when the setting is on.
+  private processBlock(anchor: HTMLElement, getImg: () => HTMLImageElement | null, sourcePath: string): void {
     const textNode = this.findBlockTextNode(anchor);
     const match = textNode ? (textNode.textContent ?? "").match(/^\s*\{([^}]*)\}/) : null;
     const transform = match ? parseAltText(match[1] ?? "") : null;
+    const hasTransform = !!(transform && this.hasTransforms(transform));
 
-    // No (more) transform here — Obsidian reuses cached embed DOM, so an image
-    // that was un-rotated would otherwise keep its old transform/wrapper. Reset.
-    if (!transform || !this.hasTransforms(transform)) {
-      this.clearStaleTransform(getImg());
-      return;
-    }
-
-    if (textNode && match) {
+    // Strip the {…} text only when it's a real transform block (so it isn't shown).
+    if (hasTransform && textNode && match) {
       textNode.textContent = (textNode.textContent ?? "").slice(match[0].length);
     }
 
     const apply = (): boolean => {
       const img = getImg();
       if (!img) return false;
-      applyTransformToImage(img, transform);
+      // No (more) transform — Obsidian reuses cached embed DOM, so an image that was
+      // un-rotated would otherwise keep its old transform/wrapper. Reset it.
+      if (hasTransform) applyTransformToImage(img, transform as ImageTransform);
+      else this.clearStaleTransform(img);
+      this.applyReadingCaption(img, sourcePath);
       return true;
     };
     if (apply()) return;
@@ -174,6 +195,44 @@ export default class LiveImageEditorPlugin extends Plugin {
     observer.observe(anchor, { childList: true, subtree: true });
     this.register(() => observer.disconnect());
     window.setTimeout(() => observer.disconnect(), 5000);
+  }
+
+  // Per-image caption handles in reading view, so a re-render (or a settings toggle)
+  // can tear the old one down before building the new one (no leaks, no duplicates).
+  private readingCaptions = new WeakMap<HTMLImageElement, CaptionHandle>();
+  // The caption text last rendered for each image, so an unchanged caption is left in
+  // place instead of being torn down and re-rendered on every reconcile.
+  private readingCaptionText = new WeakMap<HTMLImageElement, string>();
+
+  // Reading-view caption (F3 parity with live preview): render the image's alt text
+  // as a Markdown caption below it. Idempotent and cheap to re-call — a caption whose
+  // text is unchanged is left untouched, so the double reconcile pass (sync + rAF)
+  // and frequent reconciles don't flicker or re-render Markdown needlessly.
+  private applyReadingCaption(img: HTMLImageElement, sourcePath: string): void {
+    const want = this.settings.showCaptions ? captionFromAlt(img.alt) : "";
+    const prev = this.readingCaptions.get(img);
+
+    // Same non-empty caption as last time → keep it (the host class is already set).
+    if (prev && want && this.readingCaptionText.get(img) === want) return;
+
+    if (prev) {
+      prev.el.remove();
+      prev.destroy();
+      this.readingCaptions.delete(img);
+      this.readingCaptionText.delete(img);
+    }
+
+    const box = img.closest<HTMLElement>(".lie-rotate-box");
+    const host = (box ?? img).parentElement;
+    host?.classList.remove("lie-has-caption");
+    if (!want || !host) return;
+
+    const caption = createCaption(this.app, want, sourcePath, img);
+    if (!caption) return;
+    host.classList.add("lie-has-caption");
+    (box ?? img).insertAdjacentElement("afterend", caption.el);
+    this.readingCaptions.set(img, caption);
+    this.readingCaptionText.set(img, want);
   }
 
   private reconcileTimer = 0;
@@ -268,9 +327,12 @@ export default class LiveImageEditorPlugin extends Plugin {
     }
   }
 
-  // Apply every visible image's transform straight from the note source — both
-  // reading view (Obsidian caches embeds) and live preview (the {…} block isn't
-  // post-processed there). applyTransformToImage is the single shared renderer.
+  // Apply every visible image's transform straight from the note source. This is
+  // the render path for READING VIEW only (Obsidian caches embeds, so a stale
+  // transform can survive a mode switch). In live preview the CM6 widget is the
+  // single render path and OWNS its images — reconcile must NOT touch them, or the
+  // image would be rendered twice (widget + reconcile), re-measuring the rotate box
+  // with a possibly different available width and producing inconsistent sizes.
   private reconcileFromSource(): void {
     const run = () => {
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -281,9 +343,13 @@ export default class LiveImageEditorPlugin extends Plugin {
       if (!container) return;
       const source = view.editor?.getValue() ?? "";
       if (!source) return;
+      const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
 
       for (const el of Array.from(container.querySelectorAll("img"))) {
         const img = el as HTMLImageElement;
+        // The live-preview widget renders its own images — single render path, no
+        // double-render (requirement / T-L7).
+        if (img.closest(".lie-lp-embed")) continue;
         const file = getImageFilename(img);
         if (!file) continue;
         const loc = findImageInText(source, file);
@@ -293,6 +359,7 @@ export default class LiveImageEditorPlugin extends Plugin {
         } else {
           this.clearStaleTransform(img);
         }
+        this.applyReadingCaption(img, sourcePath);
       }
     };
     run();
@@ -311,6 +378,9 @@ export default class LiveImageEditorPlugin extends Plugin {
       (img.parentElement?.classList.contains("lie-rotate-box") ?? false);
     if (ours) {
       applyTransformToImage(img, { classes: [] });
+      // This image is no longer ours — drop the wrapper so it's a plain native
+      // embed again (the always-present box is only for images we render).
+      unwrapBox(img);
     }
   }
 
@@ -480,31 +550,12 @@ export default class LiveImageEditorPlugin extends Plugin {
     return [
       editGroup,
       b("filters", "sliders-horizontal", "filters", () => this.toggleFilters()),
-      b("size-down", "minus", "sizeDown", () => this.sizeStep(-1)),
-      b("size-up", "plus", "sizeUp", () => this.sizeStep(1)),
       b("custom-size", "maximize", "customSize", () => this.customSize()),
       layoutGroup,
       b("snippets", "chevron-down", "snippets", () => this.addClass()),
       b("export", "download", "export", () => this.exportImage()),
       b("reset", "undo-2", "reset", () => this.reset()),
     ];
-  }
-
-  // Step the width up/down by 10%, keeping aspect ratio (the minus/plus buttons).
-  private sizeStep(dir: number): void {
-    const measured = (): number => {
-      const img = this.activeImage;
-      if (!img) return 0;
-      const box = img.closest<HTMLElement>(".lie-rotate-box, .lie-crop-container");
-      return Math.round((box ?? img).getBoundingClientRect().width);
-    };
-    this.modifyTransform((t) => {
-      const base = t.width ?? measured();
-      if (!base) return;
-      const factor = dir > 0 ? 1.1 : 1 / 1.1;
-      t.width = Math.max(20, Math.round(base * factor));
-      t.height = undefined;
-    });
   }
 
   private registerCommands(): void {
@@ -699,27 +750,29 @@ export default class LiveImageEditorPlugin extends Plugin {
     if (!location) return;
 
     const current = parseAltText(location.params);
-    const originalWidth = current.width;
     const img = this.activeImage;
-    const holder: { value: number | null } = { value: originalWidth ?? null };
+    const state: SizeState = { width: current.width ?? null, height: current.height ?? null };
 
     const presets = this.sizePresets(img);
-    const body = buildSizeBody(originalWidth, presets, (value) => {
-      // Live preview: set the width straight on the rendered image.
-      this.previewWidth(img, value);
-    }, holder);
+    const sizeBody = buildSizeBody(
+      { width: current.width, height: current.height },
+      presets,
+      (s) => this.previewSize(img, s.width, s.height), // live preview, no doc round-trip
+      state
+    );
 
     const submenu = new AnchoredSubmenu();
     submenu.open({
-      body,
+      body: sizeBody.body,
       placement: "under-toolbar",
       anchor: this.activeToolbarEl() ?? img,
       toolbar: this.activeToolbarEl(),
       title: t("customSize"),
+      onReset: () => sizeBody.reset(), // resets only the size, panel stays open
       onCommit: () => {
         this.modifyTransform((tr) => {
-          tr.width = holder.value ?? undefined;
-          tr.height = undefined;
+          tr.width = state.width ?? undefined;
+          tr.height = state.height ?? undefined;
         });
       },
       onCancel: () => {
@@ -743,12 +796,15 @@ export default class LiveImageEditorPlugin extends Plugin {
     };
   }
 
-  // Live width preview without a document round-trip (mirrors the filter preview).
-  private previewWidth(img: HTMLImageElement, value: number | null): void {
-    const box = img.closest<HTMLElement>(".lie-rotate-box, .lie-crop-container");
+  // Live width/height preview without a document round-trip (mirrors the filter
+  // preview). The wrapper box owns the size ONLY in its rotated/cropped variants;
+  // for a normal image the box is display:contents (no box model), so size must go
+  // on the <img> itself or the preview would have no effect.
+  private previewSize(img: HTMLImageElement, width: number | null, height: number | null): void {
+    const box = img.closest<HTMLElement>(".lie-box-rotate, .lie-box-crop");
     const target = box ?? img;
-    if (value && value > 0) target.style.width = `${value}px`;
-    else target.style.width = "";
+    target.style.width = width && width > 0 ? `${width}px` : "";
+    target.style.height = height && height > 0 ? `${height}px` : "";
   }
 
   private crop(): void {
@@ -897,13 +953,21 @@ export default class LiveImageEditorPlugin extends Plugin {
     const transform = parseAltText(location.params);
 
     try {
-      const path = await exportImage(
-        this.activeImage,
-        transform,
-        this.app.vault,
-        location.filename
+      const buffer = await renderTransformedImage(this.activeImage, transform);
+      // Resolve the original file's canonical vault path (for the default folder +
+      // name suggestion), falling back to the path as written in the embed. decode
+      // defensively — a literal '%' in the name is not a valid escape and would throw.
+      const rawLink = location.filename.split("|")[0] ?? location.filename;
+      let linkpath = rawLink;
+      try { linkpath = decodeURIComponent(rawLink); } catch { /* keep the raw link */ }
+      const file = this.app.metadataCache.getFirstLinkpathDest(
+        linkpath,
+        this.app.workspace.getActiveFile()?.path ?? ""
       );
-      new Notice(`Exported to ${path}`);
+      const originalPath = file?.path ?? location.filename;
+      const suggested = await suggestExportPath(this.app.vault, originalPath);
+      const saved = await saveExport(this.app, this.app.vault, buffer, suggested, originalPath);
+      if (saved) new Notice(`Exported to ${saved}`);
     } catch (e) {
       new Notice(`Export failed: ${e}`);
     }

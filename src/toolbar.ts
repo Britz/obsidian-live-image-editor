@@ -1,6 +1,5 @@
 import { setIcon } from "obsidian";
 import { t, TranslationKey } from "./i18n";
-import { planOverflow, CollapsibleGroup } from "./toolbar-logic";
 
 export interface ToolbarButton {
   kind: "button";
@@ -102,77 +101,54 @@ function makeGroupTrigger(group: ToolbarGroup): HTMLButtonElement {
 }
 
 /**
- * Build the toolbar element from the grouped model. "always" groups render as a
- * single submenu trigger (Layout). "auto" groups render expanded but fold to a
- * trigger when the toolbar overflows its container (D3) — re-evaluated on resize.
+ * Build the toolbar from the grouped model as a row of NON-BREAKING clusters
+ * separated by dividers. "always" groups render as a single submenu trigger
+ * (Layout); "auto" groups render expanded; consecutive standalone buttons share a
+ * cluster. The toolbar is `flex-wrap: wrap`, so when there isn't enough horizontal
+ * space it wraps to multiple rows AT THE DIVIDERS (each cluster stays intact) —
+ * mobile-friendly (D3, revised: wrap at dividers, no fold-to-submenu).
  */
 export function buildToolbarElement(items: ToolbarItem[]): HTMLElement {
   const toolbar = document.createElement("div");
   toolbar.classList.add("lie-toolbar");
 
-  const autoGroups: { group: ToolbarGroup; expandedEl: HTMLElement; trigger: HTMLElement }[] = [];
+  const clusters: HTMLElement[] = [];
+  let run: HTMLElement | null = null;
+  const flushRun = (): void => { if (run) { clusters.push(run); run = null; } };
 
   for (const item of items) {
     if (item.kind === "button") {
-      toolbar.appendChild(makeButton(item));
+      if (!run) { run = document.createElement("span"); run.className = "lie-toolbar-cluster"; }
+      run.appendChild(makeButton(item));
       continue;
     }
+    flushRun();
     if (item.collapse === "always") {
-      toolbar.appendChild(makeGroupTrigger(item));
-      continue;
+      const c = document.createElement("span");
+      c.className = "lie-toolbar-cluster";
+      c.appendChild(makeGroupTrigger(item));
+      clusters.push(c);
+    } else {
+      const expanded = document.createElement("span");
+      expanded.classList.add("lie-toolbar-cluster", "lie-toolbar-group");
+      expanded.dataset["lieGroup"] = item.id;
+      for (const btn of item.buttons) expanded.appendChild(makeButton(btn));
+      clusters.push(expanded);
     }
-    // "auto" group: keep both an expanded span and a (hidden) trigger, swap on fit.
-    const expanded = document.createElement("span");
-    expanded.classList.add("lie-toolbar-group");
-    expanded.dataset["lieGroup"] = item.id;
-    for (const btn of item.buttons) expanded.appendChild(makeButton(btn));
-    const trigger = makeGroupTrigger(item);
-    trigger.style.display = "none";
-    toolbar.appendChild(expanded);
-    toolbar.appendChild(trigger);
-    autoGroups.push({ group: item, expandedEl: expanded, trigger });
   }
+  flushRun();
 
-  if (autoGroups.length) setupOverflow(toolbar, autoGroups);
-  return toolbar;
-}
-
-// Fold "auto" groups when the toolbar would overflow its container, re-checking on
-// container resize. The decision (which groups fold) is the pure planOverflow.
-function setupOverflow(
-  toolbar: HTMLElement,
-  autoGroups: { group: ToolbarGroup; expandedEl: HTMLElement; trigger: HTMLElement }[]
-): void {
-  const relayout = (): void => {
-    // Measure everything expanded first.
-    for (const g of autoGroups) { g.expandedEl.style.display = ""; g.trigger.style.display = "none"; }
-    const container = toolbar.parentElement;
-    if (!container) return;
-    const available = container.clientWidth || window.innerWidth;
-
-    const groupSpecs: CollapsibleGroup[] = autoGroups.map((g) => ({
-      id: g.group.id,
-      expandedWidth: g.expandedEl.offsetWidth,
-      triggerWidth: 32,
-    }));
-    const base = toolbar.scrollWidth - groupSpecs.reduce((s, g) => s + g.expandedWidth, 0);
-    const folded = planOverflow(available, base, groupSpecs);
-
-    for (const g of autoGroups) {
-      const fold = folded.has(g.group.id);
-      g.expandedEl.style.display = fold ? "none" : "";
-      g.trigger.style.display = fold ? "" : "none";
+  // Join clusters with dividers (a divider before every cluster but the first).
+  clusters.forEach((cluster, i) => {
+    if (i > 0) {
+      const sep = document.createElement("span");
+      sep.className = "lie-toolbar-sep";
+      toolbar.appendChild(sep);
     }
-  };
+    toolbar.appendChild(cluster);
+  });
 
-  // Re-run when the surrounding column is resized.
-  const ro = new ResizeObserver(() => relayout());
-  const observe = (): void => {
-    if (toolbar.parentElement) ro.observe(toolbar.parentElement);
-    relayout();
-  };
-  // Defer until attached/laid out.
-  requestAnimationFrame(observe);
+  return toolbar;
 }
 
 export class ImageToolbar {

@@ -3,9 +3,15 @@ import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { parseAltText } from "./transforms";
 import { lineDecorations, rewriteWidth, RevealMode, cycleRevealMode } from "./live-preview-logic";
+import { captionMarkdown, createCaption, CaptionHandle } from "./caption";
 import { applyTransformToImage } from "./renderer";
 import { ToolbarItem, buildToolbarElement } from "./toolbar";
 import { t } from "./i18n";
+
+// Dispatched to force the StateField to rebuild its decorations when nothing in the
+// document changed but external state did — currently the "show captions" setting
+// toggle. main.ts dispatches it to every live-preview editor on saveSettings.
+export const refreshDecorations = StateEffect.define<void>();
 
 // Cycle the reveal MODE of a given image line (AUTO → ON → OFF → AUTO). Carries
 // the line-start position; a StateField holds each line's mode. This is our own
@@ -29,28 +35,47 @@ class EmbedWidget extends WidgetType {
     private getActions: (img: HTMLImageElement) => ToolbarItem[],
     private mode: RevealMode,
     private rawLine: string,
-    private autofocus: boolean
+    private autofocus: boolean,
+    private cursorOnLine: boolean,
+    private showCaptions: boolean
   ) {
     super();
   }
 
-  // Cursor moves rebuild the StateField (T-L2) but mustn't recreate this DOM (that
-  // would unload/reload the embed and flicker) — eq() returns true when nothing
-  // visible changed, so CM keeps the existing DOM on a pure selection change.
+  // Everything that, if changed, requires a full re-render (re-creating the embed).
+  // The cursor-on-line state is deliberately NOT part of this — it only toggles the
+  // AUTO reveal and is handled in updateDOM without touching the embed. showCaptions
+  // IS part of it: toggling the setting adds/removes the caption element.
+  private sig(): string {
+    return `${this.embed} ${this.params} ${this.sourcePath} ${this.mode} ${this.rawLine} ${this.showCaptions}`;
+  }
+
+  // Cursor moves rebuild the StateField (T-L2) but mustn't recreate this DOM. eq()
+  // returns true only when nothing at all changed (incl. cursor-on-line); when only
+  // the cursor moved on/off this line, eq is false but updateDOM updates in place.
   eq(other: EmbedWidget): boolean {
-    return (
-      other.embed === this.embed &&
-      other.params === this.params &&
-      other.sourcePath === this.sourcePath &&
-      other.mode === this.mode &&
-      other.rawLine === this.rawLine
-    );
+    return this.sig() === other.sig() && this.cursorOnLine === other.cursorOnLine;
+  }
+
+  // Update WITHOUT re-creating the embed when only the cursor-on-line reveal changed
+  // (F5: the link shows when the cursor is on the image's line, like hover). A
+  // structural change (different sig) returns false → full re-render.
+  updateDOM(dom: HTMLElement): boolean {
+    if (dom.dataset["lieSig"] !== this.sig()) return false;
+    const reveal = this.cursorOnLine && this.mode === "auto";
+    dom.classList.toggle("lie-lp-reveal-cursor", reveal);
+    if (reveal) {
+      const ta = dom.querySelector<HTMLTextAreaElement>(".lie-link-editor");
+      if (ta) requestAnimationFrame(() => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; });
+    }
+    return true;
   }
 
   toDOM(view: EditorView): HTMLElement {
     const container = document.createElement("div");
     container.className = "internal-embed media-embed image-embed lie-lp-embed";
     container.setAttribute("contenteditable", "false");
+    container.dataset["lieSig"] = this.sig(); // lets updateDOM detect cursor-only changes
     // Obsidian's .internal-embed sets `contain: paint` (in core CSS we can't beat
     // on specificity), which paint-clips the toolbar to the image box — cutting it
     // off on a small/rotated image. Inline !important is the version-proof override.
@@ -94,18 +119,20 @@ class EmbedWidget extends WidgetType {
       // otherwise when the link editor is revealed above, the toolbar would sit
       // over the editor instead of staying on the image.
       wrapper.appendChild(this.makeToolbar(view, img as HTMLImageElement, container));
-      // A quarter-turn's reflow box needs the element attached AND laid out, but
-      // finish() can run mid-render (cached img, container not yet inserted/sized),
-      // when the box silently fails to form. Re-apply each frame until the box is
-      // actually there (reconcile proves applyTransformToImage works once stable).
-      const isQuarterTurn = !!(transform.rotate && transform.rotate % 180 !== 0);
-      if (isQuarterTurn) {
-        const ensureBox = (tries: number): void => {
-          if (wrapper.querySelector(".lie-rotate-box")) return;
-          applyTransformToImage(img as HTMLImageElement, transform);
-          if (tries > 0) requestAnimationFrame(() => ensureBox(tries - 1));
-        };
-        requestAnimationFrame(() => ensureBox(30));
+      // The quarter-turn reflow box is handled entirely inside applyTransformToImage
+      // (renderer.ts: reserveRotatedBox retries across frames until the column is
+      // measurable AND keeps it responsive). No second retry path here — a duplicate
+      // would race it and leave the box/image at inconsistent sizes.
+      // Caption (opt-in): the alt text rendered as Markdown, centered BELOW the image
+      // and never wider than it (lie-has-caption stacks the embed as a column). Built
+      // here, where the <img> exists, so its width can be measured.
+      if (this.showCaptions) {
+        const caption = createCaption(this.app, captionMarkdown(this.embed), this.sourcePath, img as HTMLImageElement);
+        if (caption) {
+          container.classList.add("lie-has-caption");
+          container.appendChild(caption.el);
+          (container as unknown as { _lieCaption?: CaptionHandle })._lieCaption = caption;
+        }
       }
       return true;
     };
@@ -122,9 +149,10 @@ class EmbedWidget extends WidgetType {
     // The container goes full-width/left-aligned (lie-lp-revealed) so the link
     // reads like a regular document line, not constrained to the image's width.
     if (this.mode === "on" || this.mode === "auto") {
-      // ON: full-width/revealed always. AUTO: only on hover (the reveal styling is
-      // applied by :hover in CSS), so a default image looks normal until hovered.
+      // ON: full-width/revealed always. AUTO: shown on hover OR when the cursor is on
+      // this line (F5 — the link shows with the toolbar AND on cursor), via CSS.
       container.classList.add(this.mode === "on" ? "lie-lp-revealed" : "lie-lp-reveal-auto");
+      if (this.mode === "auto" && this.cursorOnLine) container.classList.add("lie-lp-reveal-cursor");
       container.prepend(this.makeLinkEditor(view, container));
     }
 
@@ -134,6 +162,7 @@ class EmbedWidget extends WidgetType {
   destroy(dom: HTMLElement): void {
     const embed = (dom as unknown as { _lieEmbed?: { unload?: () => void } })._lieEmbed;
     embed?.unload?.();
+    (dom as unknown as { _lieCaption?: CaptionHandle })._lieCaption?.destroy();
   }
 
   // The editing toolbar, living inside the image at the top, hover-revealed via
@@ -142,7 +171,12 @@ class EmbedWidget extends WidgetType {
   private makeToolbar(view: EditorView, img: HTMLImageElement, container: HTMLElement): HTMLElement {
     const toolbar = buildToolbarElement(this.getActions(img));
     toolbar.classList.add("lie-toolbar-in-image");
-    toolbar.appendChild(this.makeEditButton(view, container));
+    // The <> reveal sits at the FAR LEFT (D2, revised), separated from the transform
+    // actions by the same divider used between the other groups.
+    const sep = document.createElement("span");
+    sep.className = "lie-toolbar-sep";
+    toolbar.prepend(sep);
+    toolbar.prepend(this.makeEditButton(view, container));
     return toolbar;
   }
 
@@ -167,10 +201,18 @@ class EmbedWidget extends WidgetType {
     textarea.addEventListener("mousedown", (e) => e.stopPropagation());
 
     const autoGrow = (): void => {
+      // Only meaningful while the textarea is actually displayed — when hidden
+      // (AUTO mode, not hovered) scrollHeight is 0 and would pin the height to 0,
+      // leaving it invisible even once shown on hover (Bug 1). So recompute on the
+      // events that make it visible (hover/focus), not just once at creation.
+      if (textarea.offsetParent === null) return;
       textarea.style.height = "auto";
       textarea.style.height = `${textarea.scrollHeight}px`;
     };
     textarea.addEventListener("input", autoGrow);
+    textarea.addEventListener("focus", autoGrow);
+    // In AUTO mode the editor is revealed by hovering the embed — recompute then.
+    container.addEventListener("mouseenter", autoGrow);
 
     const commit = (): void => {
       const line = view.state.doc.lineAt(view.posAtDOM(container));
@@ -293,7 +335,8 @@ interface LivePreviewState {
 export function createLivePreviewExtension(
   app: App,
   getSourcePath: () => string,
-  getActions: (img: HTMLImageElement) => ToolbarItem[]
+  getActions: (img: HTMLImageElement) => ToolbarItem[],
+  getShowCaptions: () => boolean
 ) {
   const build = (
     state: import("@codemirror/state").EditorState,
@@ -303,6 +346,10 @@ export function createLivePreviewExtension(
     const builder = new RangeSetBuilder<Decoration>();
     const isLivePreview = state.field(editorLivePreviewField);
     const sourcePath = getSourcePath();
+    const showCaptions = getShowCaptions();
+    // The line the cursor is on — its image's AUTO reveal is shown (F5: cursor, not
+    // just hover). Any selection touching the line counts.
+    const cursorLineFrom = state.doc.lineAt(state.selection.main.head).from;
 
     for (let i = 1; i <= state.doc.lines; i++) {
       const line = state.doc.line(i);
@@ -320,7 +367,9 @@ export function createLivePreviewExtension(
                 getActions,
                 modes.get(d.from) ?? "auto",
                 line.text,
-                d.from === pendingFocus
+                d.from === pendingFocus,
+                d.from === cursorLineFrom,
+                showCaptions
               ),
               block: true,
             })
@@ -377,10 +426,13 @@ export function createLivePreviewExtension(
       const modes = nextModes(value.modes, tr);
       const modeChanged =
         tr.startState.field(editorLivePreviewField) !== tr.state.field(editorLivePreviewField);
+      // An external refresh (the show-captions setting toggled) forces a rebuild even
+      // when the document and selection are unchanged.
+      const refresh = tr.effects.some((e) => e.is(refreshDecorations));
       // Rebuild on edits, live-preview ↔ source mode toggles, selection changes
-      // (T-L2 — eq() keeps the DOM stable so this doesn't flicker the embed), and
-      // reveal-mode changes.
-      if (tr.docChanged || tr.selection || modeChanged || modes !== value.modes) {
+      // (T-L2 — eq() keeps the DOM stable so this doesn't flicker the embed),
+      // reveal-mode changes, and external refreshes.
+      if (tr.docChanged || tr.selection || modeChanged || modes !== value.modes || refresh) {
         return { modes, decorations: build(tr.state, modes, freshlyOn(tr, modes)) };
       }
       return value;

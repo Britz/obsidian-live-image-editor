@@ -40,6 +40,10 @@ export class CropEditor {
   private frameHeight = 0;
   private aspectRatio: AspectRatio = "free";
   private hasExistingCrop: boolean;
+  // "No crop" baseline captured on open(), for the per-panel Reset.
+  private initFrameW = 0;
+  private initFrameH = 0;
+  private initScale = 1;
 
   private isDraggingImage = false;
   private isResizingFrame = false;
@@ -71,12 +75,28 @@ export class CropEditor {
   open(toolbarEl?: HTMLElement | null): void {
     const rect = this.img.getBoundingClientRect();
 
-    // No existing crop: start with the frame covering the whole displayed image
-    // and the source scaled to match it exactly — so activation causes no jump.
-    if (!this.hasExistingCrop) {
-      this.frameWidth = Math.round(rect.width);
-      this.frameHeight = Math.round(rect.height);
-      this.imgScale = snapScale(rect.width / (this.img.naturalWidth || rect.width));
+    // The "no crop" baseline: frame covering the whole displayed image, image at
+    // 0,0, no rotation. Captured so the per-panel Reset can restore it.
+    const natW = this.img.naturalWidth || rect.width;
+    const natH = this.img.naturalHeight || rect.height;
+    if (this.hasExistingCrop) {
+      // The rendered image is already transformed (scale/rotate/translate), so its
+      // own rect is the rotated/scaled bounding box, NOT the uncropped display size.
+      // Derive the baseline from the cut box's display width and the natural aspect
+      // ratio so Reset restores the full image rather than that inflated box.
+      const cutBox = this.img.closest<HTMLElement>(".lie-box-crop");
+      const dispW = cutBox ? cutBox.getBoundingClientRect().width : natW;
+      this.initFrameW = Math.round(dispW);
+      this.initFrameH = Math.round((dispW * natH) / natW);
+      this.initScale = snapScale(dispW / natW);
+    } else {
+      this.initFrameW = Math.round(rect.width);
+      this.initFrameH = Math.round(rect.height);
+      this.initScale = snapScale(rect.width / natW);
+      // No existing crop: start from that baseline — so activation causes no jump.
+      this.frameWidth = this.initFrameW;
+      this.frameHeight = this.initFrameH;
+      this.imgScale = this.initScale;
     }
 
     this.overlay = document.createElement("div");
@@ -91,13 +111,22 @@ export class CropEditor {
     fc.style.height = `${rect.height}px`;
     document.body.appendChild(this.overlay);
 
+    // Mark the embed so the always-on resize frame/handle (Bug 12) hides while
+    // cropping — it would otherwise collide with the crop's own resizing.
+    this.embed()?.classList.add("lie-cropping");
+
     this.bindEvents();
     this.openControls(toolbarEl);
     this.updateImageTransform();
     this.updateFrameSize();
   }
 
+  private embed(): HTMLElement | null {
+    return this.img.closest<HTMLElement>(".lie-lp-embed");
+  }
+
   close(): void {
+    this.embed()?.classList.remove("lie-cropping");
     this.overlay?.remove();
     this.overlay = null;
     document.removeEventListener("pointermove", this.onPointerMove);
@@ -147,11 +176,25 @@ export class CropEditor {
       anchor: toolbarEl ?? this.img,
       toolbar: toolbarEl ?? null,
       title: t("crop"),
+      onReset: () => this.resetCrop(), // resets only the crop, editor stays open
       onCommit: () => this.confirm(),
       onCancel: () => { this.close(); this.onCancel(); },
       onClose: () => { this.controls = null; },
     });
     this.controls = controls;
+  }
+
+  // Reset ONLY the crop to the "no crop" baseline (full image, no rotation/scale/
+  // translate) and update the live preview — the editor stays open.
+  private resetCrop(): void {
+    this.imgTranslate = { x: 0, y: 0 };
+    this.imgRotation = 0;
+    this.imgScale = this.initScale;
+    this.frameWidth = this.initFrameW;
+    this.frameHeight = this.initFrameH;
+    this.aspectRatio = "free";
+    this.updateImageTransform();
+    this.updateFrameSize();
   }
 
   private bindEvents(): void {
@@ -287,6 +330,7 @@ export class CropEditor {
       this.imgRotation,
       this.imgScale
     );
+    this.embed()?.classList.remove("lie-cropping");
     this.overlay?.remove();
     this.overlay = null;
     document.removeEventListener("pointermove", this.onPointerMove);

@@ -56,7 +56,8 @@ export function placeSubmenu(
   placement: SubmenuPlacement,
   viewport: Viewport,
   gap: number = SUBMENU_GAP,
-  margin: number = SUBMENU_MARGIN
+  margin: number = SUBMENU_MARGIN,
+  allowFlip: boolean = true
 ): Placement {
   const maxLeft = viewport.width - panel.width - margin;
   const maxTop = viewport.height - panel.height - margin;
@@ -74,8 +75,10 @@ export function placeSubmenu(
     left = anchor.left;
   } else {
     left = anchor.right + gap;
-    // Flip to the left side when it would overflow the right edge.
-    if (left + panel.width > viewport.width - margin) {
+    // Flip to the left side when it would overflow the right edge — but only if
+    // allowed. The filter panel disables this (allowFlip=false) so it never lands
+    // on the left over the file explorer; it just clamps to the right edge (Bug 3).
+    if (allowFlip && left + panel.width > viewport.width - margin) {
       const leftSide = anchor.left - gap - panel.width;
       if (leftSide >= margin) left = leftSide;
     }
