@@ -2,7 +2,8 @@ import {
   ImageTransform, FilterData, MARKER_CLASS, INLINE_CLASS,
   filterToVars, FILTER_VAR_NAMES,
 } from "./transforms";
-import { rotatedBox } from "./renderer-logic";
+import { rotatedBox, cropBoxSize, estimatedBlockHeight } from "./renderer-logic";
+import { SIZE_CLASS_MAX } from "./styles-injector";
 
 // Every CSS custom property the renderer may set — cleared on reset so a reused
 // (Obsidian-cached) element can't keep stale values.
@@ -27,32 +28,27 @@ export function applyTransformToImage(img: HTMLImageElement, t: ImageTransform):
   setTransformVars(img, t);
   setFilterVars(img, t.filter);
 
-  // CONSISTENT DOM STRUCTURE (T-L7): EVERY image lives in the SAME `.lie-rotate-box`
-  // wrapper — normal, rotated or cropped alike. Only the CSS differs per state (via
-  // a modifier class); the structure never branches.
+  // R0 — ONE rendering path for EVERY image. Every image lives in the SAME real
+  // `.lie-rotate-box` (no `display:contents` special case): the box is JS-sized to the
+  // visible bounding box and the image is transformed inside it. "Normal" is the
+  // degenerate case (deg 0, scale 1) handled by the exact same `reserveBox` as a
+  // quarter-turn; only CROP differs, because it genuinely clips a sub-region (a
+  // different operation, not a special-cased "normal"). The structure never branches.
   const box = ensureBox(img);
-  box.classList.remove("lie-box-rotate", "lie-box-crop");
+  box.classList.remove("lie-box-crop");
   box.removeAttribute("style");
   img.style.transform = "";
   img.style.transformOrigin = "";
+  img.style.width = "";
+  img.style.height = "";
 
   if (t.crop) {
-    // Cropped: the box clips a compound-transformed image (modifier CSS + inline
-    // transform, which overrides the var-based `.lie-img` transform).
     box.classList.add("lie-box-crop");
     applyCrop(img, box, t);
-  } else if (t.rotate && t.rotate % 180 !== 0) {
-    // Quarter turn: the box reserves the measured rotated bounding box; t.width is
-    // the BOUNDING-box width, so it's owned by the box, not pinned on the img.
-    box.classList.add("lie-box-rotate");
-    img.style.width = "";
-    img.style.height = "";
-    reserveRotatedBox(img, t.rotate, t);
   } else {
-    // Normal / 180° / flip / filter: the box is layout-transparent (CSS
-    // display:contents) and the image keeps native (or explicit) sizing.
-    img.style.width = t.width ? `${t.width}px` : "";
-    img.style.height = t.height ? `${t.height}px` : "";
+    // Normal / 180° / quarter-turn / flip / filter — all the same path. deg 0 ⇒ the
+    // box is the image's own size; a quarter-turn ⇒ the rotated bounding box.
+    reserveBox(img, t.rotate ?? 0, t);
   }
 
   applyClasses(img, t.classes);
@@ -124,26 +120,36 @@ function hasFilter(f?: FilterData): boolean {
 // image is reset/unwrapped (avoids leaks and stale recomputes).
 const rotateObservers = new WeakMap<HTMLImageElement, ResizeObserver>();
 
-function reserveRotatedBox(img: HTMLImageElement, deg: number, t: ImageTransform): void {
+// The single sizing path for every non-cropped image (R0). Measures the column,
+// sizes the box to the visible bounding box of the (rotated/flipped/scaled) image and
+// centres the image inside it. deg 0 ⇒ the box is the image's own displayed size (a
+// "normal" image); a quarter-turn ⇒ the rotated bounding box. Stays responsive via a
+// ResizeObserver on the column.
+function reserveBox(img: HTMLImageElement, deg: number, t: ImageTransform): void {
   const flips: string[] = [];
   if (t.flipH) flips.push("scaleX(-1)");
   if (t.flipV) flips.push("scaleY(-1)");
+
+  // Reserve the height synchronously so the box is NEVER 0px tall while attached: it
+  // sizes asynchronously (image load + measurable column), and a 0→full growth shifts
+  // everything below it and lurches the scroll. The same estimate CM6 is told via the
+  // widget's estimatedHeight (DRY) — the layout() loop below then refines it to the
+  // exact measured size, turning a big jump into a small correction.
+  ensureBox(img).style.height = `${estimatedBlockHeight({ crop: t.crop, width: t.width, height: t.height })}px`;
 
   let lastAvail = 0;
   const layout = (): boolean => {
     // Bail (and let the caller retry) until the image is in the DOM AND has both
     // intrinsic size and a measurable column width. Widgets call us during toDOM,
     // before CM attaches the element — at which point availableWidth() is 0 and a
-    // one-shot attempt would silently leave the rotated image without its box.
+    // one-shot attempt would silently leave the image without its box.
     if (!img.isConnected) return false;
-
-    // Use the intrinsic pixel size, NOT offsetWidth: once our wrapper shrinks
-    // the embed, offsetWidth reads that shrunk size and the result collapses to
-    // a few px (feedback loop). naturalWidth/Height are stable.
     const nw = img.naturalWidth;
     const nh = img.naturalHeight;
-    const avail = availableWidth(img);
-    if (!nw || !nh || !avail) return false;
+    // Cap the available width by a preset size class (lie-small/medium/large) if
+    // present — the box owns the size now (R0), so the class can't just clamp the img.
+    const avail = Math.min(availableWidth(img), sizeCapFor(img));
+    if (!nw || !nh || !avail || !isFinite(avail)) return false;
 
     // Displayed size = the image fit to the column width (images are max-width:100%).
     const dispW = Math.min(nw, avail);
@@ -165,43 +171,84 @@ function reserveRotatedBox(img: HTMLImageElement, deg: number, t: ImageTransform
     return true;
   };
 
-  // Recompute EVERY frame across the whole window (not just until the first
-  // success): the column keeps settling to its final width for several frames after
-  // it first becomes measurable, and stopping at the first success locks the box at
-  // a transient (too-narrow) width (Bug 2). layout() is idempotent and a no-op while
-  // not yet measurable, so this is safe; the ResizeObserver below then handles any
-  // later (pane/window) resizes.
-  const tryLayout = (attemptsLeft: number): void => {
-    layout();
-    if (attemptsLeft > 0) requestAnimationFrame(() => tryLayout(attemptsLeft - 1));
+  // Retry every frame until layout() SUCCEEDS (the widget calls us during toDOM,
+  // before CM attaches the element — so the column isn't measurable yet and the first
+  // attempts are no-ops), THEN keep recomputing for a short settling window because
+  // the column drifts to its final width over a few frames (Bug 2). A hard cap stops
+  // a widget that never becomes measurable (e.g. rendered far off-screen) from
+  // spinning — CM re-creates it (fresh reserveBox) when it scrolls into view. Only
+  // after the retries do we wire up the ResizeObserver, since the element is attached
+  // by then and the column is finally findable (it is NOT during toDOM — capturing it
+  // there returned null and silently left the box unsized; the cause of a box stuck at
+  // 0 on text-heavy pages where the element attaches after the old fixed window).
+  // Separate the two waits so neither starves the other: `settled` counts frames AFTER
+  // the box first lays out (the column drifts to its final width for a few frames —
+  // Bug 2), `waited` counts frames spent waiting for the image/column to become
+  // measurable at all. The image may be cached-but-not-yet-decoded with NO `load`
+  // event coming (so we must NOT gate on naturalWidth — that left tick() never running
+  // and the box stuck at 0), or rendered before CM attaches it. Give up only after a
+  // long wait so a truly-offscreen widget doesn't spin forever (CM re-creates it on
+  // scroll-in).
+  const SETTLE_FRAMES = 30, MAX_WAIT = 600;
+  let settled = 0, waited = 0;
+  // Schedule the next attempt via BOTH requestAnimationFrame and a timer, whichever
+  // fires first (guarded so only one runs). rAF is PAUSED while the window is
+  // hidden/backgrounded (a second Obsidian window, an unfocused tab) — relying on it
+  // alone leaves EVERY image's box stuck at 0 there (since R0 routes all images
+  // through here, not just rotated ones); setTimeout still fires (throttled) in the
+  // background, so the box sizes as soon as the column is measurable.
+  const schedule = (): void => {
+    let ran = false;
+    const run = (): void => { if (ran) return; ran = true; tick(); };
+    requestAnimationFrame(run);
+    setTimeout(run, 100);
+  };
+  const tick = (): void => {
+    if (layout()) {
+      if (++settled >= SETTLE_FRAMES) { observeColumn(); return; }
+    } else if (++waited >= MAX_WAIT) {
+      observeColumn();
+      return;
+    }
+    schedule();
   };
 
-  if (img.naturalWidth) {
-    tryLayout(60);
-  } else {
-    img.addEventListener("load", () => tryLayout(60), { once: true });
-  }
-
-  // Stay responsive (D12): the FIRST measurement can land before the column has its
-  // final width (transiently narrower → box stuck too small), and the column also
-  // changes on window/pane resize. Recompute when the available width actually
-  // changes. Width-guarded so the box's own height change can't feedback-loop.
-  rotateObservers.get(img)?.disconnect();
-  const col = img.closest<HTMLElement>(
-    ".cm-content, .markdown-preview-sizer, .markdown-source-view, .markdown-preview-view"
-  );
-  if (col) {
+  // Stay responsive (D12): recompute when the column's available width actually
+  // changes (window/pane resize). Width-guarded so the box's own height change can't
+  // feedback-loop. Found here (post-retry) because the element is attached by now.
+  const observeColumn = (): void => {
+    rotateObservers.get(img)?.disconnect();
+    const col = img.closest<HTMLElement>(
+      ".cm-content, .markdown-preview-sizer, .markdown-source-view, .markdown-preview-view"
+    );
+    if (!col) return;
     const ro = new ResizeObserver(() => {
       if (!img.isConnected || !img.parentElement?.classList.contains("lie-rotate-box")) {
         ro.disconnect();
         return;
       }
-      const avail = availableWidth(img);
-      if (avail && Math.abs(avail - lastAvail) > 1) layout();
+      const avail = Math.min(availableWidth(img), sizeCapFor(img));
+      if (avail && isFinite(avail) && Math.abs(avail - lastAvail) > 1) layout();
     });
     ro.observe(col);
     rotateObservers.set(img, ro);
+  };
+
+  // Always start the retry loop — do NOT gate on img.naturalWidth: a cached image can
+  // be `complete` with naturalWidth momentarily 0 and NO `load` event coming, which
+  // left the loop unstarted and the box at 0 (the Captions-page bug). tick() is a
+  // no-op until the image and column are measurable.
+  tick();
+}
+
+// The width cap (px) imposed by a preset size class on the image, or Infinity if
+// none. Shared map with styles-injector so the value lives in one place.
+function sizeCapFor(img: HTMLImageElement): number {
+  let cap = Infinity;
+  for (const cls of Object.keys(SIZE_CLASS_MAX)) {
+    if (img.classList.contains(cls)) cap = Math.min(cap, SIZE_CLASS_MAX[cls] ?? Infinity);
   }
+  return cap;
 }
 
 // The width a max-width:100% image actually gets here, so a rotated image's box
@@ -241,13 +288,12 @@ function ensureBox(img: HTMLImageElement): HTMLElement {
 // image to the cut box. Same structure as every other image, different CSS.
 function applyCrop(img: HTMLImageElement, box: HTMLElement, t: ImageTransform): void {
   const crop = t.crop!;
-  const displayW = t.width ?? crop.w;
-  const displayH = t.height ?? crop.h;
-  box.style.display = t.inline ? "inline-block" : "block";
-  box.style.width = `${displayW}px`;
-  box.style.height = `${displayH}px`;
+  // Box matches the SCALED cut (aspect-correct when only one dimension is given), so a
+  // resized crop has no empty band and a caption sits right under it (Bug 2 for crops).
+  const { w, h, scale } = cropBoxSize(crop, t.width, t.height);
+  box.style.width = `${w}px`;
+  box.style.height = `${h}px`;
 
-  const scale = Math.min(displayW / crop.w, displayH / crop.h);
   const transforms: string[] = [`translate(${-crop.x * scale}px, ${-crop.y * scale}px)`];
   if (crop.rotate) transforms.push(`rotate(${crop.rotate}deg)`);
   transforms.push(`scale(${crop.scale * scale})`);

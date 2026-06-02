@@ -22,7 +22,7 @@ function canvasFilter(f?: FilterData): string {
  * canvas geometry mirrors the renderer (renderer.ts) so the export matches the
  * on-screen result: crops rotate around the TOP-LEFT origin like
  * `wrapWithCropContainer`; rotations use the rotated bounding box like
- * `reserveRotatedBox`.
+ * `reserveBox`.
  */
 export async function renderTransformedImage(
   img: HTMLImageElement,

@@ -2,7 +2,8 @@ import { App, TFile, editorLivePreviewField, setIcon } from "obsidian";
 import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { parseAltText } from "./transforms";
-import { lineDecorations, rewriteWidth, RevealMode, cycleRevealMode } from "./live-preview-logic";
+import { lineDecorations, inlineEmbeds, rewriteWidth, RevealMode, cycleRevealMode } from "./live-preview-logic";
+import { estimatedBlockHeight } from "./renderer-logic";
 import { captionMarkdown, createCaption, CaptionHandle } from "./caption";
 import { applyTransformToImage } from "./renderer";
 import { ToolbarItem, buildToolbarElement } from "./toolbar";
@@ -37,7 +38,12 @@ class EmbedWidget extends WidgetType {
     private rawLine: string,
     private autofocus: boolean,
     private cursorOnLine: boolean,
-    private showCaptions: boolean
+    private showCaptions: boolean,
+    // INLINE mode: the embed sits mid-text (an lie-inline icon). Same image rendering,
+    // but the line-oriented chrome (toolbar/resize/`<>`/caption — which rewrite or
+    // reveal the WHOLE line) is skipped, since here the embed is only PART of a line
+    // and that chrome would corrupt the surrounding text / not fit an icon.
+    private inline = false
   ) {
     super();
   }
@@ -47,7 +53,18 @@ class EmbedWidget extends WidgetType {
   // AUTO reveal and is handled in updateDOM without touching the embed. showCaptions
   // IS part of it: toggling the setting adds/removes the caption element.
   private sig(): string {
-    return `${this.embed} ${this.params} ${this.sourcePath} ${this.mode} ${this.rawLine} ${this.showCaptions}`;
+    return `${this.embed} ${this.params} ${this.sourcePath} ${this.mode} ${this.rawLine} ${this.showCaptions} ${this.inline}`;
+  }
+
+  // Tell CM6 the block's height UP FRONT. Without this, an off-screen image line is
+  // modeled as one text line (~14px) and the scroll lurches when it's measured to its
+  // real (tall) height. Inline widgets are inline decorations — CM uses line height, so
+  // -1 (the default). Synchronous estimate (the off-screen image isn't loaded yet);
+  // the real size still lands via reserveBox and refines this.
+  get estimatedHeight(): number {
+    if (this.inline) return -1;
+    const t = parseAltText(this.params);
+    return estimatedBlockHeight({ crop: t.crop, width: t.width, height: t.height });
   }
 
   // Cursor moves rebuild the StateField (T-L2) but mustn't recreate this DOM. eq()
@@ -74,6 +91,7 @@ class EmbedWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     const container = document.createElement("div");
     container.className = "internal-embed media-embed image-embed lie-lp-embed";
+    if (this.inline) container.classList.add("lie-lp-inline");
     container.setAttribute("contenteditable", "false");
     container.dataset["lieSig"] = this.sig(); // lets updateDOM detect cursor-only changes
     // Obsidian's .internal-embed sets `contain: paint` (in core CSS we can't beat
@@ -114,15 +132,18 @@ class EmbedWidget extends WidgetType {
       const img = wrapper.querySelector("img");
       if (!img) return false;
       applyTransformToImage(img, transform);
+      // The quarter-turn reflow box is handled entirely inside applyTransformToImage
+      // (renderer.ts: reserveBox retries across frames until the column is measurable
+      // AND keeps it responsive). No second retry path here — a duplicate would race it.
+      // INLINE images stop here: just the rendered image. The line-oriented chrome
+      // below (resize/toolbar/caption + the `<>` reveal) would rewrite/reveal the WHOLE
+      // line, corrupting the text the icon sits in — and doesn't fit an icon anyway.
+      if (this.inline) return true;
       wrapper.appendChild(this.makeResizeCorner(view, container));
       // Anchor the toolbar to the image box (wrapper), not the outer container —
       // otherwise when the link editor is revealed above, the toolbar would sit
       // over the editor instead of staying on the image.
       wrapper.appendChild(this.makeToolbar(view, img as HTMLImageElement, container));
-      // The quarter-turn reflow box is handled entirely inside applyTransformToImage
-      // (renderer.ts: reserveRotatedBox retries across frames until the column is
-      // measurable AND keeps it responsive). No second retry path here — a duplicate
-      // would race it and leave the box/image at inconsistent sizes.
       // Caption (opt-in): the alt text rendered as Markdown, centered BELOW the image
       // and never wider than it (lie-has-caption stacks the embed as a column). Built
       // here, where the <img> exists, so its width can be measured.
@@ -148,7 +169,8 @@ class EmbedWidget extends WidgetType {
     // AUTO shows it together with the toolbar (on hover, via CSS); OFF hides it.
     // The container goes full-width/left-aligned (lie-lp-revealed) so the link
     // reads like a regular document line, not constrained to the image's width.
-    if (this.mode === "on" || this.mode === "auto") {
+    // (Inline images skip this — see above.)
+    if (!this.inline && (this.mode === "on" || this.mode === "auto")) {
       // ON: full-width/revealed always. AUTO: shown on hover OR when the cursor is on
       // this line (F5 — the link shows with the toolbar AND on cursor), via CSS.
       container.classList.add(this.mode === "on" ? "lie-lp-revealed" : "lie-lp-reveal-auto");
@@ -376,6 +398,25 @@ export function createLivePreviewExtension(
           );
         } else {
           builder.add(d.from, d.to, Decoration.mark({ class: d.class }));
+        }
+      }
+      // Images embedded mid-text (e.g. an lie-inline icon): replace each with an inline
+      // widget so it renders at our size/inline instead of Obsidian's full-size native
+      // image (with the {…} as text). Reveal the raw text when the cursor is inside the
+      // embed, so it stays editable.
+      if (isLivePreview) {
+        const head = state.selection.main.head;
+        for (const ie of inlineEmbeds(line.text, line.from)) {
+          if (head >= ie.from && head <= ie.to) continue;
+          builder.add(
+            ie.from,
+            ie.to,
+            // Same EmbedWidget, inline mode (last arg) → shared image rendering, no
+            // line-oriented chrome. Inline replace (block omitted) keeps it in the text.
+            Decoration.replace({
+              widget: new EmbedWidget(app, ie.embed, ie.params, sourcePath, getActions, "auto", line.text, false, false, false, true),
+            })
+          );
         }
       }
     }

@@ -53,6 +53,17 @@ export function createCaption(
   sync();
   requestAnimationFrame(sync);
 
+  // The box is sized asynchronously by reserveBox, and the ResizeObserver / rAF that
+  // would normally catch it are PAUSED while the window is hidden/backgrounded — so
+  // poll on a timer until the box has a measurable width, then stop. Without this the
+  // caption keeps its natural (text) width and sits left-aligned instead of centred on
+  // the image. Capped so a never-measurable (offscreen) image doesn't poll forever.
+  let retries = 0;
+  let timer = window.setTimeout(function retry() {
+    sync();
+    if (measure() <= 0 && ++retries < 60) timer = window.setTimeout(retry, 100);
+  }, 0);
+
   // The visible width changes with the image (load, responsive column, resize
   // handle) and — for a rotated/cropped image — with its box. Observe both.
   const ro = new ResizeObserver(sync);
@@ -65,6 +76,7 @@ export function createCaption(
   return {
     el,
     destroy(): void {
+      window.clearTimeout(timer);
       ro.disconnect();
       img.removeEventListener("load", onLoad);
       component.unload();

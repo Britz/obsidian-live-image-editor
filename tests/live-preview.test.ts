@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lineDecorations, rewriteWidth, URL_CLASS, URL_BRACE_CLASS, cycleRevealMode } from "../src/live-preview-logic";
+import { lineDecorations, inlineEmbeds, rewriteWidth, URL_CLASS, URL_BRACE_CLASS, cycleRevealMode } from "../src/live-preview-logic";
 
 describe("cycleRevealMode (F5/D6 — tri-state <> control)", () => {
   it("cycles AUTO -> ON -> OFF -> AUTO", () => {
@@ -67,6 +67,36 @@ describe("lineDecorations", () => {
       { kind: "mark", from: 11, to: 12, class: URL_BRACE_CLASS },
       { kind: "mark", from: 12, to: 13, class: URL_BRACE_CLASS },
     ]);
+  });
+});
+
+describe("inlineEmbeds (mid-text images, e.g. lie-inline)", () => {
+  it("returns nothing for a standalone image line (that's the block widget's job)", () => {
+    expect(inlineEmbeds("![a](b.png){.x}", 0)).toEqual([]);
+    expect(inlineEmbeds("  ![[a.png]]  ", 0)).toEqual([]);
+  });
+
+  it("returns nothing for a line with no image", () => {
+    expect(inlineEmbeds("just some text", 0)).toEqual([]);
+  });
+
+  it("finds an image embedded in a sentence, params without braces", () => {
+    const line = 'text before ![](img.png){.lie-inline style="width: 22px;"} text after';
+    const got = inlineEmbeds(line, 0);
+    expect(got).toHaveLength(1);
+    expect(got[0]).toMatchObject({
+      embed: "![](img.png)",
+      params: '.lie-inline style="width: 22px;"',
+      from: line.indexOf("!["),
+      to: line.indexOf("} text") + 1,
+    });
+  });
+
+  it("offsets by lineFrom and finds multiple inline embeds", () => {
+    const got = inlineEmbeds("a ![](x.png) b ![[y.png]] c", 100);
+    expect(got).toHaveLength(2);
+    expect(got[0].from).toBe(100 + 2);
+    expect(got[1].embed).toBe("![[y.png]]");
   });
 });
 

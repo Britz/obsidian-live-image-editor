@@ -16,7 +16,8 @@
         "Anthropic.claude-code",
         "vitest.explorer",
         "ms-vscode.js-debug",
-        "EditorConfig.EditorConfig"
+        "EditorConfig.EditorConfig",
+        "eamodio.gitlens"
       ]
     }
   }

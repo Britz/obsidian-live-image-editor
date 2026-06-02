@@ -1,5 +1,15 @@
 const PREFIX = "lie";
 
+// Max-width (px) for the preset size classes. Single source of truth, shared with the
+// renderer: the injected CSS caps a non-boxed (plain reading-view) image, and
+// reserveBox reads the same value to cap a boxed image's JS sizing (R0 — the box owns
+// the size, so the size class can't just set the img's max-width).
+export const SIZE_CLASS_MAX: Record<string, number> = {
+  [`${PREFIX}-small`]: 200,
+  [`${PREFIX}-medium`]: 400,
+  [`${PREFIX}-large`]: 800,
+};
+
 interface InternalClass {
   name: string;
   css: string;
@@ -18,8 +28,16 @@ const DEFAULT_CLASSES: Omit<InternalClass, "enabled">[] = [
 .lie-lp-embed:has(.${PREFIX}-left), .image-embed:has(img.${PREFIX}-left) { float: left !important; clear: none; display: inline-block !important; width: max-content; margin: 0 1em 0.5em 0; }` },
   { name: "right", css: `img.${PREFIX}-right { float: right; margin: 0 0 0.5em 1em; }
 .lie-lp-embed:has(.${PREFIX}-right), .image-embed:has(img.${PREFIX}-right) { float: right !important; clear: none; display: inline-block !important; width: max-content; margin: 0 0 0.5em 1em; }` },
+  // Centre via text-align on a FULL-WIDTH block embed (centres the inline-block image
+  // box inside), NOT margin:auto on a shrink-wrapped embed: Obsidian forces
+  // `.markdown-source-view.mod-cm6 .cm-content > * { margin: 0 !important }` on every
+  // top-level editor block (higher specificity + !important), which beats our
+  // margin:auto — so the image only looked centred after a hover/reflow. width:100% is
+  // needed because Obsidian's native `div.image-embed { width: fit-content }` would
+  // otherwise shrink-wrap the embed, leaving text-align nothing to centre. (Plain
+  // reading-view imgs aren't a cm-content child, so they still centre via margin:auto.)
   { name: "center", css: `img.${PREFIX}-center { display: block; margin-left: auto; margin-right: auto; }
-.lie-lp-embed:has(.${PREFIX}-center), .image-embed:has(img.${PREFIX}-center) { float: none !important; display: block !important; width: max-content; margin-left: auto; margin-right: auto; }` },
+.lie-lp-embed:has(.${PREFIX}-center), .image-embed:has(img.${PREFIX}-center) { float: none !important; display: block !important; width: 100%; text-align: center; }` },
   { name: "inline", css: `img.${PREFIX}-inline { display: inline; vertical-align: middle; }` },
   { name: "rounded", css: `img.${PREFIX}-rounded { border-radius: 8px; }` },
   { name: "shadow", css: `img.${PREFIX}-shadow { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }` },

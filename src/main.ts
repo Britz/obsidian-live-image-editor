@@ -347,9 +347,9 @@ export default class LiveImageEditorPlugin extends Plugin {
 
       for (const el of Array.from(container.querySelectorAll("img"))) {
         const img = el as HTMLImageElement;
-        // The live-preview widget renders its own images — single render path, no
-        // double-render (requirement / T-L7).
-        if (img.closest(".lie-lp-embed")) continue;
+        // The live-preview widgets (block embed + inline image) render their own
+        // images — single render path, no double-render (requirement / T-L8).
+        if (img.closest(".lie-lp-embed, .lie-lp-inline")) continue;
         const file = getImageFilename(img);
         if (!file) continue;
         const loc = findImageInText(source, file);

@@ -37,14 +37,26 @@
   height: 16px;
 }
 
-/* Grouped toolbar (D3): a group's buttons sit in an inline span; when folded the
-   span is hidden and a single trigger button is shown instead. Never wraps. */
+/* Grouped toolbar (D3, revised): non-breaking clusters separated by dividers. The
+   toolbar wraps to multiple rows AT THE DIVIDERS when space is tight (mobile) —
+   each cluster stays intact, never breaking mid-cluster. */
 .lie-toolbar {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
+.lie-toolbar-cluster,
 .lie-toolbar-group {
   display: inline-flex;
+  flex-wrap: nowrap;
   gap: 2px;
+}
+
+/* Cluster divider — also the wrap boundary. */
+.lie-toolbar-sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 2px 4px;
+  background: var(--background-modifier-border);
 }
 
 /* The folded-group / layout submenu palette (D3). A plain button popup — distinct
@@ -87,9 +99,14 @@ img.lie-inline {
   vertical-align: middle;
 }
 
-/* Image embeds (native + our live-preview wrapper) miss this spacing. */
+/* 6px vertical gap between stacked images, matching native rendering: 3px below
+   each embed + 3px above the next (Obsidian's own `div.image-embed` already adds
+   padding-bottom: 3px; we add the matching top). This lives on the EMBED, outside
+   the .image-wrapper/frame, so it spaces images apart without offsetting the frame
+   (Bug 16). */
 .image-embed {
   padding-top: 3px;
+  padding-bottom: 3px;
 }
 
 /* Anchor the absolute chrome (resize handle, toolbar) to the widget. Obsidian's
@@ -117,9 +134,19 @@ img.lie-inline {
   left: 12px;
   z-index: 10;
   gap: 4px;
+  /* Cap to the image width (minus the 12px insets) so the toolbar WRAPS within the
+     image when there isn't enough room, instead of growing to its content width
+     (D3, revised — divider-wrapping for mobile). */
+  max-width: calc(100% - 24px);
   opacity: 0;
   transition: opacity 0.1s ease;
   pointer-events: none;
+}
+
+/* The floating (reading-view) toolbar wraps relative to the viewport on a narrow
+   window. */
+.lie-toolbar-floating {
+  max-width: 92vw;
 }
 
 .lie-lp-embed:hover .lie-toolbar-in-image {
@@ -127,10 +154,74 @@ img.lie-inline {
   pointer-events: auto;
 }
 
-/* Set the <> (edit source) button apart from the transform actions. */
+/* The <> (edit source) button sits at the far left; the divider after it sets it
+   apart from the transform actions (D2, revised). */
 .lie-toolbar-in-image .lie-toolbar-edit {
-  margin-left: 10px;
+  margin: 0;
 }
+
+/* Resize affordance (Bug 12): Obsidian's NATIVE resize handle + selection frame,
+   shown when the toolbar is (on hover) instead of only on :focus-within, and
+   hidden in crop mode (the crop UI owns resizing then). We add NO sizing of our
+   own — native `div.image-embed { width: fit-content }` already shrink-wraps to
+   the image AND caps it at the column, so the handle sits on the image corner and
+   the image never overflows. The handle (.image-resize-corner::after) and the
+   frame (.image-wrapper::after, inset 2px accent) are both native — we only flip
+   their visibility on hover. */
+.lie-lp-embed:hover .image-resize-corner::after {
+  opacity: 1;
+}
+/* The image-wrapper carries 3px padding (top/right/bottom) for the native handle,
+   which left the selection frame 3px off the image on those sides. Drop it for our
+   widget so the frame (inset:0) hugs the image; the handle's own -3px offset keeps
+   it on the corner. */
+.lie-lp-embed .image-wrapper {
+  padding: 0;
+}
+.lie-lp-embed:hover .image-wrapper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 2px var(--color-accent);
+}
+.lie-lp-embed.lie-cropping .image-resize-corner::after,
+.lie-lp-embed.lie-cropping .image-wrapper::after {
+  content: none;
+  opacity: 0;
+  box-shadow: none;
+}
+
+/* Caption (opt-in setting): the image's alt text rendered as Markdown, shown
+   centered BELOW the image. The caption's own width is set in JS (createCaption) to
+   the image's rendered width, so it's never wider than the image and long captions
+   wrap within it. Borderless — reads like a figure caption, not a boxed field. */
+.lie-has-caption {
+  /* The live-preview embed is flex (row by default); stack it as a column so the
+     caption sits below the image. The image (and caption, whose width = image width)
+     align to the start, so the caption ends up directly under the image. For the
+     alignment classes the embed is display:block/inline-block (the :has rules), where
+     these flex props are inert and the block children stack on their own. */
+  flex-direction: column !important;
+  align-items: flex-start;
+}
+.lie-caption {
+  box-sizing: border-box;
+  margin-top: 4px;
+  text-align: center;
+  font-size: var(--font-smaller, 0.85em);
+  color: var(--text-muted);
+  line-height: var(--line-height-tight, 1.3);
+}
+/* The Markdown renderer wraps the caption in a <p>/block — strip its outer margins
+   so the caption hugs the image, and keep it from overflowing the measured width. */
+.lie-caption > :first-child { margin-top: 0; }
+.lie-caption > :last-child { margin-bottom: 0; }
+.lie-caption p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.lie-caption img { max-width: 100%; }
 
 /* When revealed, the embed container behaves like a regular full-width line: block
    (Obsidian renders embeds as flex — !important is needed to beat its deep editor
@@ -163,8 +254,16 @@ img.lie-inline {
   word-break: break-word;
 }
 
-.lie-link-editor:focus {
-  outline: none;
+/* Obsidian gives textareas a border + focus box-shadow; override so the revealed
+   link reads like a plain document line, not a boxed/framed field (D4). */
+.lie-link-editor,
+.lie-link-editor:focus,
+.lie-link-editor:hover,
+.lie-link-editor:active {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent !important;
 }
 
 /* AUTO reveal mode (F5): the editor is present but only shown together with the
@@ -174,12 +273,16 @@ img.lie-inline {
 .lie-lp-reveal-auto .lie-link-editor {
   display: none;
 }
-.lie-lp-embed.lie-lp-reveal-auto:hover {
+/* AUTO is revealed by hover OR when the cursor is on the image's line
+   (.lie-lp-reveal-cursor, set from the editor selection). */
+.lie-lp-embed.lie-lp-reveal-auto:hover,
+.lie-lp-embed.lie-lp-reveal-auto.lie-lp-reveal-cursor {
   display: block !important;
   width: 100%;
   text-align: left;
 }
-.lie-lp-embed.lie-lp-reveal-auto:hover .lie-link-editor {
+.lie-lp-embed.lie-lp-reveal-auto:hover .lie-link-editor,
+.lie-lp-embed.lie-lp-reveal-auto.lie-lp-reveal-cursor .lie-link-editor {
   display: block;
 }
 
@@ -214,35 +317,61 @@ img.lie-inline {
   color: var(--text-muted);
 }
 
-/* Rotation reflow box: reserves the rotated bounding box in layout so a
-   quarter-turned image doesn't overflow or leave empty space. The image is
-   centered and may overflow this box un-rotated, but its rotated pixels fit. */
+/* R0 — ONE box for EVERY image (normal, rotated, cropped, flipped, filtered alike):
+   the same `.lie-rotate-box` is a real, JS-sized box; only its dimensions and the
+   image's transform differ per state (set by the renderer), never the structure or
+   the display model. "Normal" is just the degenerate case (deg 0, full image). The
+   image is absolute-centered inside so a rotation pivots about the centre; the box
+   reserves the visible bounding box (= the image size when un-rotated). */
 .lie-rotate-box {
   display: inline-block;
   position: relative;
-  vertical-align: baseline;
   overflow: visible;
+  line-height: 0;
+  vertical-align: bottom;
+  max-width: 100%;
 }
-
 .lie-rotate-box > img {
   position: absolute;
   top: 50%;
   left: 50%;
-  max-width: none;
+  /* The renderer sets explicit px sizes; Obsidian's `.internal-embed
+     img:not([width]) { max-width: 100% }` (specificity 0,2,1) would otherwise clamp
+     the image to the box width, so e.g. a rotated image never reaches its pre-rotation
+     width (Bug 2). !important wins. */
+  max-width: none !important;
 }
 
-/* Obsidian's embed containers are display:inline and won't take the height of
-   the rotated box — make the ones holding a rotated image shrink-wrap it. */
+/* Cropped: the ONLY state that clips — the box hides the part of the compound-
+   transformed image outside the cut. The image is anchored top-left (the crop's
+   translate/scale are in natural pixels with a top-left origin) at natural size. */
+.lie-rotate-box.lie-box-crop {
+  overflow: hidden;
+}
+.lie-box-crop > img {
+  top: 0;
+  left: 0;
+  width: auto !important;
+  height: auto !important;
+}
+
+/* Obsidian's embed containers are display:inline and won't take the height of the
+   (now always real, JS-sized) box — make the ones holding one shrink-wrap it. */
 .internal-embed:has(.lie-rotate-box),
 .image-embed:has(.lie-rotate-box),
 .image-wrapper:has(.lie-rotate-box) {
   display: inline-block;
 }
 
-/* Crop container (rendered output) */
-.lie-crop-container {
-  position: relative;
-  line-height: 0;
+/* Inline image (mid-text, e.g. lie-inline): the same EmbedWidget in inline mode (no
+   chrome), placed by an inline decoration. The container is inline-block (the :has
+   rule above) and aligns to the surrounding text; the hover selection frame is
+   suppressed since an inline icon has no resize handle. */
+.lie-lp-embed.lie-lp-inline {
+  vertical-align: middle;
+}
+.lie-lp-inline:hover .image-wrapper::after {
+  content: none;
 }
 
 /* In-place crop overlay (D11): positioned over the image at its exact rect (set
@@ -289,6 +418,14 @@ img.lie-inline {
   /* The cut window: full opacity inside, everything outside dimmed (D11). */
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
   z-index: 2;
+  /* Visual only — let drags pass through to the image below so it can be moved;
+     the handles re-enable pointer events for themselves (Bug 4). */
+  pointer-events: none;
+}
+
+.lie-crop-handle,
+.lie-crop-rotation-handle {
+  pointer-events: auto;
 }
 
 .lie-crop-handle {
@@ -427,7 +564,19 @@ img.lie-inline {
 .lie-filter-sliders {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 14px;
+}
+
+/* Slider groups (Light / Color / Effect). Without this, the grouped rows lost
+   their vertical spacing and visually overlapped (Bug 7). */
+.lie-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lie-filter-group .lie-filter-section-label {
+  margin-bottom: 0;
 }
 
 .lie-filter-slider-row {
@@ -576,11 +725,16 @@ img.lie-inline {
 .lie-size-choice:hover {
   background: var(--background-modifier-hover);
 }
+/* Width + height side by side (Bug-fix request). */
+.lie-size-fields {
+  display: flex;
+  gap: 10px;
+}
 .lie-size-custom {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 .lie-size-input {
-  width: 90px;
+  width: 80px;
 }

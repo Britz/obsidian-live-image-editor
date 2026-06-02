@@ -20,6 +20,34 @@ export function cycleRevealMode(mode: RevealMode): RevealMode {
   return mode === "auto" ? "on" : mode === "on" ? "off" : "auto";
 }
 
+// An image embed that sits INSIDE a line of text (not a standalone image line) — e.g.
+// an `lie-inline` icon mid-sentence. These get an inline replace widget; without one
+// Obsidian renders its own (full-size) inline image and shows the `{…}` as text.
+const INLINE_EMBED = /(!\[[^\]]*\]\([^)]*\)|!\[\[[^\]]+\]\])(\{[^}]*\})?/g;
+
+export interface InlineEmbed { from: number; to: number; embed: string; params: string; }
+
+/**
+ * Find image embeds embedded WITHIN a line of text (returns [] for a standalone image
+ * line — that path uses the block widget). Pure, so it's unit-testable (T-L6). `params`
+ * is the attr content without braces (T-L9).
+ */
+export function inlineEmbeds(lineText: string, lineFrom: number): InlineEmbed[] {
+  if (EMBED_LINE.test(lineText)) return []; // standalone line → block widget, not here
+  const out: InlineEmbed[] = [];
+  INLINE_EMBED.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = INLINE_EMBED.exec(lineText)) !== null) {
+    out.push({
+      from: lineFrom + m.index,
+      to: lineFrom + m.index + m[0].length,
+      embed: m[1] ?? "",
+      params: m[2] ? m[2].slice(1, -1) : "",
+    });
+  }
+  return out;
+}
+
 export type LineDecoration =
   // `params` is the attr_list CONTENT, WITHOUT the surrounding `{…}` braces — i.e.
   // exactly what parseAltText expects (the reading-view path strips them too). Passing
