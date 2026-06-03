@@ -114,13 +114,36 @@
 
 ---
 
-## 7. The big one: implementation
+## 7. The big one: implementation — DONE (2026-06-03)
 
-All of the above is **design**. The code is still the **old model** (custom properties, the crop
-data type, the JS box-measure loop, the JS caption width-sync, the mirroring crop overlay, the
-reveal text-field, …). `implementation-plan.md` describes the **target**; building it — and updating
-the tests — is the **largest remaining effort**. (The module-map annotations mark the
-going-away exports.)
+The rework landed. The code now matches `implementation-plan.md`'s target, and the unit tests
+were rewritten for the new pure logic (97 passing). What changed, vs the old model:
+
+- **Native CSS storage** — `transform`/`filter` are stored verbatim in `style=` and routed to the
+  img by property name; `--lie-*` custom properties, `filterToVars`, `FILTER_VAR_NAMES` and the
+  separate `CropData` type are **gone**. Crop is the same uniform geometry (an explicit
+  `translate()/scale()` in the img's transform + a `width/height` cut frame).
+- **Declarative box→image sizing** — the box's `aspect-ratio` is derived from the **intrinsic
+  ratio** (+ angle) via `renderer-logic.ts` (`boxAspectRatio`/`innerImageSize`) and applied to the
+  DOM as `--lie-auto-aspect`; the inner image is sized in box-relative `%`. The JS measure-retry
+  loop / rAF+setTimeout/`ResizeObserver` sizing is **removed** (read intrinsic once on load).
+- **Pure-CSS caption** — `width:0; min-width:100%` inside the shrink-wrapping `.lie-has-caption`
+  host; the JS width-sync/poll/`ResizeObserver` is gone.
+- **LP overlay + native edit** — the StateField **replaces** a non-active standalone line with the
+  plugin's own `.lie-wrapper` image widget (clean, no `{…}` text), and on the **active** line draws
+  an overlay above the natively-revealed source while CSS-suppressing the native image. The
+  in-widget `<textarea>` and the tri-state `RevealMode`/`cycleRevealMode` are gone; reveal-for-
+  looking is a display-only **fake link** + a **binary** `<>` toggle keyed by static CSS, with the
+  global default-state setting. (See `issues.md` L11 for the markdown-vs-wikilink active-line nuance
+  found during verification.)
+- **Export** reuses `renderer-logic` + the native `filter` string (the canvas filter) and renders
+  at the **original resolution**; the duplicate crop/rotate math is gone.
+- **Size presets** (icon/small/medium/large/original) apply via the re-themeable
+  `--lie-size-*` vars; **settings** add the preset widths, the default raw-link reveal state, and
+  the bundled example-snippet **install/reset** (opt-in). Snippet discovery now scans only
+  Obsidian-**enabled** snippets.
+
+Verified live (CDP) — §3 above lists what still needs a focused-window / manual pass.
 
 ---
 
@@ -140,9 +163,9 @@ the audit-time state — re-confirm before editing.)*
 - "filter ≠ default" is iterated **4×** (`serializeTransform` / `isDefaultFilter` / `filterToVars`,
   and `filter-panel.ts` `currentFilter`) → one `nonDefaultFilter()` helper.
 - The "visible image box" selector is a magic string repeated across files; **latent bug:**
-  `main.ts` `previewSize` queried a non-existent class `.lie-box-rotate` (the renderer creates
-  `.lie-rotate-box`), so the size-preview missed the box on rotated images → export a single
-  `ROTATE_BOX_CLASS` / `visibleBox()` and use it everywhere.
+  `main.ts` `previewSize` queried a non-existent class `.lie-image-area-rotate` (the renderer creates
+  `.lie-image-area`), so the size-preview missed the box on rotated images → export a single
+  `BOX_CLASS` / `visibleBox()` and use it everywhere.
 
 **`main.ts` panel openers**
 - `customSize`, `crop`, `toggleFilters`, `addClass`, `exportImage` each re-implement the

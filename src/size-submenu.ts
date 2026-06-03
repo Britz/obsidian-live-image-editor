@@ -1,36 +1,44 @@
 import { setIcon } from "obsidian";
 import { t } from "./i18n";
 
-// `null` == unset. Width null + height null == "Original".
+// CSS length strings (or null = unset). Width null + height null == "Original".
 export interface SizeState {
-  width: number | null;
-  height: number | null;
+  width: string | null;
+  height: string | null;
 }
 
-export interface SizePresets {
-  small: number;
-  medium: number;
-  large: number;
+// One-tap size preset (F24): each yields a width/height CSS pair. small/medium/large
+// use the re-themeable preset var (configurable in settings); icon sets a line-height
+// height (the inline icon size); original clears both.
+interface SizePreset {
+  key: string;
+  labelKey: Parameters<typeof t>[0];
+  width: string | null;
+  height: string | null;
 }
 
-/**
- * Build the body of the custom-size sub-menu (D8): quick choices Original / Small
- * / Medium / Large plus custom width AND height entries (Bug 10). Compact — it
- * hangs under the toolbar via the shared AnchoredSubmenu. `onPreview` fires as the
- * user types/picks so the change is visible immediately; the AnchoredSubmenu
- * commits the last preview or reverts on cancel. `state` is the shared holder the
- * owner reads on commit.
- */
+const PRESETS: SizePreset[] = [
+  { key: "original", labelKey: "original", width: null, height: null },
+  { key: "icon", labelKey: "icon", width: null, height: "1.5em" },
+  { key: "small", labelKey: "small", width: "var(--lie-size-small)", height: null },
+  { key: "medium", labelKey: "medium", width: "var(--lie-size-medium)", height: null },
+  { key: "large", labelKey: "large", width: "var(--lie-size-large)", height: null },
+];
+
 export interface SizeBody {
   body: HTMLElement;
-  // Reset ONLY the size (width+height) to unset and preview — wired to the shared
-  // sub-menu's per-panel reset.
   reset: () => void;
 }
 
+/**
+ * Build the body of the size sub-menu (D6.1): the one-tap presets (F24) plus custom
+ * width AND height fields side by side. Compact — it hangs under the toolbar via the
+ * shared AnchoredSubmenu. `onPreview` fires as the user picks/types; the AnchoredSubmenu
+ * commits the last preview (or reverts on cancel). `state` is the shared holder the
+ * owner reads on commit.
+ */
 export function buildSizeBody(
-  current: { width?: number; height?: number },
-  presets: SizePresets,
+  current: { width?: string; height?: string },
   onPreview: (s: SizeState) => void,
   state: SizeState
 ): SizeBody {
@@ -44,27 +52,20 @@ export function buildSizeBody(
   const heightInput = document.createElement("input");
 
   const sync = (): void => {
-    widthInput.value = state.width === null ? "" : String(state.width);
-    heightInput.value = state.height === null ? "" : String(state.height);
+    widthInput.value = pxNumber(state.width);
+    heightInput.value = pxNumber(state.height);
   };
   const preview = (): void => onPreview(state);
 
-  // Quick choices set a width and clear the height (keep aspect ratio).
   const quick = document.createElement("div");
   quick.classList.add("lie-size-quick");
-  const choices: { label: string; w: number | null }[] = [
-    { label: t("original"), w: null },
-    { label: t("small"), w: presets.small },
-    { label: t("medium"), w: presets.medium },
-    { label: t("large"), w: presets.large },
-  ];
-  for (const c of choices) {
+  for (const p of PRESETS) {
     const btn = document.createElement("button");
     btn.classList.add("lie-size-choice");
-    btn.textContent = c.label;
+    btn.textContent = t(p.labelKey);
     btn.addEventListener("click", () => {
-      state.width = c.w;
-      state.height = null;
+      state.width = p.width;
+      state.height = p.height;
       sync();
       preview();
     });
@@ -72,7 +73,6 @@ export function buildSizeBody(
   }
   body.appendChild(quick);
 
-  // Width and height side by side (one row).
   const fields = document.createElement("div");
   fields.classList.add("lie-size-fields");
   fields.appendChild(makeField("move-horizontal", t("width"), widthInput, (v) => {
@@ -99,7 +99,13 @@ export function buildSizeBody(
   };
 }
 
-function makeField(icon: string, placeholder: string, input: HTMLInputElement, onInput: (v: number | null) => void): HTMLElement {
+// Show only a literal px value in a number field (a preset var / em leaves it blank).
+function pxNumber(v: string | null): string {
+  const m = v?.match(/^(\d+(?:\.\d+)?)px$/);
+  return m ? (m[1] ?? "") : "";
+}
+
+function makeField(icon: string, placeholder: string, input: HTMLInputElement, onInput: (v: string | null) => void): HTMLElement {
   const row = document.createElement("div");
   row.classList.add("lie-size-custom");
 
@@ -114,7 +120,7 @@ function makeField(icon: string, placeholder: string, input: HTMLInputElement, o
   input.classList.add("lie-size-input");
   input.addEventListener("input", () => {
     const n = parseInt(input.value, 10);
-    onInput(n > 0 ? n : null);
+    onInput(n > 0 ? `${n}px` : null);
   });
   row.appendChild(input);
   return row;

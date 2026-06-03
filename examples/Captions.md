@@ -34,19 +34,19 @@ several centered lines under it, never spilling out to the side.
 **Should:** the caption sits under the rotated image, centered on the **rotated bounding
 box** (its visible width), not the pre-rotation width.
 
-![Rotated 90° clockwise](images/sample-landscape.png){.lie-img style="--lie-rotate: 90deg; width: 300px;"}
+![Rotated 90° clockwise](images/sample-landscape.png){.lie-img style="transform: rotate(90deg); width: 300px"}
 
 ## Caption on a cropped image
 
 **Should:** the caption is centered under the **cropped** image and matches the cut width.
 
-![A square crop](images/sample-square.png){.lie-img style="--lie-crop: 150 250 700 500 0 1; width: 320px;"}
+![A square crop](images/sample-square.png){.lie-img style="width: 320px; height: 320px; transform: translate(-50%, -50%) scale(2)"}
 
 ## Caption with a filter
 
 **Should:** grayscale image, caption unaffected (captions are document text, not pixels).
 
-![Black and white](images/sample-landscape.png){.lie-img style="--lie-grayscale: 1; width: 320px;"}
+![Black and white](images/sample-landscape.png){.lie-img style="filter: grayscale(1); width: 320px"}
 
 ## No alt text → no caption
 
@@ -59,4 +59,4 @@ box** (its visible width), not the pre-rotation width.
 **Should:** the wikilink **display text** becomes the caption (*A portrait*); a bare
 `|size` would not.
 
-![[images/sample-portrait.png|A portrait]]
+![[images/sample-portrait.png|A portrait]]{.lie-img style="width: 160px"}

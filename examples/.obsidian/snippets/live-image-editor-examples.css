@@ -1,0 +1,7 @@
+/* Live Image Editor — example image decoration classes.
+   Installed from the plugin settings (opt-in). Edit freely; "Reset" in settings
+   restores this shipped version. Apply a class in the image's trailing block. */
+img.rounded { border-radius: 8px; }
+img.shadow { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
+img.bordered { border: 1px solid var(--background-modifier-border); }
+img.circle { border-radius: 50%; object-fit: cover; aspect-ratio: 1; }

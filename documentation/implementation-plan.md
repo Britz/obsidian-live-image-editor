@@ -20,12 +20,12 @@ One file per building block where possible; pure decision logic split into a sib
 | File | Building block (arch §4) | Key exports |
 |---|---|---|
 | `src/main.ts` | AB17 Lifecycle | `Plugin` subclass |
-| `src/transforms.ts` | AB1 Transform model | `ImageTransform`<br>`CropData` *(→ uniform geometry)*<br>`FilterData`<br>`parseAltText`<br>`serializeTransform`<br>`filterToVars` *(→ dropped, native filter)*<br>`temperatureAdjust`<br>`MARKER_CLASS`<br>`INLINE_CLASS` |
+| `src/transforms.ts` | AB1 Transform model | `ImageTransform` *(native: classes/inline/transform/filter/width/height/aspectRatio/box)*<br>`FilterData`<br>`parseAltText`<br>`serializeTransform`<br>`getRotation`/`setRotation`<br>`toggleFlipH`/`toggleFlipV`/`getFlipH`/`getFlipV`<br>`isCrop`<br>`getFilter`/`setFilter`/`filterToCss`/`parseFilterCss`<br>`getWidthPx`/`getHeightPx`/`getPreset`/`setPresetWidth`/`setWidthPx`/`setHeightPx`<br>`temperatureAdjust`<br>`MARKER_CLASS`<br>`INLINE_CLASS` |
 | `src/link-format.ts` | AB2 Link form & native-size normalization | `parseEmbedLine`<br>`buildEmbed`<br>`convertEmbedLine`<br>`desiredFormat` |
 | `src/image-resolver.ts` | AB3 Source↔DOM mapping | `findImageInSource`<br>`updateImageSource`<br>`parseLocationTransform` |
-| `src/snippet-scanner.ts` | AB4 Snippet class discovery | `scanSnippets`<br>`SnippetClass` |
-| `src/renderer-logic.ts` | AB5 Geometry (pure) | `rotatedBox`<br>`cropBoxSize`<br>`estimatedBlockHeight` |
-| `src/renderer.ts` | AB6 Uniform box & measurement + AB8 reading-view adapter | `applyTransformToImage`<br>`applyFilterVars`<br>`unwrapBox` |
+| `src/snippet-scanner.ts` | AB4 Snippet class discovery | `scanSnippets` *(enabled-only)*<br>`SnippetClass`<br>`installBundledSnippet`<br>`resetBundledSnippet`<br>`isBundledSnippetInstalled` |
+| `src/renderer-logic.ts` | AB5 Geometry (pure) | `boxAspectRatio`<br>`innerImageSize`<br>`rotatedAabb`<br>`estimatedBlockHeight` |
+| `src/renderer.ts` | AB6 Uniform box (declarative) + AB8 reading-view adapter | `applyTransformToImage`<br>`applyFilterPreview`<br>`previewBoxSize`<br>`unwrapBox`<br>`BOX_CLASS` |
 | `src/caption-logic.ts` | AB7 Caption (text, pure) | `captionMarkdown`<br>`captionFromAlt` |
 | `src/caption.ts` | AB7 Caption (DOM) | `createCaption`<br>`CaptionHandle` |
 | `src/live-preview-logic.ts` | AB9 LP line→decoration (pure) | `lineDecorations`<br>`inlineEmbeds`<br>`rewriteWidth`<br>`EMBED_LINE` |
@@ -33,14 +33,14 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/toolbar.ts` | AB10 Toolbar | `ImageToolbar`<br>`buildToolbarElement` |
 | `src/anchored-submenu-logic.ts` | AB11 Sub-menu placement (pure) | `placeSubmenu`<br>`SubmenuPlacement` |
 | `src/anchored-submenu.ts` | AB11 Shared sub-menu host | `AnchoredSubmenu` |
-| `src/crop-editor-logic.ts` | AB12 Crop quantization (pure) | `snapTranslate`<br>`snapAngle`<br>`snapScale`<br>`toCropData` |
+| `src/crop-editor-logic.ts` | AB12 Crop quantization (pure) | `snapTranslate`<br>`snapAngle`<br>`snapScale`<br>`toCropResult` *(native transform + box w/h)* |
 | `src/crop-editor.ts` | AB12 Crop editor | `CropEditor` |
 | `src/filter-panel.ts` | AB13 Filter panel | `FilterPanel` |
-| `src/size-submenu.ts` | AB14 Size sub-menu | `buildSizeBody`<br>`SizeState`<br>`SizePresets` |
+| `src/size-submenu.ts` | AB14 Size sub-menu | `buildSizeBody`<br>`SizeState` *(CSS-string width/height)* |
 | `src/export.ts` | AB15 Export | `renderTransformedImage`<br>`suggestExportPath`<br>`saveExport` |
 | `src/commands.ts` | AB18 Commands | `registerCommands` |
-| `src/settings.ts` | AB19 Settings | `LieSettingTab`<br>`LieSettings`<br>`DEFAULT_SETTINGS` |
-| `src/styles-injector.ts` | AB20 Style injection | `StylesInjector`<br>`SIZE_CLASS_MAX` *(→ preset-width vars)* |
+| `src/settings.ts` | AB19 Settings | `LieSettingTab`<br>`LieSettings` *(+defaultRevealShown, presetWidths)*<br>`DEFAULT_SETTINGS` |
+| `src/styles-injector.ts` | AB20 Style injection | `StylesInjector`<br>`PresetWidths`<br>`DEFAULT_PRESET_WIDTHS` |
 | `src/editing-toolbar-integration.ts` | AB22 Editing-toolbar integration | `getEditingToolbarStatus`<br>`addEditingToolbarButtons`<br>`removeEditingToolbarButtons` |
 | `src/i18n/` | AB21 Localization | `index.ts`<br>`en.ts`<br>`de.ts` |
 | `src/dev-bridge.ts` | AB23 Dev bridge | CDP relay (dev builds only) |
@@ -166,7 +166,7 @@ embed   — the flow container: Obsidian's own .image-embed (reading view) /
           CSS-suppressed, §2.4 — the suppression keys on the NATIVE .image-wrapper, NEVER on the
           plugin's own .lie-wrapper).
           The flow participant: alignment/float and native vertical spacing (D10) act here.
-  ├ box  — .lie-rotate-box: the plugin's wrapper, ALWAYS present, AXIS-ALIGNED (never rotated).
+  ├ box  — .lie-image-area: the plugin's wrapper, ALWAYS present, AXIS-ALIGNED (never rotated).
   │        Box + img are ONE unit. It only RESIZES — to the rotated image's bounding box
   │        (reflow) — and clips; overflow:hidden is set unconditionally.
   │   └ img — img.lie-img: the image itself, and the ONLY element that is transformed
@@ -237,7 +237,7 @@ there is no second crop/rotate/scale implementation. (This collapses the old dup
 
 - **Transforms are native** — `style=` carries `transform` / `filter` directly, so no injected
   rule is needed to render them; they show even with no plugin and no theme CSS (T3).
-- **`.lie-rotate-box`** is the always-present wrapper: `overflow: hidden` unconditionally. Its
+- **`.lie-image-area`** is the always-present wrapper: `overflow: hidden` unconditionally. Its
   shape is an **`aspect-ratio`** — derived at render from the image's intrinsic ratio (+ angle) and
   **applied to the DOM box, not written to the source** (§2.3, AD6); the box has no native
   auto-height. Everything else is native: the img's `transform`/`filter`, and a crop box's
@@ -251,7 +251,7 @@ there is no second crop/rotate/scale implementation. (This collapses the old dup
   ships no native image-size / width-preset variables, so these are plugin-defined.)*
 - **Alignment** sits as a class on the `img`; the float acts on the **embed** (the plugin's own
   `.lie-wrapper` overlay container in live preview / Obsidian's `.image-embed` in reading view) via
-  `:has(img.lie-left)` — never on the `img` (flex child) or the `.lie-rotate-box` (inside the
+  `:has(img.lie-left)` — never on the `img` (flex child) or the `.lie-image-area` (inside the
   embed). *(Pitfall §4.)*
 - **Native-suppression (live preview)** — static, scoped rules hide Obsidian's native
   `.image-wrapper` while the plugin's overlay (`.lie-wrapper`) is shown; the rules **never** hit the
@@ -298,7 +298,7 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
 - **`renderer-logic.ts`** (pure, tested) — `rotatedBox` and `cropBoxSize` compute the box and the
   inner-image geometry as **pure functions of box size + transform** (no DOM measurement);
   `estimatedBlockHeight` (synchronous CM6 height estimate).
-- **`renderer.ts`** — `applyTransformToImage` builds the one uniform `.lie-rotate-box` for every
+- **`renderer.ts`** — `applyTransformToImage` builds the one uniform `.lie-image-area` for every
   image (normal = degenerate transform) with `overflow:hidden`, sizes the box (size attr, else
   column-capped intrinsic) and sets the inner image from box + transform (**box → image**, §2.3);
   `unwrapBox` tears it down. Rotate/flip/filter are native CSS on the img, so there is no
@@ -368,7 +368,7 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
 
 - **`toolbar.ts`** — `ImageToolbar` builds the ordered, divider-grouped bar (`buildToolbarElement`),
   revealed on hover/selection, positioned `absolute` on the box (D1, D2). **D1.1 (too-small →
-  above)** is a **CSS container query** on the box, no JS: *(CDP-verified)* `.lie-rotate-box
+  above)** is a **CSS container query** on the box, no JS: *(CDP-verified)* `.lie-image-area
   { container-type: size }` + `@container (max-height: <bar height>) { .lie-toolbar { top: auto;
   bottom: 100% } }` flips the bar above at small sizes and is inert when large. (`container-type:
   size` needs a resolvable height — the box's `aspect-ratio`/explicit size provides it; a
@@ -407,7 +407,7 @@ caused. These are the low-level half of the decisions in `architecture.md` §2.
 - **AD3 (uniform element).** No `display:contents` "normal" case, no `width: max-content` on the
   wrapper, no padding on the wrapper box — each reintroduces a divergent path → rotated/normal
   size drift, overflow, or a resize frame offset. Float via `:has()` on the embed, never the
-  `img` or `.lie-rotate-box` → otherwise text never wraps.
+  `img` or `.lie-image-area` → otherwise text never wraps.
 - **AD5 (one path per mode).** The live-preview widget **overlays** the plugin's own image and does
   **not** replace the line — replacing it block-style was the old model; instead the native embed is
   kept (it loads the image and reveals the source) and CSS-suppressed. The widget must be a block

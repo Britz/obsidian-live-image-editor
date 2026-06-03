@@ -1,28 +1,30 @@
 import { App, Modal, Setting, Vault } from "obsidian";
-import { ImageTransform, FilterData } from "./transforms";
+import { ImageTransform, getRotation, getFlipH, getFlipV, isCrop, getWidthPx, getHeightPx } from "./transforms";
+import { rotatedAabb } from "./renderer-logic";
 
-// Canvas filter string in the SAME order as the injected `img.lie-img` CSS rule, so
-// the exported pixels match the displayed filters exactly. Only non-default parts.
-function canvasFilter(f?: FilterData): string {
-  if (!f) return "";
-  const p: string[] = [];
-  if (f.brightness !== undefined && f.brightness !== 1) p.push(`brightness(${f.brightness})`);
-  if (f.contrast !== undefined && f.contrast !== 1) p.push(`contrast(${f.contrast})`);
-  if (f.saturate !== undefined && f.saturate !== 1) p.push(`saturate(${f.saturate})`);
-  if (f.hueRotate !== undefined && f.hueRotate !== 0) p.push(`hue-rotate(${f.hueRotate}deg)`);
-  if (f.blur !== undefined && f.blur !== 0) p.push(`blur(${f.blur}px)`);
-  if (f.grayscale !== undefined && f.grayscale !== 0) p.push(`grayscale(${f.grayscale})`);
-  if (f.sepia !== undefined && f.sepia !== 0) p.push(`sepia(${f.sepia})`);
-  return p.join(" ");
+interface Fn { name: string; args: string[]; }
+
+// Parse a native CSS transform string into ordered functions with numeric+unit args.
+function parseTransformFns(s?: string): Fn[] {
+  const out: Fn[] = [];
+  if (!s) return out;
+  const re = /([a-zA-Z][\w-]*)\(([^)]*)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    out.push({ name: m[1] ?? "", args: (m[2] ?? "").split(",").map((a) => a.trim()) });
+  }
+  return out;
 }
 
+const numOf = (a: string | undefined): number => parseFloat(a ?? "") || 0;
+
 /**
- * Render the image WITH all its transforms applied — rotation, flip, free-rotation
- * crop, resize and filters — to a PNG buffer, exactly as it is displayed (F8). The
- * canvas geometry mirrors the renderer (renderer.ts) so the export matches the
- * on-screen result: crops rotate around the TOP-LEFT origin like
- * `wrapWithCropContainer`; rotations use the rotated bounding box like
- * `reserveBox`.
+ * Render the image WITH all its transforms applied (rotate, flip, free-rotation crop,
+ * filters) to a PNG buffer — the SAME visual result as displayed (F13), but sized from
+ * the ORIGINAL image's native resolution (the display `width` never reduces export
+ * quality). It replays the SAME native `transform`/`filter` the renderer applies (no
+ * parallel crop/rotate math): the `filter` string IS the canvas filter; the `transform`
+ * functions are replayed onto the ctx.
  */
 export async function renderTransformedImage(
   img: HTMLImageElement,
@@ -34,51 +36,69 @@ export async function renderTransformedImage(
 
   const nw = img.naturalWidth;
   const nh = img.naturalHeight;
-  const filter = canvasFilter(transform.filter);
+  const r = nh ? nw / nh : 1;
+  const deg = getRotation(transform);
+  const flipH = getFlipH(transform);
+  const flipV = getFlipV(transform);
 
-  if (transform.crop) {
-    const crop = transform.crop;
-    const displayW = transform.width ?? crop.w;
-    const displayH = transform.height ?? crop.h;
-    const scale = Math.min(displayW / crop.w, displayH / crop.h);
-    canvas.width = Math.max(1, Math.round(displayW));
-    canvas.height = Math.max(1, Math.round(displayH));
-    if (filter) ctx.filter = filter;
-    ctx.translate(-crop.x * scale, -crop.y * scale);
-    if (crop.rotate) ctx.rotate((crop.rotate * Math.PI) / 180);
-    ctx.scale(crop.scale * scale, crop.scale * scale);
-    if (transform.flipH) ctx.scale(-1, 1);
-    if (transform.flipV) ctx.scale(1, -1);
-    ctx.drawImage(img, 0, 0, nw, nh);
-  } else if (transform.rotate && transform.rotate % 360 !== 0) {
-    const rad = (transform.rotate * Math.PI) / 180;
-    const bw0 = Math.abs(nw * Math.cos(rad)) + Math.abs(nh * Math.sin(rad));
-    const bh0 = Math.abs(nw * Math.sin(rad)) + Math.abs(nh * Math.cos(rad));
-    const s = transform.width ? transform.width / bw0 : 1;
-    canvas.width = Math.max(1, Math.round(bw0 * s));
-    canvas.height = Math.max(1, Math.round(bh0 * s));
-    if (filter) ctx.filter = filter;
+  if (isCrop(transform)) {
+    // Crop: the cut frame is the box (display px from width/height); the original is
+    // shown at width:100% of the box (= fw display px), height auto, with the native
+    // transform `translate(%) rotate scale` (top-left origin). Replay it at a factor E
+    // that brings the natural image to 1:1 → cut region at original resolution (F13).
+    const fw = getWidthPx(transform) ?? nw;
+    const fh = getHeightPx(transform) ?? Math.round(nw / r);
+    const fns = parseTransformFns(transform.transform);
+    const scaleFn = fns.find((f) => f.name === "scale");
+    const s = scaleFn ? numOf(scaleFn.args[0]) || 1 : 1;
+    const wCss = fw;                 // img width:100% of box
+    const hCss = nh ? fw / r : fh;   // img height:auto, natural aspect
+    const E = fw && s ? nw / (fw * s) : 1;
+
+    canvas.width = Math.max(1, Math.round(fw * E));
+    canvas.height = Math.max(1, Math.round(fh * E));
+    if (transform.filter) ctx.filter = transform.filter;
+    ctx.scale(E, E);
+    for (const fn of fns) {
+      if (fn.name === "translate") {
+        ctx.translate(pctOrPx(fn.args[0], wCss), pctOrPx(fn.args[1], hCss));
+      } else if (fn.name === "rotate") {
+        ctx.rotate((numOf(fn.args[0]) * Math.PI) / 180);
+      } else if (fn.name === "scale") {
+        ctx.scale(numOf(fn.args[0]) || 1, numOf(fn.args[1] ?? fn.args[0]) || 1);
+      } else if (fn.name === "scaleX") {
+        ctx.scale(numOf(fn.args[0]), 1);
+      } else if (fn.name === "scaleY") {
+        ctx.scale(1, numOf(fn.args[0]));
+      }
+    }
+    ctx.drawImage(img, 0, 0, wCss, hCss);
+  } else if (deg % 360 !== 0) {
+    // Rotate (+flip, +filter): the rotated bounding box of the NATURAL image (original
+    // resolution — the display width does not reduce it).
+    const box = rotatedAabb(nw, nh, deg);
+    canvas.width = Math.max(1, Math.round(box.w));
+    canvas.height = Math.max(1, Math.round(box.h));
+    if (transform.filter) ctx.filter = transform.filter;
     ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.rotate(rad);
-    ctx.scale(s, s);
-    if (transform.flipH) ctx.scale(-1, 1);
-    if (transform.flipV) ctx.scale(1, -1);
+    ctx.rotate((deg * Math.PI) / 180);
+    if (flipH) ctx.scale(-1, 1);
+    if (flipV) ctx.scale(1, -1);
     ctx.drawImage(img, -nw / 2, -nh / 2, nw, nh);
   } else {
-    // Match the renderer (img width/height with the other axis `auto`): width-only
-    // and height-only both preserve aspect ratio; only when BOTH are set does the
-    // image stretch to exactly w×h. Deriving the scale from width alone would squash
-    // a height-only resize (canvas = natural width × requested height).
-    const sx = transform.width ? transform.width / nw : null;
-    const sy = transform.height ? transform.height / nh : null;
-    const outW = Math.max(1, Math.round(nw * (sx ?? sy ?? 1)));
-    const outH = Math.max(1, Math.round(nh * (sy ?? sx ?? 1)));
-    canvas.width = outW;
-    canvas.height = outH;
-    if (filter) ctx.filter = filter;
+    // Normal / flip / filter, optionally distorted (both width+height): keep original
+    // resolution; only a deliberate width+height distortion changes the output aspect.
+    const wPx = getWidthPx(transform);
+    const hPx = getHeightPx(transform);
+    const distort = wPx && hPx ? hPx / wPx : null;
+    const outW = nw;
+    const outH = distort ? Math.max(1, Math.round(nw * distort)) : nh;
+    canvas.width = Math.max(1, Math.round(outW));
+    canvas.height = Math.max(1, Math.round(outH));
+    if (transform.filter) ctx.filter = transform.filter;
     ctx.translate(outW / 2, outH / 2);
-    if (transform.flipH) ctx.scale(-1, 1);
-    if (transform.flipV) ctx.scale(1, -1);
+    if (flipH) ctx.scale(-1, 1);
+    if (flipV) ctx.scale(1, -1);
     ctx.drawImage(img, -outW / 2, -outH / 2, outW, outH);
   }
 
@@ -86,6 +106,14 @@ export async function renderTransformedImage(
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Canvas toBlob failed"))), "image/png");
   });
   return blob.arrayBuffer();
+}
+
+// A translate arg expressed as a percent of `basis` (the img display dimension) or a
+// raw px length.
+function pctOrPx(arg: string | undefined, basis: number): number {
+  const a = (arg ?? "").trim();
+  if (a.endsWith("%")) return (parseFloat(a) / 100) * basis;
+  return parseFloat(a) || 0;
 }
 
 const dirOf = (p: string): string => { const i = p.lastIndexOf("/"); return i < 0 ? "" : p.slice(0, i + 1); };

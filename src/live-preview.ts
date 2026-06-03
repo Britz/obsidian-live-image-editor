@@ -1,32 +1,77 @@
 import { App, TFile, editorLivePreviewField, setIcon } from "obsidian";
 import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
-import { parseAltText } from "./transforms";
-import { lineDecorations, inlineEmbeds, rewriteWidth, RevealMode, cycleRevealMode } from "./live-preview-logic";
+import { parseAltText, getWidthPx, getHeightPx } from "./transforms";
+import { lineDecorations, inlineEmbeds, rewriteWidth, EMBED_LINE } from "./live-preview-logic";
 import { estimatedBlockHeight } from "./renderer-logic";
 import { captionMarkdown, createCaption, CaptionHandle } from "./caption";
 import { applyTransformToImage } from "./renderer";
 import { ToolbarItem, buildToolbarElement } from "./toolbar";
 import { t } from "./i18n";
 
-// Dispatched to force the StateField to rebuild its decorations when nothing in the
-// document changed but external state did — currently the "show captions" setting
-// toggle. main.ts dispatches it to every live-preview editor on saveSettings.
+// Force a rebuild when external state (captions / reveal mode settings) changed.
 export const refreshDecorations = StateEffect.define<void>();
 
-// Cycle the reveal MODE of a given image line (AUTO → ON → OFF → AUTO). Carries
-// the line-start position; a StateField holds each line's mode. This is our own
-// per-image tri-state reveal (id = line position), not Obsidian's cursor-driven
-// native reveal (F5/D6).
+// Toggle the per-image TEMPORARY hide of the link source (F8 `<>`): a transient
+// in-memory override, NOT persisted, INDEPENDENT of the global reveal mode.
 const toggleReveal = StateEffect.define<number>();
 
-// Per-mode tooltip key and on-icon badge for the `<>` control (D4).
-const REVEAL_LABEL = { auto: "revealAuto", on: "revealOn", off: "revealOff" } as const;
-const REVEAL_BADGE: Record<RevealMode, string> = { auto: "A", on: "●", off: "○" };
+type RevealMode = "auto" | "always" | "hidden";
+type WidgetMode = "block" | "inline";
 
-// Render the image embed + transform as one unit, REUSING Obsidian's native image
-// rendering (embedRegistry creator), then add the live-preview chrome Obsidian
-// would normally add (edit-block button, resize handle) and apply the transform.
+// Syntax-highlight an embed's source into spans carrying Obsidian's own CM token
+// classes (themed because the widget lives inside `.cm-editor`). Only the embed part
+// (`![[…]]` / `![](…)`) — the trailing `{…}` is the NATIVE marked text, never the fake.
+function highlightEmbed(embed: string): DocumentFragment {
+  const frag = document.createDocumentFragment();
+  const span = (cls: string, text: string): void => {
+    if (!text) return;
+    const s = document.createElement("span");
+    s.className = cls;
+    s.textContent = text;
+    frag.appendChild(s);
+  };
+  const wiki = embed.match(/^(!\[\[)([^\]]*)(\]\])$/);
+  if (wiki) {
+    span("cm-formatting cm-formatting-link cm-hmd-internal-link", wiki[1] ?? "");
+    span("cm-hmd-internal-link cm-link", wiki[2] ?? "");
+    span("cm-formatting cm-formatting-link cm-hmd-internal-link", wiki[3] ?? "");
+    return frag;
+  }
+  const md = embed.match(/^(!\[)([^\]]*)(\]\()([^)]*)(\))$/);
+  if (md) {
+    span("cm-formatting cm-formatting-image cm-image cm-image-marker", md[1] ?? "");
+    span("cm-image cm-image-alt-text cm-link", md[2] ?? "");
+    span("cm-formatting cm-formatting-link-string cm-string cm-url", md[3] ?? "");
+    span("cm-string cm-url", md[4] ?? "");
+    span("cm-formatting cm-formatting-link-string cm-string cm-url", md[5] ?? "");
+    return frag;
+  }
+  span("cm-string cm-url", embed);
+  return frag;
+}
+
+// The "fake" raw-link inline widget — a display-only, UNEDITABLE representation of the
+// swallowed embed source (`![[…]]` / `![](…)`), syntax-highlighted (F8/D5). It is the
+// ONLY thing standing in for the native embed text; CSS shows it together with the
+// native `{…}` per the reveal mode, never alongside a native render of the same source.
+class FakeLinkWidget extends WidgetType {
+  constructor(private embed: string, private mode: RevealMode) { super(); }
+  eq(o: FakeLinkWidget): boolean { return o.embed === this.embed && o.mode === this.mode; }
+  toDOM(): HTMLElement {
+    const el = document.createElement("span");
+    el.className = `lie-fake-link lie-rev-${this.mode}`;
+    el.setAttribute("contenteditable", "false");
+    el.appendChild(highlightEmbed(this.embed));
+    return el;
+  }
+  ignoreEvent(): boolean { return false; }
+}
+
+// The plugin's OWN transformed-image overlay (AD5). The line is NOT replaced: Obsidian
+// renders its native embed (image CSS-suppressed) and keeps `{…}` as native editable
+// text; this block widget draws the transformed image + chrome BELOW the line (side 1)
+// so the reveal sits above it. `inline` is a mid-text icon.
 class EmbedWidget extends WidgetType {
   constructor(
     private app: App,
@@ -34,172 +79,105 @@ class EmbedWidget extends WidgetType {
     private params: string,
     private sourcePath: string,
     private getActions: (img: HTMLImageElement) => ToolbarItem[],
-    private mode: RevealMode,
-    private rawLine: string,
-    private autofocus: boolean,
-    private cursorOnLine: boolean,
-    private showCaptions: boolean,
-    // INLINE mode: the embed sits mid-text (an lie-inline icon). Same image rendering,
-    // but the line-oriented chrome (toolbar/resize/`<>`/caption — which rewrite or
-    // reveal the WHOLE line) is skipped, since here the embed is only PART of a line
-    // and that chrome would corrupt the surrounding text / not fit an icon.
-    private inline = false
+    private mode: WidgetMode,
+    private revealMode: RevealMode,
+    private showCaptions: boolean
   ) {
     super();
   }
 
-  // Everything that, if changed, requires a full re-render (re-creating the embed).
-  // The cursor-on-line state is deliberately NOT part of this — it only toggles the
-  // AUTO reveal and is handled in updateDOM without touching the embed. showCaptions
-  // IS part of it: toggling the setting adds/removes the caption element.
   private sig(): string {
-    return `${this.embed} ${this.params} ${this.sourcePath} ${this.mode} ${this.rawLine} ${this.showCaptions} ${this.inline}`;
+    return `${this.embed}|${this.params}|${this.sourcePath}|${this.mode}|${this.revealMode}|${this.showCaptions}`;
   }
+  eq(other: EmbedWidget): boolean { return this.sig() === other.sig(); }
 
-  // Tell CM6 the block's height UP FRONT. Without this, an off-screen image line is
-  // modeled as one text line (~14px) and the scroll lurches when it's measured to its
-  // real (tall) height. Inline widgets are inline decorations — CM uses line height, so
-  // -1 (the default). Synchronous estimate (the off-screen image isn't loaded yet);
-  // the real size still lands via reserveBox and refines this.
   get estimatedHeight(): number {
-    if (this.inline) return -1;
-    const t = parseAltText(this.params);
-    return estimatedBlockHeight({ crop: t.crop, width: t.width, height: t.height });
-  }
-
-  // Cursor moves rebuild the StateField (T-L2) but mustn't recreate this DOM. eq()
-  // returns true only when nothing at all changed (incl. cursor-on-line); when only
-  // the cursor moved on/off this line, eq is false but updateDOM updates in place.
-  eq(other: EmbedWidget): boolean {
-    return this.sig() === other.sig() && this.cursorOnLine === other.cursorOnLine;
-  }
-
-  // Update WITHOUT re-creating the embed when only the cursor-on-line reveal changed
-  // (F5: the link shows when the cursor is on the image's line, like hover). A
-  // structural change (different sig) returns false → full re-render.
-  updateDOM(dom: HTMLElement): boolean {
-    if (dom.dataset["lieSig"] !== this.sig()) return false;
-    const reveal = this.cursorOnLine && this.mode === "auto";
-    dom.classList.toggle("lie-lp-reveal-cursor", reveal);
-    if (reveal) {
-      const ta = dom.querySelector<HTMLTextAreaElement>(".lie-link-editor");
-      if (ta) requestAnimationFrame(() => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; });
-    }
-    return true;
+    if (this.mode === "inline") return -1;
+    const tf = parseAltText(this.params);
+    const aspect = tf.aspectRatio ? parseFloat(tf.aspectRatio) : null;
+    return estimatedBlockHeight({ widthPx: getWidthPx(tf), heightPx: getHeightPx(tf), aspectRatio: aspect });
   }
 
   toDOM(view: EditorView): HTMLElement {
-    const container = document.createElement("div");
-    container.className = "internal-embed media-embed image-embed lie-lp-embed";
-    if (this.inline) container.classList.add("lie-lp-inline");
-    container.setAttribute("contenteditable", "false");
-    container.dataset["lieSig"] = this.sig(); // lets updateDOM detect cursor-only changes
-    // Obsidian's .internal-embed sets `contain: paint` (in core CSS we can't beat
-    // on specificity), which paint-clips the toolbar to the image box — cutting it
-    // off on a small/rotated image. Inline !important is the version-proof override.
-    container.style.setProperty("contain", "none", "important");
+    const wrapper = document.createElement("div");
+    wrapper.className = this.mode === "inline" ? "lie-wrapper lie-wrapper-inline" : "lie-wrapper lie-wrapper-block";
+    wrapper.setAttribute("contenteditable", "false");
 
     const file = this.resolveFile();
-    if (!file) {
-      container.textContent = this.embed;
-      return container;
+    if (!file) { wrapper.textContent = this.embed; return wrapper; }
+
+    if (this.mode === "inline") {
+      const inlineImg = document.createElement("img");
+      inlineImg.src = this.app.vault.getResourcePath(file);
+      inlineImg.dataset["lieSrc"] = file.path;
+      wrapper.appendChild(inlineImg);
+      applyTransformToImage(inlineImg, parseAltText(this.params));
+      return wrapper;
     }
 
-    const wrapper = container.createDiv("image-wrapper");
+    const area = document.createElement("div");
+    area.className = "lie-box";
+    wrapper.appendChild(area);
 
-    // Native image rendering, reused from Obsidian's own embed creator
-    // (embedRegistry is an internal API not in the public typings).
-    const registry = (this.app as unknown as {
-      embedRegistry: {
-        getEmbedCreator(f: TFile): (
-          ctx: { app: App; containerEl: HTMLElement; sourcePath: string; displayMode: boolean; showInline: boolean; depth: number; linktext: string },
-          file: TFile,
-          subpath: string
-        ) => { loadFile?: () => void; unload?: () => void };
-      };
-    }).embedRegistry;
-    const creator = registry.getEmbedCreator(file);
-    const embed = creator(
-      { app: this.app, containerEl: wrapper, sourcePath: this.sourcePath, displayMode: true, showInline: false, depth: 0, linktext: file.path },
-      file,
-      ""
-    );
-    embed.loadFile?.();
-    (container as unknown as { _lieEmbed: unknown })._lieEmbed = embed;
+    const img = document.createElement("img");
+    img.src = this.app.vault.getResourcePath(file);
+    img.dataset["lieSrc"] = file.path;
+    area.appendChild(img);
+    applyTransformToImage(img, parseAltText(this.params));
 
-    const transform = parseAltText(this.params);
-    const finish = (): boolean => {
-      const img = wrapper.querySelector("img");
-      if (!img) return false;
-      applyTransformToImage(img, transform);
-      // The quarter-turn reflow box is handled entirely inside applyTransformToImage
-      // (renderer.ts: reserveBox retries across frames until the column is measurable
-      // AND keeps it responsive). No second retry path here — a duplicate would race it.
-      // INLINE images stop here: just the rendered image. The line-oriented chrome
-      // below (resize/toolbar/caption + the `<>` reveal) would rewrite/reveal the WHOLE
-      // line, corrupting the text the icon sits in — and doesn't fit an icon anyway.
-      if (this.inline) return true;
-      wrapper.appendChild(this.makeResizeCorner(view, container));
-      // Anchor the toolbar to the image box (wrapper), not the outer container —
-      // otherwise when the link editor is revealed above, the toolbar would sit
-      // over the editor instead of staying on the image.
-      wrapper.appendChild(this.makeToolbar(view, img as HTMLImageElement, container));
-      // Caption (opt-in): the alt text rendered as Markdown, centered BELOW the image
-      // and never wider than it (lie-has-caption stacks the embed as a column). Built
-      // here, where the <img> exists, so its width can be measured.
-      if (this.showCaptions) {
-        const caption = createCaption(this.app, captionMarkdown(this.embed), this.sourcePath, img as HTMLImageElement);
-        if (caption) {
-          container.classList.add("lie-has-caption");
-          container.appendChild(caption.el);
-          (container as unknown as { _lieCaption?: CaptionHandle })._lieCaption = caption;
-        }
+    area.appendChild(this.makeResizeCorner(view, wrapper, img));
+    area.appendChild(this.makeToolbar(view, img, wrapper));
+    if (this.showCaptions) {
+      const caption = createCaption(this.app, captionMarkdown(this.embed), this.sourcePath);
+      if (caption) {
+        area.classList.add("lie-has-caption");
+        area.appendChild(caption.el);
+        (wrapper as unknown as { _lieCaption?: CaptionHandle })._lieCaption = caption;
       }
-      return true;
-    };
-    if (!finish()) {
-      const observer = new MutationObserver(() => {
-        if (finish()) observer.disconnect();
-      });
-      observer.observe(wrapper, { childList: true, subtree: true });
-      window.setTimeout(() => observer.disconnect(), 5000);
     }
 
-    // Reveal modes (F5): ON keeps the editable raw link visible above the image;
-    // AUTO shows it together with the toolbar (on hover, via CSS); OFF hides it.
-    // The container goes full-width/left-aligned (lie-lp-revealed) so the link
-    // reads like a regular document line, not constrained to the image's width.
-    // (Inline images skip this — see above.)
-    if (!this.inline && (this.mode === "on" || this.mode === "auto")) {
-      // ON: full-width/revealed always. AUTO: shown on hover OR when the cursor is on
-      // this line (F5 — the link shows with the toolbar AND on cursor), via CSS.
-      container.classList.add(this.mode === "on" ? "lie-lp-revealed" : "lie-lp-reveal-auto");
-      if (this.mode === "auto" && this.cursorOnLine) container.classList.add("lie-lp-reveal-cursor");
-      container.prepend(this.makeLinkEditor(view, container));
-    }
+    // Click the image (not a button) → caret onto the line so the native source reveals
+    // for editing (F9 — the `{…}` is native editable text above the image).
+    area.addEventListener("mousedown", (e) => {
+      if ((e.target as HTMLElement).closest(".lie-toolbar, .image-resize-corner")) return;
+      e.preventDefault();
+      view.dispatch({ selection: { anchor: view.state.doc.lineAt(view.posAtDOM(wrapper)).from } });
+      view.focus();
+    });
 
-    return container;
+    return wrapper;
   }
 
   destroy(dom: HTMLElement): void {
-    const embed = (dom as unknown as { _lieEmbed?: { unload?: () => void } })._lieEmbed;
-    embed?.unload?.();
     (dom as unknown as { _lieCaption?: CaptionHandle })._lieCaption?.destroy();
   }
 
-  // The editing toolbar, living inside the image at the top, hover-revealed via
-  // CSS — not floating fixed on the page. The <> (edit source) button is appended
-  // at the far right (where Obsidian's native edit-block button used to sit).
-  private makeToolbar(view: EditorView, img: HTMLImageElement, container: HTMLElement): HTMLElement {
+  private makeToolbar(view: EditorView, img: HTMLImageElement, wrapper: HTMLElement): HTMLElement {
     const toolbar = buildToolbarElement(this.getActions(img));
     toolbar.classList.add("lie-toolbar-in-image");
-    // The <> reveal sits at the FAR LEFT (D2, revised), separated from the transform
-    // actions by the same divider used between the other groups.
     const sep = document.createElement("span");
     sep.className = "lie-toolbar-sep";
     toolbar.prepend(sep);
-    toolbar.prepend(this.makeEditButton(view, container));
+    toolbar.prepend(this.makeRevealButton(view, wrapper));
     return toolbar;
+  }
+
+  // `<>` — temporarily HIDE the link source for this image, independent of the global
+  // mode (F8). Toggles a transient per-line override; shown faint when hiding.
+  private makeRevealButton(view: EditorView, wrapper: HTMLElement): HTMLElement {
+    const button = document.createElement("button");
+    button.className = "lie-toolbar-btn lie-toolbar-reveal";
+    if (this.revealMode === "hidden") button.classList.add("is-off");
+    button.setAttribute("aria-label", t("revealLink"));
+    button.title = t("revealLink");
+    setIcon(button, "code-2");
+    button.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+    button.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      view.dispatch({ effects: toggleReveal.of(view.state.doc.lineAt(view.posAtDOM(wrapper)).from) });
+    });
+    return button;
   }
 
   private resolveFile(): TFile | null {
@@ -210,147 +188,34 @@ class EmbedWidget extends WidgetType {
     return this.app.metadataCache.getFirstLinkpathDest(linkpath, this.sourcePath);
   }
 
-  // The revealed link editor — shown ABOVE the image (the image stays). Rendered as
-  // borderless, full-content-width, auto-growing text (no box, no resize handle) so
-  // it reads like the surrounding document text and wraps fully. Edits write back on
-  // Enter/blur; Enter/Escape toggle the editor back off.
-  private makeLinkEditor(view: EditorView, container: HTMLElement): HTMLElement {
-    const textarea = document.createElement("textarea");
-    textarea.className = "lie-link-editor";
-    textarea.value = this.rawLine;
-    textarea.spellcheck = false;
-    textarea.rows = 1;
-    textarea.addEventListener("mousedown", (e) => e.stopPropagation());
-
-    const autoGrow = (): void => {
-      // Only meaningful while the textarea is actually displayed — when hidden
-      // (AUTO mode, not hovered) scrollHeight is 0 and would pin the height to 0,
-      // leaving it invisible even once shown on hover (Bug 1). So recompute on the
-      // events that make it visible (hover/focus), not just once at creation.
-      if (textarea.offsetParent === null) return;
-      textarea.style.height = "auto";
-      textarea.style.height = `${textarea.scrollHeight}px`;
-    };
-    textarea.addEventListener("input", autoGrow);
-    textarea.addEventListener("focus", autoGrow);
-    // In AUTO mode the editor is revealed by hovering the embed — recompute then.
-    container.addEventListener("mouseenter", autoGrow);
-
-    const commit = (): void => {
-      const line = view.state.doc.lineAt(view.posAtDOM(container));
-      if (textarea.value !== line.text) {
-        view.dispatch({ changes: { from: line.from, to: line.to, insert: textarea.value } });
-      }
-    };
-    textarea.addEventListener("blur", commit);
-    textarea.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        commit();
-        this.dispatchToggle(view, container);
-      } else if (e.key === "Escape") {
-        textarea.value = this.rawLine;
-        this.dispatchToggle(view, container);
-      }
-    });
-
-    window.setTimeout(() => {
-      autoGrow();
-      if (this.autofocus) textarea.focus();
-    }, 0);
-    return textarea;
-  }
-
-  // Our own "<>" button — a per-image TRI-state control (F5/D6). Click cycles the
-  // mode (AUTO → ON → OFF → AUTO); the current mode is shown on the button itself
-  // via colour class + tooltip (D4). Driven by our StateField (keyed on the line
-  // position), independent of the editor cursor.
-  private makeEditButton(view: EditorView, container: HTMLElement): HTMLElement {
-    const button = document.createElement("button");
-    button.className = `lie-toolbar-btn lie-toolbar-edit lie-reveal-${this.mode}`;
-    const modeLabel = t(REVEAL_LABEL[this.mode]);
-    button.setAttribute("aria-label", `${t("revealLink")} — ${modeLabel}`);
-    button.title = `${t("revealLink")} — ${modeLabel}`;
-    setIcon(button, "code-2");
-    // A small mode badge (A/●/○) on top of the icon so the state reads at a glance
-    // even without colour (D4).
-    const badge = document.createElement("span");
-    badge.className = "lie-reveal-badge";
-    badge.textContent = REVEAL_BADGE[this.mode];
-    button.appendChild(badge);
-    button.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.dispatchToggle(view, container);
-    });
-    return button;
-  }
-
-  private dispatchToggle(view: EditorView, container: HTMLElement): void {
-    const lineStart = view.state.doc.lineAt(view.posAtDOM(container)).from;
-    view.dispatch({ effects: toggleReveal.of(lineStart) });
-  }
-
-  // The resize handle — drag writes the new width into the portable {…} block.
-  private makeResizeCorner(view: EditorView, container: HTMLElement): HTMLElement {
+  private makeResizeCorner(view: EditorView, wrapper: HTMLElement, img: HTMLImageElement): HTMLElement {
     const corner = document.createElement("div");
     corner.className = "image-resize-corner";
     corner.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const img = container.querySelector("img");
-      if (!img) return;
-      // For a rotated image the visible box is the .lie-rotate-box, not the img
-      // (which is absolutely positioned inside it); scale that box live. The width
-      // we drag is the bounding-box width, which is exactly what writeWidth stores.
-      const box = img.closest<HTMLElement>(".lie-rotate-box");
-      const target = box ?? img;
+      const box = img.closest<HTMLElement>(".lie-image-area") ?? img;
       const startX = e.clientX;
-      const startWidth = target.getBoundingClientRect().width;
+      const startWidth = box.getBoundingClientRect().width;
       const widthAt = (ev: PointerEvent) => Math.max(40, Math.round(startWidth + (ev.clientX - startX)));
-      const onMove = (ev: PointerEvent) => {
-        const w = widthAt(ev);
-        if (box) {
-          box.style.transformOrigin = "top left";
-          box.style.transform = `scale(${w / startWidth})`;
-        } else {
-          img.style.width = `${w}px`;
-        }
-      };
+      const onMove = (ev: PointerEvent) => { box.style.width = `${widthAt(ev)}px`; };
       const onUp = (ev: PointerEvent) => {
         document.removeEventListener("pointermove", onMove);
         document.removeEventListener("pointerup", onUp);
-        this.writeWidth(view, container, widthAt(ev));
+        const line = view.state.doc.lineAt(view.posAtDOM(wrapper));
+        const replacement = rewriteWidth(line.text, widthAt(ev));
+        if (replacement === null) return;
+        view.dispatch({ changes: { from: line.from, to: line.to, insert: replacement } });
       };
       document.addEventListener("pointermove", onMove);
       document.addEventListener("pointerup", onUp);
     });
     return corner;
   }
-
-  private writeWidth(view: EditorView, container: HTMLElement, width: number): void {
-    const pos = view.posAtDOM(container);
-    const line = view.state.doc.lineAt(pos);
-    const replacement = rewriteWidth(line.text, width);
-    if (replacement === null) return;
-    view.dispatch({ changes: { from: line.from, to: line.to, insert: replacement } });
-  }
 }
 
-/**
- * Live-preview extension. A StateField (required for block decorations) replaces
- * each `![…](…){…}` line with one widget that wraps Obsidian's native image embed
- * plus the live-preview chrome, so the {…} is part of the same unit. The active
- * line / source mode instead get marks so the {…} is highlighted as link syntax.
- * Register with Prec.highest to override Obsidian's own embed widget.
- */
-// One field value: the set of line-start positions whose link source is currently
-// revealed (toggled by <>), plus the decorations derived from it. Kept in a SINGLE
-// field — a second field read cross-field in update() can hit "Field is not present
-// in this state" depending on registration order, which crashes plugin load.
 interface LivePreviewState {
-  // Per-line reveal mode keyed on line-start position; absent ⇒ AUTO (the default).
-  modes: Map<number, RevealMode>;
+  hidden: Set<number>; // line-start positions whose link is temporarily `<>`-hidden
   decorations: DecorationSet;
 }
 
@@ -358,63 +223,62 @@ export function createLivePreviewExtension(
   app: App,
   getSourcePath: () => string,
   getActions: (img: HTMLImageElement) => ToolbarItem[],
-  getShowCaptions: () => boolean
+  getShowCaptions: () => boolean,
+  getAlwaysShow: () => boolean
 ) {
+  const modeFor = (lineFrom: number, hidden: Set<number>): RevealMode =>
+    hidden.has(lineFrom) ? "hidden" : (getAlwaysShow() ? "always" : "auto");
+
   const build = (
     state: import("@codemirror/state").EditorState,
-    modes: Map<number, RevealMode>,
-    pendingFocus: number | null
+    hidden: Set<number>
   ): DecorationSet => {
     const builder = new RangeSetBuilder<Decoration>();
     const isLivePreview = state.field(editorLivePreviewField);
     const sourcePath = getSourcePath();
     const showCaptions = getShowCaptions();
-    // The line the cursor is on — its image's AUTO reveal is shown (F5: cursor, not
-    // just hover). Any selection touching the line counts.
-    const cursorLineFrom = state.doc.lineAt(state.selection.main.head).from;
+    const head = state.selection.main.head;
 
     for (let i = 1; i <= state.doc.lines; i++) {
       const line = state.doc.line(i);
       for (const d of lineDecorations(line.text, line.from, isLivePreview)) {
         if (d.kind === "widget") {
+          const mode = modeFor(d.from, hidden);
+          const m = EMBED_LINE.exec(line.text);
+          const embedEnd = d.from + (m?.[1]?.length ?? 0) + d.embed.length;
+          // The reveal is FULLY DECLARATIVE in CSS (AD5/R0) — no JS cursor logic at all. The
+          // fake link + {…} ride on Obsidian's own active-line class `.cm-active` and the mode
+          // class; the fake additionally YIELDS to Obsidian's native source-reveal purely in
+          // CSS: when the cursor enters the embed, Obsidian renders the source's syntax tokens
+          // as the line's direct children (`.cm-line:has(> .cm-formatting)`) and the fake hides.
+          // Slaved to that one DOM state, the fake and the native source are never both present
+          // — no transient double, no off-by-one boundary gap — and the fake is always in the
+          // DOM (only CSS-hidden), so there is no widget-creation lag on reveal.
+          // (1) The fake link (the swallowed embed source).
+          builder.add(d.from, d.from, Decoration.widget({ widget: new FakeLinkWidget(d.embed, mode), side: -1 }));
+          // (2) The {…} block — NATIVE editable text, marked; CSS shows it per mode (F3).
+          if (m && m[3]) {
+            builder.add(embedEnd, embedEnd + m[3].length, Decoration.mark({ class: `lie-attr lie-rev-${mode}` }));
+          }
+          // (3) The transformed image overlay BELOW the line (so the reveal is above it).
           builder.add(
-            d.from,
-            d.to,
-            Decoration.replace({
-              widget: new EmbedWidget(
-                app,
-                d.embed,
-                d.params,
-                sourcePath,
-                getActions,
-                modes.get(d.from) ?? "auto",
-                line.text,
-                d.from === pendingFocus,
-                d.from === cursorLineFrom,
-                showCaptions
-              ),
-              block: true,
+            d.to, d.to,
+            Decoration.widget({
+              widget: new EmbedWidget(app, d.embed, d.params, sourcePath, getActions, "block", mode, showCaptions),
+              block: true, side: 1,
             })
           );
         } else {
           builder.add(d.from, d.to, Decoration.mark({ class: d.class }));
         }
       }
-      // Images embedded mid-text (e.g. an lie-inline icon): replace each with an inline
-      // widget so it renders at our size/inline instead of Obsidian's full-size native
-      // image (with the {…} as text). Reveal the raw text when the cursor is inside the
-      // embed, so it stays editable.
       if (isLivePreview) {
-        const head = state.selection.main.head;
         for (const ie of inlineEmbeds(line.text, line.from)) {
           if (head >= ie.from && head <= ie.to) continue;
           builder.add(
-            ie.from,
-            ie.to,
-            // Same EmbedWidget, inline mode (last arg) → shared image rendering, no
-            // line-oriented chrome. Inline replace (block omitted) keeps it in the text.
+            ie.from, ie.to,
             Decoration.replace({
-              widget: new EmbedWidget(app, ie.embed, ie.params, sourcePath, getActions, "auto", line.text, false, false, false, true),
+              widget: new EmbedWidget(app, ie.embed, ie.params, sourcePath, getActions, "inline", "auto", false),
             })
           );
         }
@@ -423,58 +287,36 @@ export function createLivePreviewExtension(
     return builder.finish();
   };
 
-  // Apply doc edits (remap mode positions) and <> clicks (cycle the mode) to the
-  // mode map. Returns the same map reference when nothing changed.
-  const nextModes = (
-    cur: Map<number, RevealMode>,
+  const nextHidden = (
+    cur: Set<number>,
     tr: import("@codemirror/state").Transaction
-  ): Map<number, RevealMode> => {
+  ): Set<number> => {
     let next = cur;
     if (tr.docChanged) {
-      next = new Map();
-      for (const [pos, mode] of cur) next.set(tr.changes.mapPos(pos, 1), mode);
+      next = new Set();
+      for (const pos of cur) next.add(tr.changes.mapPos(pos, 1));
     }
     for (const e of tr.effects) {
       if (e.is(toggleReveal)) {
-        if (next === cur) next = new Map(next);
-        const cycled = cycleRevealMode(next.get(e.value) ?? "auto");
-        if (cycled === "auto") next.delete(e.value);
-        else next.set(e.value, cycled);
+        if (next === cur) next = new Set(next);
+        if (next.has(e.value)) next.delete(e.value); else next.add(e.value);
       }
     }
     return next;
   };
 
-  // Which line (if any) this transaction freshly switched to ON — only then does
-  // the editor autofocus, so committing/re-rendering doesn't yank focus back when
-  // you click away, and AUTO (hover-shown) never steals focus.
-  const freshlyOn = (
-    tr: import("@codemirror/state").Transaction,
-    modes: Map<number, RevealMode>
-  ): number | null => {
-    for (const e of tr.effects) {
-      if (e.is(toggleReveal) && modes.get(e.value) === "on") return e.value;
-    }
-    return null;
-  };
-
   return StateField.define<LivePreviewState>({
     create(state) {
-      const modes = new Map<number, RevealMode>();
-      return { modes, decorations: build(state, modes, null) };
+      const hidden = new Set<number>();
+      return { hidden, decorations: build(state, hidden) };
     },
     update(value, tr) {
-      const modes = nextModes(value.modes, tr);
+      const hidden = nextHidden(value.hidden, tr);
       const modeChanged =
         tr.startState.field(editorLivePreviewField) !== tr.state.field(editorLivePreviewField);
-      // An external refresh (the show-captions setting toggled) forces a rebuild even
-      // when the document and selection are unchanged.
       const refresh = tr.effects.some((e) => e.is(refreshDecorations));
-      // Rebuild on edits, live-preview ↔ source mode toggles, selection changes
-      // (T-L2 — eq() keeps the DOM stable so this doesn't flicker the embed),
-      // reveal-mode changes, and external refreshes.
-      if (tr.docChanged || tr.selection || modeChanged || modes !== value.modes || refresh) {
-        return { modes, decorations: build(tr.state, modes, freshlyOn(tr, modes)) };
+      if (tr.docChanged || tr.selection || modeChanged || hidden !== value.hidden || refresh) {
+        return { hidden, decorations: build(tr.state, hidden) };
       }
       return value;
     },

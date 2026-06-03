@@ -1,56 +1,55 @@
 const PREFIX = "lie";
 
-// Max-width (px) for the preset size classes. Single source of truth, shared with the
-// renderer: the injected CSS caps a non-boxed (plain reading-view) image, and
-// reserveBox reads the same value to cap a boxed image's JS sizing (R0 — the box owns
-// the size, so the size class can't just set the img's max-width).
-export const SIZE_CLASS_MAX: Record<string, number> = {
-  [`${PREFIX}-small`]: 200,
-  [`${PREFIX}-medium`]: 400,
-  [`${PREFIX}-large`]: 800,
-};
+export interface PresetWidths {
+  small: number;
+  medium: number;
+  large: number;
+}
+
+export const DEFAULT_PRESET_WIDTHS: PresetWidths = { small: 200, medium: 400, large: 800 };
 
 interface InternalClass {
   name: string;
   css: string;
-  enabled: boolean;
 }
 
-const DEFAULT_CLASSES: Omit<InternalClass, "enabled">[] = [
-  { name: "small", css: `img.${PREFIX}-small { max-width: 200px; height: auto; }` },
-  { name: "medium", css: `img.${PREFIX}-medium { max-width: 400px; height: auto; }` },
-  { name: "large", css: `img.${PREFIX}-large { max-width: 800px; height: auto; }` },
-  // Alignment must act on the block that participates in document flow. For a
-  // plain reading-view image that's the img itself; inside our live-preview widget
-  // (and reading-view embeds) the img sits in a flex container, so float/auto-margin
-  // on the img is ignored — we target the embed container via :has() (Bug 11).
-  { name: "left", css: `img.${PREFIX}-left { float: left; margin: 0 1em 0.5em 0; }
-.lie-lp-embed:has(.${PREFIX}-left), .image-embed:has(img.${PREFIX}-left) { float: left !important; clear: none; display: inline-block !important; width: max-content; margin: 0 1em 0.5em 0; }` },
-  { name: "right", css: `img.${PREFIX}-right { float: right; margin: 0 0 0.5em 1em; }
-.lie-lp-embed:has(.${PREFIX}-right), .image-embed:has(img.${PREFIX}-right) { float: right !important; clear: none; display: inline-block !important; width: max-content; margin: 0 0 0.5em 1em; }` },
-  // Centre via text-align on a FULL-WIDTH block embed (centres the inline-block image
-  // box inside), NOT margin:auto on a shrink-wrapped embed: Obsidian forces
-  // `.markdown-source-view.mod-cm6 .cm-content > * { margin: 0 !important }` on every
-  // top-level editor block (higher specificity + !important), which beats our
-  // margin:auto — so the image only looked centred after a hover/reflow. width:100% is
-  // needed because Obsidian's native `div.image-embed { width: fit-content }` would
-  // otherwise shrink-wrap the embed, leaving text-align nothing to centre. (Plain
-  // reading-view imgs aren't a cm-content child, so they still centre via margin:auto.)
-  { name: "center", css: `img.${PREFIX}-center { display: block; margin-left: auto; margin-right: auto; }
-.lie-lp-embed:has(.${PREFIX}-center), .image-embed:has(img.${PREFIX}-center) { float: none !important; display: block !important; width: 100%; text-align: center; }` },
-  { name: "inline", css: `img.${PREFIX}-inline { display: inline; vertical-align: middle; }` },
-  { name: "rounded", css: `img.${PREFIX}-rounded { border-radius: 8px; }` },
-  { name: "shadow", css: `img.${PREFIX}-shadow { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }` },
-  { name: "border", css: `img.${PREFIX}-border { border: 1px solid var(--background-modifier-border); }` },
-  { name: "circle", css: `img.${PREFIX}-circle { border-radius: 50%; object-fit: cover; }` },
+// Built-in, toggleable classes (F15): alignment + inline ONLY. Decoration (rounded /
+// shadow / border / circle) ships as INSTALLABLE snippets (F16), not injected here.
+// Alignment must act on the flow participant — the LP overlay `.lie-wrapper` or the
+// reading-view `.image-embed` — via `:has()`, never the img or the box (Bug 11/20).
+const ALIGN_HOSTS = ".lie-wrapper:has(img.lie-PREFIX), .image-embed:has(img.lie-PREFIX)";
+const host = (cls: string): string => ALIGN_HOSTS.replace(/PREFIX/g, cls);
+
+const DEFAULT_CLASSES: InternalClass[] = [
+  {
+    name: "left",
+    css: `${host("left")} { float: left; clear: none; margin: 0 1em 0.5em 0; }`,
+  },
+  {
+    name: "right",
+    css: `${host("right")} { float: right; clear: none; margin: 0 0 0.5em 1em; }`,
+  },
+  {
+    // Centre via text-align on a FULL-WIDTH block host (centres the inline-block box
+    // inside) — not margin:auto, which Obsidian's `.cm-content > * { margin:0
+    // !important }` beats (Bug 20).
+    name: "center",
+    css: `${host("center")} { float: none; display: block; width: 100%; text-align: center; }`,
+  },
+  {
+    name: "inline",
+    css: `img.${PREFIX}-inline { display: inline; vertical-align: middle; }`,
+  },
 ];
 
 export class StylesInjector {
   private styleEl: HTMLStyleElement | null = null;
-  private disabledClasses: Set<string> = new Set();
+  private disabledClasses = new Set<string>();
+  private presetWidths: PresetWidths = DEFAULT_PRESET_WIDTHS;
 
-  inject(disabled: string[]): void {
+  inject(disabled: string[], presetWidths: PresetWidths = DEFAULT_PRESET_WIDTHS): void {
     this.disabledClasses = new Set(disabled);
+    this.presetWidths = presetWidths;
     this.update();
   }
 
@@ -66,12 +65,18 @@ export class StylesInjector {
       document.head.appendChild(this.styleEl);
     }
 
-    const css = DEFAULT_CLASSES
+    const presetVars = `body {
+  --${PREFIX}-size-small: ${this.presetWidths.small}px;
+  --${PREFIX}-size-medium: ${this.presetWidths.medium}px;
+  --${PREFIX}-size-large: ${this.presetWidths.large}px;
+}`;
+
+    const classCss = DEFAULT_CLASSES
       .filter((c) => !this.disabledClasses.has(c.name))
       .map((c) => c.css)
       .join("\n");
 
-    this.styleEl.textContent = css;
+    this.styleEl.textContent = `${presetVars}\n${classCss}`;
   }
 
   getClassNames(): string[] {

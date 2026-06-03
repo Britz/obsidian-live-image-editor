@@ -37,7 +37,7 @@ labore et dolore magnam aliquam quaerat voluptatem.
 **Should:** the image is a **centered block** on its own line (equal margins left and
 right); text sits above and below, not beside it.
 
-![](images/sample-landscape.png){.lie-center style="width: 320px;"}
+![](images/sample-landscape.png){.lie-img .lie-center style="width: 320px"}
 
 At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium
 voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint
@@ -73,7 +73,7 @@ rerum facilis est et expedita distinctio.
 wrapping down its **left** side. The rotated bounding box (not the pre-rotation width)
 is what the text flows around; no overflow, no clipped band.
 
-![](images/sample-landscape.png){.lie-right .lie-img style="--lie-rotate: 90deg; width: 200px;"}
+![](images/sample-landscape.png){.lie-right .lie-img style="transform: rotate(90deg); width: 200px"}
 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
 incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud
 exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure
@@ -87,7 +87,7 @@ venenatis nec. Maecenas eget condimentum velit, sit amet feugiat lectus.
 **Should:** the **cropped** image floats **right**, text wraps down its **left** side;
 the cut is sharp (no overflow past the crop edges) even while floated and wrapped.
 
-![](images/sample-square.png){.lie-right .lie-img style="--lie-crop: 150 250 700 500 0 1; width: 220px;"}
+![](images/sample-square.png){.lie-right .lie-img style="width: 220px; height: 220px; transform: translate(-50%, -50%) scale(2)"}
 Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque
 laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi
 architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas

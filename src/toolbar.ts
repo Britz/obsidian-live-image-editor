@@ -36,6 +36,9 @@ function makeButton(btn: ToolbarButton): HTMLButtonElement {
   el.setAttribute("aria-label", t(btn.titleKey));
   el.title = t(btn.titleKey);
   setIcon(el, btn.icon);
+  // Don't steal focus from the editor on press — so Obsidian's native undo (Ctrl+Z)
+  // still targets the document the action edits.
+  el.addEventListener("mousedown", (e) => e.preventDefault());
   el.addEventListener("click", (e) => {
     e.stopPropagation();
     e.preventDefault();
@@ -92,6 +95,7 @@ function makeGroupTrigger(group: ToolbarGroup): HTMLButtonElement {
   el.setAttribute("aria-label", t(group.titleKey));
   el.title = t(group.titleKey);
   setIcon(el, group.icon);
+  el.addEventListener("mousedown", (e) => e.preventDefault()); // keep editor focus (undo)
   el.addEventListener("click", (e) => {
     e.stopPropagation();
     e.preventDefault();
@@ -101,12 +105,12 @@ function makeGroupTrigger(group: ToolbarGroup): HTMLButtonElement {
 }
 
 /**
- * Build the toolbar from the grouped model as a row of NON-BREAKING clusters
- * separated by dividers. "always" groups render as a single submenu trigger
- * (Layout); "auto" groups render expanded; consecutive standalone buttons share a
- * cluster. The toolbar is `flex-wrap: wrap`, so when there isn't enough horizontal
- * space it wraps to multiple rows AT THE DIVIDERS (each cluster stays intact) —
- * mobile-friendly (D3, revised: wrap at dividers, no fold-to-submenu).
+ * Build the toolbar from the grouped model (D2). A group renders BOTH an expanded
+ * cluster and a fold-to-submenu trigger in one slot; standalone buttons share a
+ * cluster. Clusters are joined by dividers. When the bar runs out of horizontal
+ * space, `reflowToolbar` first FOLDS groups to their submenu trigger (Layout before
+ * Edit) — and only if it still doesn't fit does the `flex-wrap` wrap it AT THE
+ * DIVIDERS (Bug 5: fold first, then wrap). An "always" group starts folded.
  */
 export function buildToolbarElement(items: ToolbarItem[]): HTMLElement {
   const toolbar = document.createElement("div");
@@ -123,22 +127,22 @@ export function buildToolbarElement(items: ToolbarItem[]): HTMLElement {
       continue;
     }
     flushRun();
-    if (item.collapse === "always") {
-      const c = document.createElement("span");
-      c.className = "lie-toolbar-cluster";
-      c.appendChild(makeGroupTrigger(item));
-      clusters.push(c);
-    } else {
-      const expanded = document.createElement("span");
-      expanded.classList.add("lie-toolbar-cluster", "lie-toolbar-group");
-      expanded.dataset["lieGroup"] = item.id;
-      for (const btn of item.buttons) expanded.appendChild(makeButton(btn));
-      clusters.push(expanded);
-    }
+    const slot = document.createElement("span");
+    slot.classList.add("lie-toolbar-cluster", "lie-toolbar-group-slot");
+    slot.dataset["lieGroup"] = item.id;
+    // Fold priority: "always" groups fold first (highest), then the rest by document
+    // order — so Layout (later) folds before Edit when both are "auto".
+    slot.dataset["lieFold"] = String(item.collapse === "always" ? 100 : clusters.length);
+    const expanded = document.createElement("span");
+    expanded.className = "lie-toolbar-group";
+    for (const btn of item.buttons) expanded.appendChild(makeButton(btn));
+    slot.appendChild(expanded);
+    slot.appendChild(makeGroupTrigger(item));
+    if (item.collapse === "always") slot.classList.add("is-folded");
+    clusters.push(slot);
   }
   flushRun();
 
-  // Join clusters with dividers (a divider before every cluster but the first).
   clusters.forEach((cluster, i) => {
     if (i > 0) {
       const sep = document.createElement("span");
@@ -148,7 +152,41 @@ export function buildToolbarElement(items: ToolbarItem[]): HTMLElement {
     toolbar.appendChild(cluster);
   });
 
+  // Reflow on AVAILABLE-width changes — observe the positioned ancestor (the image
+  // area / the viewport), NOT the toolbar itself: folding changes the toolbar's own
+  // size and would feed back into a loop. The ancestor's width only changes when the
+  // image/window resizes.
+  window.setTimeout(() => {
+    if (!toolbar.isConnected) return;
+    reflowToolbar(toolbar);
+    const host = toolbar.offsetParent as HTMLElement | null;
+    if (host) new ResizeObserver(() => reflowToolbar(toolbar)).observe(host);
+  }, 0);
   return toolbar;
+}
+
+// Fold groups to their submenu trigger (lowest fold-priority first) while the toolbar
+// would wrap to more than one row; expand them again when there is room. Pure DOM
+// toggling — the only thing that needs a measurement, since divider-wrapping alone
+// can't decide WHEN to fold (Bug 5).
+export function reflowToolbar(toolbar: HTMLElement): void {
+  const slots = Array.from(toolbar.querySelectorAll<HTMLElement>(".lie-toolbar-group-slot"))
+    .filter((s) => s.dataset["lieFold"] !== "100"); // "always" groups stay folded
+  // Highest fold-priority folds first.
+  const byFoldFirst = [...slots].sort((a, b) => Number(b.dataset["lieFold"]) - Number(a.dataset["lieFold"]));
+  const rowH = 40; // a single toolbar row (button 28 + padding)
+  const wraps = (): boolean => toolbar.offsetHeight > rowH;
+
+  // Start fully expanded + inside the image, then fold as needed.
+  toolbar.classList.remove("lie-toolbar-above");
+  for (const s of byFoldFirst) s.classList.remove("is-folded");
+  for (const s of byFoldFirst) {
+    if (!wraps()) break;
+    s.classList.add("is-folded");
+  }
+  // D1.1 — if even fully folded it still wraps (doesn't fit one row in the image),
+  // the image is too small to hold the bar: place it ABOVE the image instead.
+  if (wraps()) toolbar.classList.add("lie-toolbar-above");
 }
 
 export class ImageToolbar {

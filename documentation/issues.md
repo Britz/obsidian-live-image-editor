@@ -102,13 +102,94 @@ the `display:contents` "normal" special case).
 
 ---
 
-## 3. Open / residual
+## 3. The rework — landed (2026-06-03) + new learnings
+
+The code now implements the **new model** the artifacts describe (native-CSS storage, declarative
+box→image sizing, the LP overlay, pure-CSS caption, install/reset snippets, preset-width vars). The
+"old model" caveat in `open-items.md` §7 is resolved. CDP-verified in the running app
+(Obsidian 1.12.7) on `examples/lie-verify.md`:
+
+- **Declarative geometry holds (AD3/AD6).** normal `300px` → box `300×200`; `rotate(90deg)` of a
+  1.5-ratio landscape → box `200×300`, img `150% / 66.67%`, `--lie-auto-aspect: 0.667`; flip → box
+  `120×180`. All from the **intrinsic ratio**, applied to the DOM, **no measure-then-resize loop**.
+- **Crop is native + clipped.** `width/height` = the cut frame (`250×250`), `overflow:hidden`, img
+  `width:100%; height:auto; transform-origin:top left` + `translate()/scale()`.
+- **LP overlay + native edit work** (see L11 below).
+
+New hard-won learnings from the rework:
+
+- **L11 — The live-preview adapter must NEVER replace the line; it OVERLAYS (AD5).** *Cause
+  (the user's hard rule, validated over a long test session):* the only way to get native
+  editable/selectable/copyable source text is to **let Obsidian render its own embed and merely
+  suppress it** — a `Decoration.replace` (even of a non-active line) kills the native source, and a
+  plugin-owned editable field reintroduces the caret seam. *Fix:* a **block widget** (`side: 1`,
+  AFTER the line so the native source reveals ABOVE it and the overlay follows down) draws the
+  plugin's own transformed image; CSS suppresses the native image AND the native edit-block-button
+  (`.cm-content .internal-embed.image-embed > img, > .image-wrapper, > .edit-block-button`) — the
+  markdown `<img>` is a **direct child** (no `.image-wrapper`), the wikilink wraps it; the
+  edit-block-button is a `<>` code-2 icon that otherwise **leaks** (Bug 12). The `{…}` block is a
+  `Decoration.mark` hidden by `.cm-line:not(.cm-active) .lie-attr-hidden` (F3) and shown on the
+  active line (F9). The reveal-for-looking is a display-only `.lie-fake-link` (toggle/default/hover).
+  *(CDP-confirmed via screenshots: native image suppressed, no duplicate, reveal toggles, edit
+  reveals the `{…}` above the image.)*
+- **L11b — Obsidian keeps an image EMBED rendered even on the active line; only the trailing
+  `{…}`/alt become editable text** (CDP-verified, both markdown and wikilink). So native editing
+  covers the **transform block** (the plugin's data — what matters), not the `![…]`/`![[…]]` link
+  itself, which stays a (suppressed) embed. This is Obsidian's behaviour, embraced as required.
+- **L12 — `container-type: size` on the box works, but collapses to 0×0 when the box's pane is
+  `display:none`.** Reading-view boxes measured 0×0 while the editor pane was the hidden one; in
+  the visible pane they size correctly. Not a bug — just a measurement caveat (measure in the
+  visible pane).
+- **Dev-process — reading view does not render headless.** Obsidian's reading-view renderer is
+  visibility-driven (it renders sections as they become visible); a backgrounded/headless window
+  (CDP from the container) leaves `.markdown-preview-sizer` empty. Verify the reading-view path in
+  a **focused** window, or rely on the shared `applyTransformToImage` (verified via live preview).
+
+## 3a. Post-rework bug-fix round (2026-06-03, CDP+screenshot-verified)
+
+A user test pass found 29 issues in the first rework; fixed and **visually verified** via the new
+`scripts/obsidian-screenshot.mjs` (CDP `Page.captureScreenshot`):
+
+- **Reveal/edit model corrected to the true AD5 overlay** (L11) — was briefly mis-built as a
+  block-replace + plugin textarea (reverted). Verified: reveal toggles (Bug 1), reveal/edit ABOVE
+  the image (Bug 2/9), no native `<>` leak (Bug 12), no duplicate image.
+- **Reset no longer whites-out the window** — `classList.add("")` on an empty class token threw in
+  the CM update cycle; guarded (Bug 7).
+- **Rotate centred** via `translate(-50%,-50%)` prepend (a >100%-wide rotated img left-aligned
+  under `margin:auto`) (Bug 6).
+- **Snippet "png"** came from `img.png` in a CSS *comment* — strip comments + filter file
+  extensions (Bug 13).
+- **Captions** below the image, centred, width-limited, Markdown-rendered — pure CSS on a
+  shrink-wrapping `.lie-box` host (Bug 27/28).
+- **Toolbar** anchored to the image top via `.lie-box` (Bug 4); **fold-then-wrap** (D2
+  revised): a measured reflow folds groups to a submenu trigger (Layout→Edit) and only then lets
+  `flex-wrap` wrap at the dividers — verified at 700/300/150px (Bug 5).
+- **Crop** rebuilt: the FRAME is the fixed output (size = the box, aspect = the presets); the
+  handles SCALE the inner image toward the frame centre (Bug 17); the committed result equals the
+  framed region (Bug 19, screenshot-verified); the crop overlay is exempt from the dismiss handler
+  so it no longer closes on a click/drag-release (Bug 18/24).
+- Filter panel gained the shared per-panel **reset** (Bug 22/23); **temperature** removed (Bug 15);
+  size "Original"/cleared field no longer collapses the box (Bug 20); resize handle CSS (Bug 16);
+  the three demo notes migrated to native syntax (Bug 26).
+
+**Still OPEN (honest):**
+- **Bug 25** — rotating/flipping an ALREADY-cropped image via the toolbar drifts out of frame: the
+  crop renders with a top-left origin, so a composed rotate/flip doesn't pivot about the frame
+  centre. Needs a centre-origin composition (or baking the rotation into the crop params) — a
+  focused follow-up, NOT rushed.
+- Reading-view render is visibility-driven and doesn't render headless, so captions/float/inline
+  there were verified only in **live preview** (shared code) — needs a focused-window pass.
+
+## 4. Open / residual
 
 - **Display-mode residual.** The uniform box computes to `display:block` on a plain page vs
   `inline-block` where an alignment class is present — harmless given the explicit px width, but a
   residual special case worth tidying under AD3. (OPEN, minor.)
-- **Re-verification pending.** A few behaviour items (captions, the native save dialog) await
-  CDP/manual re-verification after an Obsidian reload. (OPEN, verification only.)
-- **Design rebuild caveat.** The biggest "issue" is not a bug: the code is still the *old* model
-  while the artifacts describe the new one — see `open-items.md` §7. New bugs from that rebuild land
-  here.
+- **Reading-view + interactive UI re-verification (focused window).** The reading-view live render,
+  captions on a real captioned image, and the interactive panels (crop / filter / size) + the
+  native save dialog (F13, not CDP-reachable) await a **focused-window / manual** pass. The pure
+  logic each depends on is unit-tested; the wiring/visuals need eyes on a real window. (OPEN,
+  verification only.)
+- **Crop responsiveness (VERIFY, `open-items.md` §3).** Box-relative `translate%` + `width:100%`
+  img should rescale a crop with the column; structurally correct, not yet measured under a
+  narrowing column.

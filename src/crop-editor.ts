@@ -1,119 +1,122 @@
-import { CropData } from "./transforms";
-import { snapAngle, snapScale, snapTranslate, toCropData } from "./crop-editor-logic";
+import { ImageTransform, getRotation, isCrop } from "./transforms";
+import { snapAngle, snapScale, snapTranslate, toCropResult, CropResult } from "./crop-editor-logic";
+import { BOX_CLASS } from "./renderer";
 import { AnchoredSubmenu } from "./anchored-submenu";
 import { t } from "./i18n";
 
-interface Point {
-  x: number;
-  y: number;
-}
+interface Point { x: number; y: number; }
 
 type AspectRatio = "free" | "16:9" | "4:3" | "1:1";
 
 const ASPECT_RATIOS: Record<AspectRatio, number | null> = {
-  "free": null,
-  "16:9": 16 / 9,
-  "4:3": 4 / 3,
-  "1:1": 1,
+  "free": null, "16:9": 16 / 9, "4:3": 4 / 3, "1:1": 1,
 };
 
+// Parse the stored crop transform back into the editor's display-space state.
+function parsePlacement(s?: string): { tx: number; ty: number; rotate: number; scale: number } {
+  const out = { tx: 0, ty: 0, rotate: 0, scale: 1 };
+  if (!s) return out;
+  const re = /([a-zA-Z][\w-]*)\(([^)]*)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    const args = (m[2] ?? "").split(",").map((a) => a.trim());
+    if (m[1] === "translate") { out.tx = parseFloat(args[0] ?? "") || 0; out.ty = parseFloat(args[1] ?? "") || 0; }
+    else if (m[1] === "rotate") out.rotate = parseFloat(args[0] ?? "") || 0;
+    else if (m[1] === "scale") out.scale = parseFloat(args[0] ?? "") || 1;
+  }
+  return out;
+}
+
 /**
- * In-place crop editor (D11): the crop UI overlays the image at its exact current
- * position/size — no jump, no centered modal, no full-page dialog. The original
- * shows under a resizable frame (semi-transparent outside, full opacity inside);
- * it can be dragged, rotated, scaled and the frame resized, all snapping live to
- * whole pixels / 0.1° (F7). The aspect presets + confirm/cancel live in the shared
- * anchored sub-menu under the toolbar (D8/D10/T9), which greys the toolbar.
+ * In-place crop editor (D8). The FRAME is the fixed output (the wrapper/box; its size
+ * comes from the normal resize handle, its aspect from the presets) — it does NOT
+ * resize via the handles. Instead you position the SOURCE IMAGE behind it: drag = pan,
+ * wheel / corner-handle drag = scale (toward the frame centre), the rotate handle =
+ * rotate (Bug 17). What the frame shows IS the committed result (Bug 19): the editor's
+ * source image and the render share the box-width baseline + top-left convention. Snaps
+ * live to whole pixels / 0.1° (F12). Aspect presets + confirm/cancel live in the shared
+ * anchored sub-menu (D6/D8).
  */
 export class CropEditor {
   private overlay: HTMLElement | null = null;
   private controls: AnchoredSubmenu | null = null;
   private img: HTMLImageElement;
-  private onConfirm: (crop: CropData) => void;
+  private onConfirm: (crop: CropResult) => void;
   private onCancel: () => void;
+  private intrinsicRatio: number;
 
   private imgTranslate: Point = { x: 0, y: 0 };
   private imgScale = 1;
   private imgRotation = 0;
 
-  private frameWidth = 0;
-  private frameHeight = 0;
+  // The fixed output frame (the box). frameW is the box-width baseline the render uses
+  // for the inner image's `width: 100%`, so editor and result agree.
+  private frameW = 0;
+  private frameH = 0;
   private aspectRatio: AspectRatio = "free";
-  private hasExistingCrop: boolean;
-  // "No crop" baseline captured on open(), for the per-panel Reset.
-  private initFrameW = 0;
-  private initFrameH = 0;
+
+  // The "no crop" baseline captured on open, for the per-panel Reset.
   private initScale = 1;
+  private initTranslate: Point = { x: 0, y: 0 };
+  private initFrameH = 0;
 
   private isDraggingImage = false;
-  private isResizingFrame = false;
-  private resizeHandle = "";
+  private isScaling = false;
+  private isRotating = false;
   private dragStart: Point = { x: 0, y: 0 };
   private dragStartTranslate: Point = { x: 0, y: 0 };
-  private dragStartSize = { w: 0, h: 0 };
+  private scaleStart = 1;
+  private scaleStartDist = 1;
 
   constructor(
     img: HTMLImageElement,
-    existingCrop: CropData | undefined,
-    onConfirm: (crop: CropData) => void,
+    existing: ImageTransform,
+    onConfirm: (crop: CropResult) => void,
     onCancel: () => void
   ) {
     this.img = img;
     this.onConfirm = onConfirm;
     this.onCancel = onCancel;
-    this.hasExistingCrop = !!existingCrop;
+    this.intrinsicRatio = (img.naturalWidth || 1) / (img.naturalHeight || 1);
 
-    if (existingCrop) {
-      this.imgTranslate = { x: -existingCrop.x, y: -existingCrop.y };
-      this.imgRotation = existingCrop.rotate;
-      this.imgScale = existingCrop.scale;
-      this.frameWidth = existingCrop.w;
-      this.frameHeight = existingCrop.h;
+    const box = img.closest<HTMLElement>(`.${BOX_CLASS}`);
+    const rect = (box ?? img).getBoundingClientRect();
+    this.frameW = Math.round(rect.width);
+    this.frameH = Math.round(rect.height);
+
+    if (isCrop(existing)) {
+      const p = parsePlacement(existing.transform);
+      this.imgScale = p.scale;
+      this.imgRotation = p.rotate || getRotation(existing);
+      this.imgTranslate = {
+        x: (p.tx / 100) * this.frameW,
+        y: (p.ty / 100) * (this.frameW / this.intrinsicRatio),
+      };
     }
+    this.initScale = this.imgScale;
+    this.initTranslate = { ...this.imgTranslate };
+    this.initFrameH = this.frameH;
   }
 
   open(toolbarEl?: HTMLElement | null): void {
-    const rect = this.img.getBoundingClientRect();
-
-    // The "no crop" baseline: frame covering the whole displayed image, image at
-    // 0,0, no rotation. Captured so the per-panel Reset can restore it.
-    const natW = this.img.naturalWidth || rect.width;
-    const natH = this.img.naturalHeight || rect.height;
-    if (this.hasExistingCrop) {
-      // The rendered image is already transformed (scale/rotate/translate), so its
-      // own rect is the rotated/scaled bounding box, NOT the uncropped display size.
-      // Derive the baseline from the cut box's display width and the natural aspect
-      // ratio so Reset restores the full image rather than that inflated box.
-      const cutBox = this.img.closest<HTMLElement>(".lie-box-crop");
-      const dispW = cutBox ? cutBox.getBoundingClientRect().width : natW;
-      this.initFrameW = Math.round(dispW);
-      this.initFrameH = Math.round((dispW * natH) / natW);
-      this.initScale = snapScale(dispW / natW);
-    } else {
-      this.initFrameW = Math.round(rect.width);
-      this.initFrameH = Math.round(rect.height);
-      this.initScale = snapScale(rect.width / natW);
-      // No existing crop: start from that baseline — so activation causes no jump.
-      this.frameWidth = this.initFrameW;
-      this.frameHeight = this.initFrameH;
-      this.imgScale = this.initScale;
-    }
+    const box = this.img.closest<HTMLElement>(`.${BOX_CLASS}`) ?? this.img;
+    const rect = box.getBoundingClientRect();
 
     this.overlay = document.createElement("div");
     this.overlay.classList.add("lie-crop-overlay");
     this.overlay.innerHTML = this.buildHTML();
-    // Position the workspace OVER the image, in place (D11).
-    const fc = this.overlay as HTMLElement;
+    const fc = this.overlay;
     fc.style.position = "fixed";
     fc.style.left = `${rect.left}px`;
     fc.style.top = `${rect.top}px`;
-    fc.style.width = `${rect.width}px`;
-    fc.style.height = `${rect.height}px`;
+    fc.style.width = `${this.frameW}px`;
+    fc.style.height = `${this.frameH}px`;
     document.body.appendChild(this.overlay);
 
-    // Mark the embed so the always-on resize frame/handle (Bug 12) hides while
-    // cropping — it would otherwise collide with the crop's own resizing.
-    this.embed()?.classList.add("lie-cropping");
+    const src = this.overlay.querySelector<HTMLImageElement>(".lie-crop-source-img");
+    if (src) src.style.width = `${this.frameW}px`; // scale 1 == the box-width baseline
+
+    this.wrapper()?.classList.add("lie-cropping");
 
     this.bindEvents();
     this.openControls(toolbarEl);
@@ -121,12 +124,12 @@ export class CropEditor {
     this.updateFrameSize();
   }
 
-  private embed(): HTMLElement | null {
-    return this.img.closest<HTMLElement>(".lie-lp-embed");
+  private wrapper(): HTMLElement | null {
+    return this.img.closest<HTMLElement>(".lie-wrapper, .image-embed");
   }
 
   close(): void {
-    this.embed()?.classList.remove("lie-cropping");
+    this.wrapper()?.classList.remove("lie-cropping");
     this.overlay?.remove();
     this.overlay = null;
     document.removeEventListener("pointermove", this.onPointerMove);
@@ -144,17 +147,11 @@ export class CropEditor {
         <div class="lie-crop-handle lie-crop-handle-ne" data-handle="ne"></div>
         <div class="lie-crop-handle lie-crop-handle-sw" data-handle="sw"></div>
         <div class="lie-crop-handle lie-crop-handle-se" data-handle="se"></div>
-        <div class="lie-crop-handle lie-crop-handle-n" data-handle="n"></div>
-        <div class="lie-crop-handle lie-crop-handle-s" data-handle="s"></div>
-        <div class="lie-crop-handle lie-crop-handle-e" data-handle="e"></div>
-        <div class="lie-crop-handle lie-crop-handle-w" data-handle="w"></div>
         <div class="lie-crop-rotation-handle" data-handle="rotate"></div>
       </div>
     `;
   }
 
-  // The aspect presets + confirm/cancel as the shared anchored sub-menu (D8/D10/T9):
-  // compact, under the toolbar, greyed toolbar, icon confirm/cancel, Esc = cancel.
   private openControls(toolbarEl?: HTMLElement | null): void {
     const body = document.createElement("div");
     body.classList.add("lie-crop-presets");
@@ -162,10 +159,7 @@ export class CropEditor {
       const btn = document.createElement("button");
       btn.classList.add("lie-crop-preset-btn");
       btn.textContent = ratio === "free" ? t("free") : ratio;
-      btn.addEventListener("click", () => {
-        this.aspectRatio = ratio;
-        this.applyAspectRatio();
-      });
+      btn.addEventListener("click", () => { this.aspectRatio = ratio; this.applyAspectRatio(); });
       body.appendChild(btn);
     }
 
@@ -176,7 +170,7 @@ export class CropEditor {
       anchor: toolbarEl ?? this.img,
       toolbar: toolbarEl ?? null,
       title: t("crop"),
-      onReset: () => this.resetCrop(), // resets only the crop, editor stays open
+      onReset: () => this.resetCrop(),
       onCommit: () => this.confirm(),
       onCancel: () => { this.close(); this.onCancel(); },
       onClose: () => { this.controls = null; },
@@ -184,14 +178,12 @@ export class CropEditor {
     this.controls = controls;
   }
 
-  // Reset ONLY the crop to the "no crop" baseline (full image, no rotation/scale/
-  // translate) and update the live preview — the editor stays open.
+  // Reset only the crop placement (full image, no scale/pan/rotate); keep the frame.
   private resetCrop(): void {
     this.imgTranslate = { x: 0, y: 0 };
     this.imgRotation = 0;
-    this.imgScale = this.initScale;
-    this.frameWidth = this.initFrameW;
-    this.frameHeight = this.initFrameH;
+    this.imgScale = 1;
+    this.frameH = this.initFrameH;
     this.aspectRatio = "free";
     this.updateImageTransform();
     this.updateFrameSize();
@@ -199,22 +191,37 @@ export class CropEditor {
 
   private bindEvents(): void {
     if (!this.overlay) return;
-
     const sourceImg = this.overlay.querySelector(".lie-crop-source-img") as HTMLElement;
     const frame = this.overlay.querySelector(".lie-crop-frame") as HTMLElement;
 
     sourceImg.addEventListener("pointerdown", (e) => this.startImageDrag(e as PointerEvent));
-    frame.addEventListener("pointerdown", (e) => this.startFrameInteraction(e as PointerEvent));
-
+    frame.addEventListener("pointerdown", (e) => this.startHandle(e as PointerEvent));
     document.addEventListener("pointermove", this.onPointerMove);
     document.addEventListener("pointerup", this.onPointerUp);
 
     sourceImg.addEventListener("wheel", (e) => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.95 : 1.05;
-      this.imgScale = snapScale(Math.max(0.1, Math.min(10, this.imgScale * delta)));
+      this.scaleAround(snapScale(Math.max(0.05, Math.min(20, this.imgScale * delta))));
       this.updateImageTransform();
     });
+  }
+
+  // The frame centre, in overlay coordinates — the scale pivot (so zooming keeps the
+  // framed region put).
+  private frameCenter(): Point {
+    return { x: this.frameW / 2, y: this.frameH / 2 };
+  }
+
+  // Scale the image to `newScale`, keeping the content under the frame centre fixed.
+  private scaleAround(newScale: number): void {
+    const c = this.frameCenter();
+    const f = this.imgScale ? newScale / this.imgScale : 1;
+    this.imgTranslate = snapTranslate(
+      c.x - (c.x - this.imgTranslate.x) * f,
+      c.y - (c.y - this.imgTranslate.y) * f
+    );
+    this.imgScale = newScale;
   }
 
   private startImageDrag(e: PointerEvent): void {
@@ -224,90 +231,66 @@ export class CropEditor {
     this.dragStartTranslate = { ...this.imgTranslate };
   }
 
-  private startFrameInteraction(e: PointerEvent): void {
-    const target = e.target as HTMLElement;
-    const handle = target.dataset["handle"];
+  // A handle drag SCALES the image (corner handles, Bug 17) or rotates it (rotate
+  // handle); the frame itself stays fixed (it is the output).
+  private startHandle(e: PointerEvent): void {
+    const handle = (e.target as HTMLElement).dataset["handle"];
     if (!handle) return;
-
     e.preventDefault();
     e.stopPropagation();
-
+    const frame = this.overlay?.querySelector(".lie-crop-frame");
+    if (!frame) return;
+    const r = frame.getBoundingClientRect();
+    const center = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    this.dragStart = { x: e.clientX, y: e.clientY };
     if (handle === "rotate") {
-      this.isDraggingImage = true;
-      this.dragStart = { x: e.clientX, y: e.clientY };
-      this.resizeHandle = "rotate";
+      this.isRotating = true;
     } else {
-      this.isResizingFrame = true;
-      this.resizeHandle = handle;
-      this.dragStart = { x: e.clientX, y: e.clientY };
-      this.dragStartSize = { w: this.frameWidth, h: this.frameHeight };
+      this.isScaling = true;
+      this.scaleStart = this.imgScale;
+      this.scaleStartDist = Math.max(1, Math.hypot(e.clientX - center.x, e.clientY - center.y));
     }
   }
 
   private onPointerMove = (e: PointerEvent): void => {
-    if (this.isDraggingImage && this.resizeHandle === "rotate") {
+    if (this.isRotating) {
       const frame = this.overlay?.querySelector(".lie-crop-frame");
       if (!frame) return;
-      const rect = frame.getBoundingClientRect();
-      const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      const r = frame.getBoundingClientRect();
+      const center = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
       const angle = Math.atan2(e.clientY - center.y, e.clientX - center.x) * (180 / Math.PI);
       const startAngle = Math.atan2(this.dragStart.y - center.y, this.dragStart.x - center.x) * (180 / Math.PI);
-      // Snap rotation to 0.1° steps LIVE (F7) so the cut never falls mid-angle.
       this.imgRotation = snapAngle(this.imgRotation + (angle - startAngle));
       this.dragStart = { x: e.clientX, y: e.clientY };
+      this.updateImageTransform();
+    } else if (this.isScaling) {
+      const frame = this.overlay?.querySelector(".lie-crop-frame");
+      if (!frame) return;
+      const r = frame.getBoundingClientRect();
+      const center = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      const dist = Math.max(1, Math.hypot(e.clientX - center.x, e.clientY - center.y));
+      this.scaleAround(snapScale(Math.max(0.05, Math.min(20, this.scaleStart * (dist / this.scaleStartDist)))));
       this.updateImageTransform();
     } else if (this.isDraggingImage) {
       const dx = e.clientX - this.dragStart.x;
       const dy = e.clientY - this.dragStart.y;
-      // Snap position to whole pixels LIVE (F7) so the cut never falls mid-pixel.
       this.imgTranslate = snapTranslate(this.dragStartTranslate.x + dx, this.dragStartTranslate.y + dy);
       this.updateImageTransform();
-    } else if (this.isResizingFrame) {
-      const dx = e.clientX - this.dragStart.x;
-      const dy = e.clientY - this.dragStart.y;
-      this.resizeFrame(dx, dy);
     }
   };
 
   private onPointerUp = (): void => {
     this.isDraggingImage = false;
-    this.isResizingFrame = false;
-    this.resizeHandle = "";
+    this.isScaling = false;
+    this.isRotating = false;
   };
 
-  private resizeFrame(dx: number, dy: number): void {
-    const handle = this.resizeHandle;
-    let newW = this.dragStartSize.w;
-    let newH = this.dragStartSize.h;
-
-    if (handle.includes("e")) newW += dx;
-    if (handle.includes("w")) newW -= dx;
-    if (handle.includes("s")) newH += dy;
-    if (handle.includes("n")) newH -= dy;
-
-    newW = Math.max(50, newW);
-    newH = Math.max(50, newH);
-
-    const ratio = ASPECT_RATIOS[this.aspectRatio];
-    if (ratio) {
-      if (handle.includes("e") || handle.includes("w")) {
-        newH = Math.round(newW / ratio);
-      } else {
-        newW = Math.round(newH * ratio);
-      }
-    }
-
-    this.frameWidth = Math.round(newW);
-    this.frameHeight = Math.round(newH);
-    this.updateFrameSize();
-  }
-
+  // Aspect preset: reshape the frame (the output) keeping its WIDTH = the box-width
+  // baseline, so the result's inner-image math stays consistent (Bug 19).
   private applyAspectRatio(): void {
     const ratio = ASPECT_RATIOS[this.aspectRatio];
-    if (ratio) {
-      this.frameHeight = Math.round(this.frameWidth / ratio);
-      this.updateFrameSize();
-    }
+    if (ratio) this.frameH = Math.round(this.frameW / ratio);
+    this.updateFrameSize();
   }
 
   private updateImageTransform(): void {
@@ -319,22 +302,25 @@ export class CropEditor {
   private updateFrameSize(): void {
     const frame = this.overlay?.querySelector(".lie-crop-frame") as HTMLElement | null;
     if (!frame) return;
-    frame.style.width = `${this.frameWidth}px`;
-    frame.style.height = `${this.frameHeight}px`;
+    frame.style.width = `${this.frameW}px`;
+    frame.style.height = `${this.frameH}px`;
+    if (this.overlay) this.overlay.style.height = `${this.frameH}px`;
   }
 
   private confirm(): void {
-    const cropData: CropData = toCropData(
+    const result = toCropResult(
       this.imgTranslate,
-      { w: this.frameWidth, h: this.frameHeight },
+      { w: this.frameW, h: this.frameH },
       this.imgRotation,
-      this.imgScale
+      this.imgScale,
+      this.frameW,
+      this.intrinsicRatio
     );
-    this.embed()?.classList.remove("lie-cropping");
+    this.wrapper()?.classList.remove("lie-cropping");
     this.overlay?.remove();
     this.overlay = null;
     document.removeEventListener("pointermove", this.onPointerMove);
     document.removeEventListener("pointerup", this.onPointerUp);
-    this.onConfirm(cropData);
+    this.onConfirm(result);
   }
 }

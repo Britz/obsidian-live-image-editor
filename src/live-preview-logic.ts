@@ -1,24 +1,13 @@
-import { parseAltText, serializeTransform } from "./transforms";
+import { parseAltText, serializeTransform, setWidthPx } from "./transforms";
 
 // A line that is exactly an image embed, with an OPTIONAL trailing {…} block —
 // so every standalone image gets the widget (toolbar/chrome), block or not.
 export const EMBED_LINE = /^(\s*)(!\[[^\]]*\]\([^)]+\)|!\[\[[^\]]+\]\])(\{[^}]*\})?\s*$/;
 
 // Token classes Obsidian gives the link URL — so the {…} is highlighted exactly
-// like (url): the braces are formatting, the inside is the url string.
+// like (url) in SOURCE mode: braces are formatting, inside is the url string.
 export const URL_CLASS = "cm-string cm-url";
 export const URL_BRACE_CLASS = "cm-formatting cm-formatting-link-string cm-string cm-url";
-
-// The `<>` link reveal is a per-image TRI-state, not a plain toggle (F5/D6):
-//   AUTO (default) — editor shows/hides with the toolbar (on hover/selection)
-//   ON             — editor stays visible once shown
-//   OFF            — editor stays hidden
-export type RevealMode = "auto" | "on" | "off";
-
-/** Clicking `<>` cycles AUTO → ON → OFF → AUTO. */
-export function cycleRevealMode(mode: RevealMode): RevealMode {
-  return mode === "auto" ? "on" : mode === "on" ? "off" : "auto";
-}
 
 // An image embed that sits INSIDE a line of text (not a standalone image line) — e.g.
 // an `lie-inline` icon mid-sentence. These get an inline replace widget; without one
@@ -29,11 +18,11 @@ export interface InlineEmbed { from: number; to: number; embed: string; params: 
 
 /**
  * Find image embeds embedded WITHIN a line of text (returns [] for a standalone image
- * line — that path uses the block widget). Pure, so it's unit-testable (T-L6). `params`
- * is the attr content without braces (T-L9).
+ * line — that path uses the block widget). Pure, unit-testable (T-L6). `params` is the
+ * attr content without braces (T-L9).
  */
 export function inlineEmbeds(lineText: string, lineFrom: number): InlineEmbed[] {
-  if (EMBED_LINE.test(lineText)) return []; // standalone line → block widget, not here
+  if (EMBED_LINE.test(lineText)) return [];
   const out: InlineEmbed[] = [];
   INLINE_EMBED.lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -49,33 +38,25 @@ export function inlineEmbeds(lineText: string, lineFrom: number): InlineEmbed[] 
 }
 
 export type LineDecoration =
-  // `params` is the attr_list CONTENT, WITHOUT the surrounding `{…}` braces — i.e.
-  // exactly what parseAltText expects (the reading-view path strips them too). Passing
-  // the braces would make the leading `.class` token (e.g. `{.lie-left`) unparseable,
-  // silently dropping standalone classes in live preview while `style="…"` still works.
+  // `params` is the attr_list CONTENT, WITHOUT the surrounding `{…}` braces (T-L9).
   | { kind: "widget"; from: number; to: number; embed: string; params: string }
   | { kind: "mark"; from: number; to: number; class: string };
 
 /**
- * Pure decoration logic for one editor line (no CM/Obsidian deps, so it's unit
- * testable). In live preview an embed+block line becomes a single widget; in
- * source mode the {…} is marked as link syntax (braces = formatting, inside = url).
+ * Pure decoration logic for one editor line (no CM/Obsidian deps, unit testable). In
+ * live preview a standalone embed+block line becomes a single widget descriptor (the
+ * adapter chooses replace vs overlay by cursor position); in source mode the {…} is
+ * marked as link syntax.
  */
 export function lineDecorations(lineText: string, lineFrom: number, isLivePreview: boolean): LineDecoration[] {
   const match = EMBED_LINE.exec(lineText);
   if (!match) return [];
 
-  // Live preview ALWAYS renders the widget (replace), which suppresses Obsidian's
-  // native embed — verified via CDP that dropping the widget lets the native image
-  // render inline with {} stuck behind it. The <> reveal therefore lives inside the
-  // widget (editable raw link above the image), never by falling back to native.
   if (isLivePreview) {
-    // Strip the `{…}` braces so `params` is the bare attr content (see LineDecoration).
     const block = match[3];
     return [{ kind: "widget", from: lineFrom, to: lineFrom + lineText.length, embed: match[2] ?? "", params: block ? block.slice(1, -1) : "" }];
   }
 
-  // Source mode: only mark when there's actually a {…} block.
   const block = match[3];
   if (!block) return [];
   const start = lineFrom + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
@@ -91,7 +72,7 @@ export function rewriteWidth(lineText: string, width: number): string | null {
   const match = EMBED_LINE.exec(lineText);
   if (!match) return null;
   const transform = parseAltText((match[3] ?? "").slice(1, -1));
-  transform.width = width;
+  setWidthPx(transform, width);
   transform.height = undefined;
   const params = serializeTransform(transform);
   return `${match[1] ?? ""}${match[2] ?? ""}${params ? `{${params}}` : ""}`;

@@ -122,8 +122,11 @@ no language or link-format setting of its own.
   - **D1.1 — Too-small images:** when the image is too small to hold the bar (e.g. the inline icon),
     the toolbar cannot sit inside it and is shown **above** the image instead.
 - **D2 — Order & grouping.** A defined left-to-right button order, with related buttons
-  grouped and separated by dividers. When horizontal space runs out the toolbar wraps **at the
-  dividers** (each group stays intact, never clipped) — mobile-friendly.
+  grouped and separated by dividers. When horizontal space runs out the toolbar **first folds
+  groups into a submenu trigger** (Layout before Edit) and **only then wraps at the dividers**
+  (each group stays intact, never clipped) — mobile-friendly. "Too little space" is measured against
+  the **image width** while the bar fits inside it, and against the **window** once it extends past
+  the image.
 - **D3 — Responsive & column-capped.** Every image — including rotated and cropped — scales to
   the available text column and **never exceeds it** (Obsidian has no horizontal scroll), and
   stays responsive to column and window resize.

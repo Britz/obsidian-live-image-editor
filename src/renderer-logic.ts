@@ -1,66 +1,69 @@
-/**
- * Pure geometry for the quarter-turn reflow (no DOM, so it's unit-testable).
- * Given the displayed image size and the rotation, compute the axis-aligned
- * bounding box of the rotated image and the scale applied to it.
- *
- * The box is sized to `targetWidth` (the user's resized width, e.g. from the drag
- * handle) when given, else to its natural extent — in both cases capped at `avail`
- * so it never exceeds the column (Obsidian can't scroll horizontally). `scale` is
- * relative to the unscaled extent, so callers scale the image by the same factor.
- */
-/**
- * The display size of a crop box and the scale applied to the cut. Pure (no DOM) so
- * it's unit-testable (T-L6).
- *
- * The box must match the SCALED cut, not the raw cut size: when only a `width` is
- * given, the height is derived from the cut's aspect ratio (and vice-versa) so the
- * box doesn't stay `crop.h` tall while the content scales down with the width —
- * which left an empty band below the crop and pushed a caption far beneath it (a
- * crop flavour of Bug 2). With both width and height the box honours them (letterbox
- * via `scale = min` if their aspect differs); with neither it's the cut's own size.
- */
-export function cropBoxSize(
-  crop: { w: number; h: number },
-  width?: number,
-  height?: number
-): { w: number; h: number; scale: number } {
-  const w = width ?? (height != null && crop.h ? (height * crop.w) / crop.h : crop.w);
-  const h = height ?? (width != null && crop.w ? (width * crop.h) / crop.w : crop.h);
-  const scale = Math.min(crop.w ? w / crop.w : 1, crop.h ? h / crop.h : 1);
-  return { w, h, scale };
+// Pure geometry (AB5) — the single source consumed by the render core (to derive the
+// box's aspect-ratio + the inner image's box-relative size) and by the canvas export.
+// No DOM, so it's unit-testable (AD7/T-L6). Everything is derived from the image's
+// INTRINSIC ratio (a stable property of the file) plus the transform — never measured
+// from the rendered, column-dependent box, so there is no measure-then-resize loop
+// (AD6, the root of the historical rotated-box drift).
+
+// Quarter-turn index 0..3 for a rotation in degrees (any multiple of 90; rounds).
+function quarter(deg: number): number {
+  return (((Math.round(deg / 90) % 4) + 4) % 4);
 }
 
 /**
- * A SYNCHRONOUS estimate of a block image's rendered height, with NO access to the
- * image's natural size (an off-screen image isn't loaded yet). Used for the CM6 block
- * widget's `estimatedHeight` (so CodeMirror doesn't model every off-screen image line
- * as one text line ~14px tall and then lurch the scroll when it's measured) and to
- * reserve the box height up front (so it never grows from 0). Pure (T-L6).
- *
- * A crop is exact (its size is in the {…} block, no natural size needed). Otherwise we
- * only know the displayed WIDTH (or nothing); the aspect is unknown, so a height-set
- * image uses its height, a width-set image assumes a typical landscape ratio, and an
- * unsized image (fills the column) gets a sensible constant. Rough on purpose — it
- * only needs to be in the ballpark to fix the scroll model; the real size still lands.
+ * The box's `aspect-ratio` (width / height) for a quarter-turn of an image whose
+ * intrinsic ratio is `r` (= naturalWidth / naturalHeight). 0°/180° keep `r`; 90°/270°
+ * swap it (the rotated bounding box). Applied to the DOM box as an overridable default
+ * (AD6) — so changing the angle reflows the box with no render-time measurement.
  */
-export function estimatedBlockHeight(opts: { crop?: { w: number; h: number }; width?: number; height?: number }): number {
-  if (opts.crop) return Math.round(cropBoxSize(opts.crop, opts.width, opts.height).h);
-  if (opts.height) return opts.height;
-  if (opts.width) return Math.round(opts.width * 0.7);
-  return 480;
+export function boxAspectRatio(r: number, deg: number): number {
+  if (!isFinite(r) || r <= 0) return 1;
+  const q = quarter(deg);
+  return q === 1 || q === 3 ? 1 / r : r;
 }
 
-export function rotatedBox(
-  dispW: number,
-  dispH: number,
-  deg: number,
-  avail: number,
-  targetWidth?: number
-): { bw: number; bh: number; scale: number } {
+/**
+ * The inner image's size as a PERCENT of the box, for a quarter-turn (box → image,
+ * AD3). 0°/180° → the image fills the box (100/100). 90°/270° → the image keeps its
+ * own dimensions inside the swapped box, so its width is `r·100%` of the box width and
+ * its height `(1/r)·100%` of the box height; after the centered `rotate()` it fills the
+ * box exactly. Box-relative, so it rescales with the column for free.
+ */
+export function innerImageSize(r: number, deg: number): { w: number; h: number } {
+  if (!isFinite(r) || r <= 0) return { w: 100, h: 100 };
+  const q = quarter(deg);
+  return q === 1 || q === 3 ? { w: r * 100, h: (1 / r) * 100 } : { w: 100, h: 100 };
+}
+
+/**
+ * The axis-aligned bounding box of an image of `w`×`h` rotated by `deg` (any angle).
+ * Used by the export to size the output canvas at the original resolution (F13).
+ */
+export function rotatedAabb(w: number, h: number, deg: number): { w: number; h: number } {
   const rad = (deg * Math.PI) / 180;
-  const bw0 = Math.abs(dispW * Math.cos(rad)) + Math.abs(dispH * Math.sin(rad));
-  const bh0 = Math.abs(dispW * Math.sin(rad)) + Math.abs(dispH * Math.cos(rad));
-  const desired = targetWidth != null ? Math.min(targetWidth, avail) : Math.min(bw0, avail);
-  const scale = bw0 > 0 ? desired / bw0 : 1;
-  return { bw: bw0 * scale, bh: bh0 * scale, scale };
+  return {
+    w: Math.abs(w * Math.cos(rad)) + Math.abs(h * Math.sin(rad)),
+    h: Math.abs(w * Math.sin(rad)) + Math.abs(h * Math.cos(rad)),
+  };
+}
+
+/**
+ * A SYNCHRONOUS estimate of a block image's rendered height for the CM6 block widget's
+ * `estimatedHeight` (so CodeMirror doesn't model an off-screen image line as one ~14px
+ * text line and lurch the scroll when it's measured). No access to the natural size (an
+ * off-screen image isn't loaded), so it's rough on purpose — the real size still lands
+ * declaratively once the box has its aspect-ratio. Pure (T-L6).
+ *
+ * Prefers an explicit px height, then a px width × the box aspect-ratio (or a typical
+ * landscape ratio), else a sensible constant for a column-width image.
+ */
+export function estimatedBlockHeight(opts: {
+  widthPx?: number | null;
+  heightPx?: number | null;
+  aspectRatio?: number | null;
+}): number {
+  if (opts.heightPx && opts.heightPx > 0) return Math.round(opts.heightPx);
+  const ar = opts.aspectRatio && opts.aspectRatio > 0 ? opts.aspectRatio : 1 / 0.7;
+  if (opts.widthPx && opts.widthPx > 0) return Math.round(opts.widthPx / ar);
+  return 480;
 }
