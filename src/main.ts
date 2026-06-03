@@ -29,6 +29,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   private stylesInjector = new StylesInjector();
   private snippetClasses: SnippetClass[] = [];
   private activeImage: HTMLImageElement | null = null;
+  private hoverShown = false; // true when the floating toolbar was opened by hover (so it dismisses on hover-out)
   private filterPanel: FilterPanel | null = null;
   private submenu: AnchoredSubmenu | null = null;
   private cropEditor: CropEditor | null = null;
@@ -329,6 +330,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.registerDomEvent(document, "click", (evt: MouseEvent) => {
       const target = evt.target as HTMLElement;
       if (target.tagName === "IMG" && target.closest(".markdown-source-view")) {
+        this.hoverShown = false; // click-shown: stays until click-outside, not hover-out
         this.onImageSelected(target as HTMLImageElement);
       } else if (
         !target.closest(".lie-toolbar") &&
@@ -341,6 +343,30 @@ export default class LiveImageEditorPlugin extends Plugin {
         this.dismissToolbar();
       }
     });
+
+    // HOVER path for images that can't host the in-chrome toolbar (`.lie-float`: too-short
+    // block images flagged by the reflow, and inline icons). They use the SAME toolbar, shown
+    // floating on the body (outside `contain: paint`). One delegated `mouseover` both opens it
+    // (entering a `.lie-float` image) and dismisses it (leaving the image AND the toolbar) —
+    // the floating bar sits over the image, so moving onto it stays "inside" and keeps it.
+    this.registerDomEvent(document, "mouseover", (evt: MouseEvent) => {
+      const target = evt.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.closest(".lie-toolbar, .lie-group-popup, .lie-submenu, .lie-filter-panel, .lie-crop-overlay")) return;
+      const floatWrap = target.closest<HTMLElement>(".markdown-source-view .lie-wrapper.lie-float");
+      if (floatWrap) {
+        const img = floatWrap.querySelector("img");
+        if (img && this.settings.showToolbar && this.toolbar.getActiveImage() !== img) {
+          this.onImageSelected(img);
+          this.hoverShown = true;
+        }
+        return;
+      }
+      if (this.hoverShown && !this.filterPanel && !this.submenu && !this.cropEditor) {
+        this.dismissToolbar();
+      }
+    });
+
     this.registerLongPress();
   }
 
@@ -387,6 +413,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.closeCrop();
     this.toolbar.hide();
     this.activeImage = null;
+    this.hoverShown = false;
   }
 
   private onImageSelected(img: HTMLImageElement): void {
@@ -397,9 +424,10 @@ export default class LiveImageEditorPlugin extends Plugin {
       this.closeCrop();
     }
     this.activeImage = img;
-    // LP-overlay images already carry the toolbar in their chrome; only float one for
-    // plain (reading-view) images.
-    if (img.closest(".lie-wrapper")) return;
+    // An overlay image that hosts its OWN in-chrome toolbar needs no floating one. But a
+    // `.lie-float` overlay image (too short for in-chrome, or an inline icon) does — let it
+    // through to the floating toolbar, same as a non-overlay image.
+    if (img.closest(".lie-wrapper:not(.lie-float)")) return;
     this.toolbar.show(img, this.toolbarItemsForImage(img));
   }
 

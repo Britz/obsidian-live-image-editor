@@ -299,12 +299,10 @@ img.lie-inline { vertical-align: middle; }
   opacity: 1;
   pointer-events: auto;
 }
-/* D1.1 — too-small image: the bar can't fit inside, so it sits ABOVE the image. */
-.lie-toolbar-in-image.lie-toolbar-above {
-  top: auto;
-  bottom: calc(100% + 4px);
-  left: 0;
-}
+/* D1.1 — an image too SHORT to hold the (wrapped) bar inside the `contain: paint` box is
+   flagged `lie-float` by the reflow (and inline icons always are): hide the clipped in-chrome
+   bar; the plugin then shows the SAME toolbar floating on the body (outside the clip). */
+.lie-wrapper.lie-float .lie-toolbar-in-image { display: none !important; }
 
 .lie-toolbar-floating { max-width: 92vw; }
 

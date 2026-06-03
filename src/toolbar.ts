@@ -177,16 +177,23 @@ export function reflowToolbar(toolbar: HTMLElement): void {
   const rowH = 40; // a single toolbar row (button 28 + padding)
   const wraps = (): boolean => toolbar.offsetHeight > rowH;
 
-  // Start fully expanded + inside the image, then fold as needed.
-  toolbar.classList.remove("lie-toolbar-above");
+  // Start fully expanded, then fold as needed.
   for (const s of byFoldFirst) s.classList.remove("is-folded");
   for (const s of byFoldFirst) {
     if (!wraps()) break;
     s.classList.add("is-folded");
   }
-  // D1.1 — if even fully folded it still wraps (doesn't fit one row in the image),
-  // the image is too small to hold the bar: place it ABOVE the image instead.
-  if (wraps()) toolbar.classList.add("lie-toolbar-above");
+  // D1.1 — if even fully folded the bar needs more than one row, that is FINE as long as the
+  // (wrapped) bar still fits the image's HEIGHT: it stays in-chrome, overlaying the image top
+  // on hover. But if the image is too SHORT to hold it (height, not just width), it cannot
+  // live inside Obsidian's `contain: paint` box at all (it would be clipped above/below) — so
+  // FLAG the image `lie-float`; the plugin then shows the SAME toolbar floating on the body,
+  // outside the clip. Comparing height-vs-image (not merely "wraps") is what keeps a
+  // narrow-but-tall image's bar in-chrome. (The floating bar itself is position:fixed → no
+  // offsetParent → host null → fits true → never flagged, no feedback loop.)
+  const host = toolbar.offsetParent as HTMLElement | null;
+  const fitsInsideHeight = host ? 8 + toolbar.offsetHeight <= host.clientHeight : true;
+  toolbar.closest(".lie-wrapper")?.classList.toggle("lie-float", wraps() && !fitsInsideHeight);
 }
 
 export class ImageToolbar {

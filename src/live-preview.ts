@@ -100,7 +100,10 @@ class EmbedWidget extends WidgetType {
 
   toDOM(view: EditorView): HTMLElement {
     const wrapper = document.createElement("div");
-    wrapper.className = this.mode === "inline" ? "lie-wrapper lie-wrapper-inline" : "lie-wrapper lie-wrapper-block";
+    // Inline icons never carry an in-chrome toolbar (too small) — flag them `lie-float` so
+    // the plugin shows the floating toolbar on hover (block widgets get the flag dynamically
+    // from the reflow when they turn out too short).
+    wrapper.className = this.mode === "inline" ? "lie-wrapper lie-wrapper-inline lie-float" : "lie-wrapper lie-wrapper-block";
     wrapper.setAttribute("contenteditable", "false");
 
     const file = this.resolveFile();
