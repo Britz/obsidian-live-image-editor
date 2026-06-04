@@ -61,9 +61,12 @@
       `.cm-content > * { margin:0 !important }` never touches it — no out-specifying / `!important`
       needed (the uncommitted Bug-20 hack was reverted). CDP-verified: multi-line wrap on hard-wrapped
       paragraphs, 0 desync over 35 lines, 0 click-steal, image clickable, native edit intact.
-      *Depends on* the normalization (every embed carries `{…}`) so Obsidian doesn't block-promote a
-      bare line and swallow the inline widget. (→ AD5; memories `lp-float-wrap-feasibility` /
-      `lp-rendering-rework-decisions`; plan `lp-rendering-rework-plan.md`.)
+      *No normalization dependency* (corrected after A/B'/C): a floated image already carries `{…}`
+      (its `lie-left`/`lie-right` class keeps the line a text line → inline widget + float-escape); a
+      BARE image renders via our OWN `block:true` widget with the native image suppressed uniformly
+      (cca476e), so Obsidian's block-promotion no longer matters and the auto-normalization was removed
+      (4053f95). (→ AD5; memories `lp-float-wrap-feasibility` / `lp-rendering-rework-decisions`; plan
+      `lp-rendering-rework-plan.md`.)
 - [x] **Tall float (>~250px) derenders on scroll in LP — CAPPED.** A float taller than CM6's ~250px
       above-viewport render margin (`VP.MaxCoverMargin`, an inlined const in `@codemirror/view`)
       derenders when its anchor line scrolls out of the render window → the wrap dissolves (harmless:
@@ -416,15 +419,16 @@ architecture encodes most in its decisions (`AD…`).
   suppress it — a `Decoration.replace` (even of a non-active line) kills the native source, and a
   plugin-owned editable field reintroduces the caret seam. *Fix (the LP rendering rework):* an
   **INLINE widget** (`side: 1`, in the embed's OWN non-BFC `.cm-line`) draws the plugin's own
-  transformed image; CSS suppresses the native image **scoped to `.cm-line` embeds**
-  (`.cm-content .cm-line .internal-embed.image-embed > img, > .image-wrapper`) so a block-promoted bare
-  embed (no cm-line) is left visible (Slice 5), and the native edit-block-button is hidden
-  unconditionally (the `<>` icon otherwise leaks, Bug 12). The `{…}` block is a `Decoration.mark` and
-  a display-only `.lie-fake-link` carries the reveal-for-looking; both are shown by static CSS on
-  cm-line hover / always-mode and hidden while editing (`.cm-active`, when the native source shows so
-  the link is not doubled). *(Earlier this was a `block:true` widget BELOW the line; the rework moved
-  it inline so `lie-left/right` floats escape the non-BFC line and wrap text. `block:true` survives
-  only as the bare-embed fallback. CDP-confirmed.)*
+  transformed image; CSS suppresses the native image **UNIFORMLY in every embed**
+  (`.cm-content .internal-embed.image-embed > img, > .image-wrapper` — unscoped, cca476e), and the
+  native edit-block-button is hidden unconditionally (the `<>` icon otherwise leaks, Bug 12). The
+  `{…}` block is a `Decoration.mark` and a display-only `.lie-fake-link` carries the reveal-for-looking;
+  both are shown by static CSS on cm-line hover / always-mode and hidden while editing (`.cm-active`,
+  when the native source shows so the link is not doubled). *(Earlier this was a `block:true` widget
+  BELOW the line; the rework moved it inline so `lie-left/right` floats escape the non-BFC line and wrap
+  text. `block:true` now survives as the renderer for a BARE embed — a block-promoted line has no
+  cm-line, so an inline widget would be swallowed; the block widget lands as its own `.cm-content` child
+  next to the (image-suppressed) native embed. CDP-confirmed.)*
 - **L11b — Obsidian keeps an image EMBED rendered even on the active line; only the trailing
   `{…}`/alt become editable text** (CDP-verified, markdown + wikilink). So native editing covers the
   transform block (the plugin's data — what matters), not the `![…]`/`![[…]]` link itself, which stays
@@ -432,16 +436,16 @@ architecture encodes most in its decisions (`AD…`).
 - **L12 — `container-type: size` on the box works, but collapses to 0×0 when the box's pane is
   `display:none`.** Reading-view boxes measured 0×0 while the editor pane was the hidden one; in the
   visible pane they size correctly. Not a bug — a measurement caveat (measure in the visible pane).
-- **L13 — Inline LP rendering REQUIRES the embed to carry `{…}` (the normalization dependency).**
-  *Cause (CDP-proven):* Obsidian BLOCK-PROMOTES a bare `![](…)` standalone line into a
-  `.cm-content`-direct `.internal-embed` with NO `.cm-line`, which SWALLOWS the inline widget (it has
-  no line to live in) — so a bare line would render blank under the inline model. *Fix:* normalization
-  appends an invisible `{.lie-img}` marker to every bare embed so Obsidian keeps it a text line, and
-  the serializer ALWAYS emits the marker so an image never strips back to bare. Until normalization
-  runs, the bare-embed fallback leaves Obsidian's native block embed VISIBLE (the native-image
-  suppression is scoped to `.cm-line` embeds, so block-promoted bare ones are not hidden). Never render
-  the standalone image inline without ensuring `{…}` is present or the bare fallback is in place.
-  (→ AD5; the marker-always-emit is the serializer contract; memory `lp-rendering-rework-decisions`.)
+- **L13 — Bare embeds need NO `{…}` (the old normalization dependency is GONE — superseded by A/B'/C).**
+  *Original cause (still true):* Obsidian BLOCK-PROMOTES a bare `![](…)` standalone line into a
+  `.cm-content`-direct `.internal-embed` with NO `.cm-line`, which would SWALLOW an *inline* widget.
+  *Original fix (now removed):* an auto-normalizer appended `{.lie-img}` to keep the line inline.
+  *Current resolution:* render a bare embed with a **`block:true` widget** instead — it lands as its
+  own `.cm-content` child (not in the line), so block-promotion is irrelevant; and the native image is
+  suppressed UNIFORMLY (cca476e). The auto-normalization + the `autoNormalizeImages` setting were
+  REMOVED (4053f95 — which also eliminated an undo loop), and the `.lie-img` marker dropped (aff1847;
+  the parser still SKIPS it for old notes). So `{…}` is now written ONLY by a real plugin action, and
+  no embed needs a marker or normalization to render. (→ AD5; memory `lp-rendering-rework-decisions`.)
 - **Dev-process lessons.** (a) The **stale-build trap** — two quick saves under `dev:vault` can load
   an *intermediate* build (e.g. a function renamed at the call site but not the definition →
   `ReferenceError`), looking like "rendering broke"; force a clean `location.reload()`. (b) The **CDP

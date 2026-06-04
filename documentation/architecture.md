@@ -92,21 +92,23 @@ current code and are restated here as architecture, not invented anew.
   geometry, the uniform box, the caption, the CSS contract — is shared, so both adapters
   produce the same DOM structure and the same visual result.
 
-- **AD5 — Live preview keeps the line native; the plugin renders an inline widget IN it.** *(T6, F3,
+- **AD5 — Live preview keeps the line native; the plugin renders its own image widget (and kills the native image uniformly).** *(T6, F3,
   F17, F8, F9, F18)* Within a mode an image is rendered by exactly one pass. The live-preview adapter
   **does not replace** the image line: it lets Obsidian render the native embed (so the file loads and
   the source keeps Obsidian's own cursor-reveal), **suppresses the native image with static CSS**, and
-  draws the plugin's own transformed image (AD3) as an **inline widget in the embed's OWN `.cm-line`**.
-  Rendering *inline* — rather than as a block widget below the line — is load-bearing: the host cm-line
-  is left a **non-BFC**, so a `lie-left`/`lie-right` `float` **escapes** into `.cm-content`'s block
-  formatting context and shortens the following sibling cm-lines (F18 — real multi-line wrap), with **no
-  height desync** (the float counts to no line's height) and no `contain:paint` clip; and the image now
-  **shares the cm-line** with the source, giving the reveal a uniform home. For this to hold, **every
-  embed must carry a `{…}` block** (AD1, via normalization): Obsidian block-promotes a *bare* `![](…)`
-  line into a cm-line-less `.cm-content` child that would swallow the inline widget — the single,
-  Obsidian-forced **exception to R0** is that transient bare case, where the native block embed is left
-  visible (the native-image suppression is scoped to `.cm-line` embeds) until normalization adds `{…}`
-  and the widget takes over. Three things ride on the line, declaratively in CSS with no measurement
+  draws the plugin's own transformed image (AD3) — and the native image is **suppressed UNIFORMLY**
+  (every embed, unscoped). The plugin's widget renders in **every** case: a `{…}` embed keeps
+  Obsidian's `.cm-line`, so it is an **inline widget IN that line** — rendering inline (rather than a
+  block widget below) is load-bearing, because the host cm-line is left a **non-BFC**, so a
+  `lie-left`/`lie-right` `float` **escapes** into `.cm-content`'s block formatting context and shortens
+  the following sibling cm-lines (F18 — real multi-line wrap), with **no height desync** (the float
+  counts to no line's height) and no `contain:paint` clip, and the image **shares the cm-line** with the
+  source, giving the reveal a uniform home. A **bare** `![](…)` line (no `{…}`) is block-promoted by
+  Obsidian into a cm-line-less `.cm-content` child that would swallow an inline widget — so the plugin
+  renders a **`block:true` widget** for it instead, landing as its own `.cm-content` child next to the
+  (image-suppressed) native embed. There is **no normalization**: `{…}` is written only by a real plugin
+  action (a floated image carries it via its alignment class), so no embed needs a marker or auto-rewrite
+  to render. Three things ride on the line, declaratively in CSS with no measurement
   loop and no edit field: (1) the attribute block `{…}` is literal text — **hidden when rendered** so F3
   holds, shown while editing; (2) a display-only **fake raw link** is the *reveal-for-looking* (F8),
   shown by CSS on cm-line **hover** or in always-mode (the **global default-state setting**, AB19/F20)
@@ -226,17 +228,17 @@ image looks.
 - **AB8 — Reading-view adapter** — runs on rendered sections, hands each embed to the render
   core, attaches the editing chrome.
 - **AB9 — Live-preview adapter** — a CodeMirror-6 editor extension that, for every image embed
-  (standalone or mid-text), **leaves the line's text intact**, draws the plugin's uniform widget as an
-  **inline widget IN the embed's `.cm-line`** (so a `lie-left/right` float escapes the non-BFC line and
-  wraps text, F18), and **CSS-suppresses Obsidian's native image** for `{…}` embeds (AD5). A
-  block-promoted bare embed (no `{…}`) keeps Obsidian's native block image as the transient fallback
-  until normalization runs (the R0 exception). It hosts **no** editable field for the raw link: the
-  **reveal-for-looking** (F8) is a display-only fake link plus the `{…}`, shown/hidden by CSS on cm-line
-  hover and always-mode and yielding to the native source while editing; **editing** (F9) is Obsidian's
-  own cursor-reveal of the source as real document text (one editing root → native caret, selection,
-  copy). Inline (mid-text) embeds get the same widget; only chrome placement differs (AD3). The old
-  duplicate-native-embed hazard is gone because the native embed is now **kept** (and CSS-hidden for
-  `{…}` embeds), not fought.
+  (standalone or mid-text), **leaves the line's text intact**, draws the plugin's uniform widget, and
+  **CSS-suppresses Obsidian's native image UNIFORMLY** (every embed, AD5). The widget renders in every
+  case: a `{…}` embed → an **inline widget IN its `.cm-line`** (so a `lie-left/right` float escapes the
+  non-BFC line and wraps text, F18); a **bare** embed (no `{…}`, block-promoted, no cm-line) → a
+  **`block:true` widget** next to the image-suppressed native embed. It hosts **no** editable field for
+  the raw link: the **reveal-for-looking** (F8) is a display-only fake link plus the `{…}`, shown/hidden
+  by CSS on cm-line hover and always-mode and yielding to the native source while editing; **editing**
+  (F9) is Obsidian's own cursor-reveal of the source as real document text (one editing root → native
+  caret, selection, copy). Inline (mid-text) embeds get the same widget; only chrome placement differs
+  (AD3). The old duplicate-native-embed hazard is gone because the native image is uniformly hidden, not
+  fought.
 
 ### 4.4 Editing UI
 
@@ -285,8 +287,8 @@ display state — each produces an edit that round-trips through the model layer
   keeps the floated image clickable), the box/overflow rules, the **tall-float cap** (a `.lie-tall`
   float stacks as a block under `body.lie-safe-tall-float`), and the configurable preset-width
   variables, shared with the render core (F15, F18, F24, T9). It also carries the **live-preview reveal
-  CSS** (AD5): the rule that hides Obsidian's native image **scoped to `.cm-line` embeds** (so
-  block-promoted bare embeds stay visible; never the plugin's own `.lie-wrapper`), and the
+  CSS** (AD5): the rule that hides Obsidian's native image **uniformly in every embed** (never the
+  plugin's own `.lie-wrapper`), and the
   hover/`.cm-active`-keyed rules — plus the `<>`-toggle class and the global default-state class — that
   hide the `{…}` and the fake raw link when rendered and reveal them otherwise. It carries **no**
   transform/filter rules (those are native CSS, AD2) and **no** decoration classes (shipped as
