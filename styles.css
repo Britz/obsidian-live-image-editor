@@ -161,17 +161,21 @@ img.lie-inline { vertical-align: middle; }
    and CSS-SUPPRESSES the native image. All reveal logic is static CSS keyed on
    `.cm-active` / cm-line hover (no reactive JS). */
 
-/* Suppress Obsidian's NATIVE rendered image + its edit-block-button inside an embed
-   (never the plugin's own `.lie-wrapper`) — AD5: the line is NOT replaced (so the
-   native embed still loads the file and provides the cursor-reveal of the source), the
-   plugin's overlay carries the visible transformed image, and the native image is
-   merely hidden. A markdown image renders the <img> as a DIRECT child of
-   `.internal-embed.image-embed` (no `.image-wrapper`); a wikilink wraps it in
-   `.image-wrapper` — hide both. The native edit-block-button (a `<>` code-2 icon) is
-   hidden so it can't leak (Bug 12). */
-.cm-content .internal-embed.image-embed > img,
-.cm-content .internal-embed.image-embed > .image-wrapper,
+/* Suppress Obsidian's NATIVE rendered image inside an embed we render OURSELVES — i.e. one
+   that lives inside a `.cm-line` (a `{…}`-carrying embed; AD5: the line is NOT replaced, so
+   the native embed still loads the file and provides the cursor-reveal of the source, while
+   the plugin's inline widget carries the visible transformed image). A markdown/wikilink image
+   sits directly or inside `.image-wrapper` — hide both.
+
+   SCOPED to `.cm-line` ON PURPOSE (the bare-embed fallback): a BARE `![](…)` line (no `{…}`)
+   is BLOCK-PROMOTED by Obsidian into a `.cm-content`-DIRECT embed with NO cm-line, which
+   swallows our inline widget — so we must NOT hide its native image; it shows as Obsidian's
+   own block embed (the R0-exception fallback) until normalization adds `{…}` and our widget
+   takes over. The edit-block-button is hidden UNCONDITIONALLY so the native `<>` block button
+   can never leak (Bug 12). */
 .cm-content .internal-embed.image-embed > .edit-block-button { display: none; }
+.cm-content .cm-line .internal-embed.image-embed > img,
+.cm-content .cm-line .internal-embed.image-embed > .image-wrapper { display: none; }
 
 /* The plugin's image container — its own transformed image + chrome, drawn by the widget.
    The embed line is NOT replaced: Obsidian renders its native embed (image CSS-suppressed)
