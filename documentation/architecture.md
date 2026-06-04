@@ -112,7 +112,8 @@ current code and are restated here as architecture, not invented anew.
   loop and no edit field: (1) the attribute block `{…}` is literal text — **hidden when rendered** so F3
   holds, shown while editing; (2) a display-only **fake raw link** is the *reveal-for-looking* (F8),
   shown by CSS on cm-line **hover** or in always-mode (the **global default-state setting**, AB19/F20)
-  and **suppressed by the `<>` toggle** — a CSS-keyed class, not persisted per image; (3) **editing** is
+  and **dismissed by the `<>` (eye) toggle** — a transient, not-persisted per-image class that
+  auto-clears in auto mode; (3) **editing** is
   Obsidian's **own cursor-reveal** of the source as real document text (F9) — caret, selection and copy
   are native, and the fake link **yields** to the native source while the line is active (`.cm-active`)
   so the link is never shown twice. A **tall-float cap** preserves cross-view consistency: a float
@@ -265,11 +266,13 @@ display state — each produces an edit that round-trips through the model layer
   reduce it, F13), with **no** parallel crop/rotate math. Decoupled from the save, which offers the
   native dialog with a free name pre-filled and never overwrites silently (F13, AD9).
 - **AB16 — Raw-link reveal & edit** *(F8, F9, D5)* — **reveal** is a display-only fake raw link the
-  plugin paints before the `{…}`. The **`<>` reveal control** is a **transient** toggle, **not
-  persisted per image** (F8; a class on the box the CSS keys on): **Show** = the reveal follows the
-  **global default-state setting** (AB19/F20) plus the cursor (`.cm-active`) and hover reveal (pure
-  CSS); **Hide** = the reveal is **temporarily suppressed entirely** (to inspect the layout). There is
-  **no** per-line AUTO/ON/OFF mode.
+  plugin paints before the `{…}`. Its **natural state** has two modes from the **global default-state
+  setting** (AB19/F20): *auto* — revealed on cursor (`.cm-active`) or hover of the image's line — or
+  *always* — revealed everywhere; both are pure CSS. The **`<>` (eye) reveal control** is a
+  **transient per-image dismiss** (**not persisted**, F8): it hides this one image's source to inspect
+  the layout, then **auto-clears in auto mode** (the source returns on the next hover/edit) and
+  **persists in always mode** until toggled again. There is **no** third "hidden" mode and **no**
+  per-line mode cycle.
   Only the in-widget **edit field** is designed out: **edit** is **not**
   a plugin field — it is Obsidian's native cursor-reveal of the source text (AD5, AD9), independent of
   the reveal mode, so caret, selection and copy are native. No separate editing root, so the old
@@ -324,7 +327,7 @@ Confirms every requirement is realized by a building block or decision (and surf
 | F15 Built-in classes (align & inline) | Style injection · Toolbar/commands |
 | F16 Vault-snippet classes | Snippet discovery (+bundled examples) · Settings |
 | F16.1 Bundled snippets opt-in (install/reset) | Snippet discovery · Settings |
-| F17 Inline images | AD5 · Live-preview adapter (inline overlay, same uniform widget) |
+| F17 Inline images | AD5 · Live-preview adapter (inline-mode of the same uniform widget) |
 | F18 Float & text wrap | AD2/render core (class on img, float on embed) |
 | F19 Commands | Commands |
 | F20 Settings | Settings |

@@ -37,8 +37,8 @@ above it:
 - **Integration tests (Mid)** confirm the **architecture decisions** (`AD1`–`AD9`) hold once the
   pieces are wired into Obsidian — the source round-trip, the verbatim native-CSS routing, the
   uniform box and its one sizing direction, the two adapters producing one DOM, the one-path-per-
-  mode overlay with the native image CSS-suppressed, declarative sizing with no measure loop, the
-  shared sub-menu host, and the platform-reuse seams. Verified by CDP eval in a running vault.
+  mode widget with the native image uniformly CSS-suppressed, declarative sizing with no measure
+  loop, the shared sub-menu host, and the platform-reuse seams. Verified by CDP eval in a running vault.
 - **Behaviour / acceptance tests (High)** confirm the **requirements** (`Fn`/`Dn`) as observed by
   a user. Verified by CDP eval in a running vault on the example pages.
 - **Regression tests** pin every entry in the CLAUDE.md *Known bugs* list and every `T-Ln`
@@ -61,17 +61,24 @@ each case **verifies**, not how the code does it. Files map to `implementation-p
 Pure box / inner-image geometry; the single source shared by the renderer and the export
 (`AD3`, `AD6`, rendering ≡ export).
 
-- **`rotatedBox`** — for a 0° image the box equals the image (the degenerate case is not
-  special, `AD3`); for 90 / 180 / 270 the box is the rotated bounding box (w↔h swap at quarter
-  turns); for a free angle the box is the true rotated AABB. Verifies that the **angle reflows
-  the box** at edit time, never at render (`AD6`, `T5`).
-- **`cropBoxSize`** — given a crop frame and an explicit `width` with **no** `height`, the box
-  height is derived aspect-correctly from the frame (not left at the frame's own height);
-  given both, both are honoured; given neither, the frame size stands. Verifies the crop box is
-  the **cut frame**, independent of the (larger) inner image, and rescales by the column for
-  free (`implementation-plan.md` §2.3). *(Pins Bug 18.)*
+- **`boxAspectRatio`** — for a 0° image the box ratio equals the intrinsic ratio (the degenerate
+  case is not special, `AD3`); at 90 / 270 it is the **swapped** intrinsic ratio (w↔h), at 180
+  unchanged; for a free angle it is the rotated-AABB ratio. Verifies that the **angle reflows the
+  box** at edit time, never at render (`AD6`, `T5`).
+- **`innerImageSize`** — the inner image's box-relative size: equal to the box for normal / flip /
+  filter (fills it); for a quarter-turn the image keeps its own size, centred; for a crop the inner
+  is the larger (scaled/translated) original, clipped by the box. Verifies the **box → image**
+  direction and that crop is just the case with content beyond the box (`implementation-plan.md`
+  §2.3). *(Pins Bug 18.)*
+- **`rotatedAabb`** — the true rotated bounding box for any angle; the **single source** shared by
+  the box-sizing and the canvas export (rendering ≡ export, `AD3`).
 - **`estimatedBlockHeight`** — returns a synchronous, finite height estimate from the stored
-  size for CM6 block measurement, so no async measure is needed (`AD6`).
+  size for CM6 **block-widget** measurement (the bare-embed case), so no async measure is needed
+  (`AD6`).
+- **`isTallFloat` / `TALL_FLOAT_THRESHOLD_PX`** — a float whose (rotated) height exceeds CM6's
+  ~250px render margin is flagged tall, from the **stored size alone** (no DOM measure). Verifies the
+  tall-float cap is a pure decision driving the same `.lie-tall` stacking in **both** views (`AD6`;
+  the tall-float-cap regression).
 
 ### 2.2 `live-preview-logic.ts` — line → decoration mapping (`AB9`)
 
@@ -104,7 +111,7 @@ Pure box / inner-image geometry; the single source shared by the renderer and th
 - **`snapAngle`** — quantizes rotation to the fixed angle step live; verifies the rotation cut
   is quantized continuously, not only on commit (`F12`).
 - **`snapScale`** — quantizes zoom to its step; verifies the scaled cut stays on a clean step.
-- **`toCropData`** — composes the quantized pan / angle / scale + frame into the stored
+- **`toCropResult`** — composes the quantized pan / angle / scale + frame into the stored
   transform (translate% + rotate + scale + box w/h). Verifies the editor emits exactly the
   native-CSS placement the renderer and export consume (`AD2`, rendering ≡ export).
 
@@ -168,20 +175,29 @@ run via CDP eval against the example vault (`T-L6`, `AD7`).
 - **AD4 — Two adapters, one DOM.** Render the same image in reading view and live preview;
   diff the produced DOM structure and the resulting box / img sizes. *Verifies both adapters
   produce the same structure and visual result (`T4`, `F4`).*
-- **AD5 — Overlay + CSS-suppress / one path per mode / inline same widget.** Confirm the
-  live-preview widget does **not** replace the standalone line: the line's text stays intact, the
-  plugin draws its **own** transformed image as an overlay (the one uniform widget), and
-  Obsidian's native image is suppressed by static scoped CSS (Obsidian's `.image-wrapper` hidden,
-  the plugin's own `.lie-wrapper` never). Confirm the `{…}` is real document text the plugin
-  CSS-**hides** when rendered and shows when the line is active (`.cm-active`); confirm the
-  reveal-for-looking is a display-only "fake" raw link painted by the plugin, shown/hidden purely
-  by CSS keyed on hover/focus and `.cm-active` (no reactive JS); confirm an inline embed uses the
-  **same** non-replacing overlay widget in inline mode with the **same** uniform chrome (class
-  marker present; chrome is uniform — only its placement differs, `AB9`). *Verifies one owning path
-  per mode, no double render, the native embed embraced and CSS-hidden (`F3`, `F8`, `F17`, `T6`).*
-  *To verify (`DEC-6`): that `.cm-active` flips in lock-step with Obsidian's native source-reveal
-  (so the CSS-keyed reveal coincides exactly with the source becoming editable), with the
-  native-widget-DOM-presence `:has()` fallback when the lock-step assumption does not hold.*
+- **AD5 — Uniform widget + CSS-suppress / one path per mode / inline same widget.** Confirm the
+  live-preview widget does **not** replace the standalone line (the text stays intact, so Obsidian's
+  native embed still loads the image and reveals the source), the plugin draws its **own** transformed
+  image, and the native image is suppressed by static **uniform** CSS (`> img` *and* `> .image-wrapper`
+  hidden in **every** embed, the plugin's own `.lie-wrapper` never). Confirm the **three render modes**
+  (the rework's CDP points, against the example vault):
+  - **`{…}` standalone → inline widget in its own non-BFC cm-line.** A `lie-left`/`lie-right` float
+    **escapes** into `.cm-content` and wraps the following hard-wrapped cm-lines (real **multi-line
+    wrap**, `F18`); per line `CMtop==DOMtop` and `CMh==DOMh` (**zero height desync**); `posAtCoords` on
+    wrap text maps to the correct line (**no click-steal**); `elementFromPoint` over the image is the
+    `IMG` (clickable via `z-index:1`).
+  - **bare `![](…)` → `block:true` widget.** The block-promoted line shows the plugin's own block
+    widget (CDP: a real height, not a blank ~6px line), next to the image-suppressed native embed.
+  - **inline mid-text → the same widget** in inline mode (`Decoration.replace`), same uniform chrome —
+    only the placement differs (`AB9`, `F17`); no `{…}` shown as text.
+  Confirm the `{…}` is real document text CSS-**hidden** when rendered and shown when the line is active
+  (`.cm-active` / `.cm-line:has(> .cm-formatting)`); confirm the reveal-for-looking is a display-only
+  "fake" raw link painted by the plugin, shown by CSS in **auto** mode (cm-line hover / active line) or
+  **always** mode (the `alwaysShowLink` setting), and **dismissed** per image by the `<>` (eye) toggle
+  (a `.lie-dismissed` line class that auto-clears in auto mode) — **no reactive JS**, no third "hidden"
+  mode. *Verifies one owning path per mode, no double render, the native embed embraced and
+  CSS-hidden (`F3`, `F8`, `F17`, `F18`, `T6`).* *To verify (`DEC-6`): that `.cm-active` flips in
+  lock-step with Obsidian's native source-reveal, with the native-widget-DOM `:has()` fallback.*
 - **AD6 — Declarative sizing, no measure loop.** Confirm a rotated image converges to the
   stored bounding-box size with **no** render-time measure/retry — including with a cached image
   and a backgrounded window (animation frames throttled). *Verifies sizing is box→image at edit
@@ -232,11 +248,16 @@ Grouped by area; each line states what is checked.
   trailing block stays intact; a Markdown native size folds into the block; a wikilink native
   size is left as written.
 - **Inline images (`F17`).** An image mid-sentence renders at its inline size in both views — not
-  Obsidian's native full-size inline image — through the **same** uniform overlay widget and chrome
+  Obsidian's native full-size inline image — through the **same** uniform widget and chrome
   as standalone (only the placement differs), with no `{…}` shown as text.
 - **Float & wrap (`F18`).** Left / right alignment floats the image and the surrounding text
   wraps around it in both views, including the hard cases (rotated + float + wrapped, cropped +
-  float + wrapped), verified by measuring actual line-box rects (not the full-width border box).
+  float + wrapped), verified by measuring actual line-box rects (not the full-width border box). In
+  live preview the float is the inline widget in its own non-BFC cm-line that **escapes** into
+  `.cm-content` (multi-line wrap on hard-wrapped paragraphs, **zero height desync** per line, **no
+  click-steal**, image clickable via `z-index:1`). A float taller than ~250px **stacks as a
+  non-floated block in BOTH views** under the *Stack tall floated images* setting (default safe), so
+  it can't derender on scroll in LP and the reader matches it (`tallFloatSafe`; the tall-float cap).
 - **Settings (`F20`, `D11`).** General toggles (hover toolbar, captions, default reveal state),
   preset widths, snippet list with per-class toggles and install/reset, and editing-toolbar
   integration all take effect live; edits never jump scroll or move the cursor.
@@ -275,23 +296,31 @@ lessons). Pure-logic regressions become **unit** tests (§2); the rest are **CDP
 | Bug 15 | No-size image fits the column, no overflow | CDP (`D3`) |
 | Bug 16 | Resize frame hugs the image (zeroed wrapper padding) | CDP (`AD3`) |
 | Bug 17 | Standalone classes reach the img in live preview — **brace-stripping** | **unit** (`live-preview.test.ts`) + CDP (`T-L9`) |
-| Bug 18 | Resized crop has no empty band — `cropBoxSize` aspect-correct | **unit** (`renderer-logic.test.ts`) + CDP |
+| Bug 18 | Resized crop has no empty band — `innerImageSize` aspect-correct | **unit** (`renderer-logic.test.ts`) + CDP |
 | Bug 19 | Inline mid-text image uses the same widget in inline mode, not native | **unit** (`inlineEmbeds`) + CDP (`F17`, `AD5`) |
+| LP float cluster | `lie-left/right` wraps multi-line via the inline non-BFC widget escaping into `.cm-content` — 0 height desync, 0 click-steal, image clickable (`z-index:1`) | CDP (`AD5`, `F18`) |
+| Tall float | a float taller than ~250px stacks as a non-floated block in **both** views (no LP derender on scroll) | **unit** (`isTallFloat`) + CDP |
+| Bare embed | a bare `![](…)` line renders the plugin's `block:true` widget (a real height, not a blank line), native image CSS-suppressed | CDP (`AD5`, `T-L13`) |
+| Inline-icon / tiny toolbar | the floating bar sits truly ABOVE a too-small image (`rect.top − h − gap`, below-fallback near the viewport top); float-out fires by coverage | CDP (`D1.1`) |
 
 ### 5.2 Per learned lesson (`T-Ln`)
 
 | Lesson | Regression it guards | Level |
 |---|---|---|
 | `T-L1` | An un-replaced line re-fires Obsidian's native embed and shows `{…}` as text — the still-true observation that now **motivates** the model: embrace the native embed (it loads the image + reveals the source) and CSS-hide both the native image and the `{…}` when rendered | CDP (`AD5`) |
-| `T-L2` | StateField (block + inline decorations) drives the overlay, not a ViewPlugin | CDP (`AD5`) |
+| `T-L2` | StateField (block + inline decorations) drives the widget, not a ViewPlugin | CDP (`AD5`) |
 | `T-L3` | Transforms stored **only** in the trailing block (never alt / pipe) | unit (`transforms`) + CDP |
 | `T-L4` | Never `disablePlugin` via CDP — diagnostic constraint, not a test | n/a (process) |
 | `T-L5` | Link conversion never uses the `alias` arg | **unit** (`link-format.test.ts`) |
 | `T-L6` | Decision logic tested pure, not by CDP — the §2 split itself | unit (structural) |
 | `T-L7` | One DOM structure for every image | CDP (`AD3`) |
-| `T-L8` | One render path per mode, no double render — the plugin's overlay is the only painted image, Obsidian's native image CSS-suppressed (and the reading-view reconcile skips widget-owned embeds) | CDP (`AD5`) |
+| `T-L8` | One render path per mode, no double render — the plugin's widget is the only painted image, Obsidian's native image **uniformly** CSS-suppressed (and the reading-view reconcile skips widget-owned embeds) | CDP (`AD5`) |
 | `T-L9` | `params` brace-less before `parseAltText` | **unit** (`transforms` + `live-preview`) |
 | `T-L10` | No reliance on rAF/ResizeObserver alone — designed out by `AD6` (box→image, no measure loop) | CDP (`AD6`, `T7`) |
+| `T-L11` | The LP adapter never replaces the line; a `{…}` embed renders as an **inline** widget in its own non-BFC cm-line (float escapes → wrap), the native image uniformly CSS-hidden | CDP (`AD5`, `F18`) |
+| `T-L11b` | Obsidian keeps the embed rendered even on the active line; only the trailing `{…}`/alt become editable text — native editing covers the plugin's data | CDP (`AD5`) |
+| `T-L12` | `container-type: size` on the box works, but collapses to 0×0 when the box's pane is `display:none` — measure in the visible pane | CDP (process) |
+| `T-L13` | A **bare** embed needs no `{…}`: it renders via a `block:true` widget (block-promotion irrelevant), native image suppressed — no normalization, no marker | CDP (`AD5`) |
 
 > `T-L10` was the *workaround* for an imperative measure-then-resize loop; `AD6` removes that
 > loop entirely (sizing is box→image, declarative), so the regression check is that **no
@@ -304,13 +333,14 @@ lessons). Pure-logic regressions become **unit** tests (§2); the rest are **CDP
 Per `T-L6` and `AD7`, anything that needs the live framework cannot be a vitest unit and is
 verified only by CDP eval in the running app (or, where noted, manually):
 
-- **CM6 decoration & widget behaviour** — the overlay block widget (line left intact) and the
-  same non-replacing overlay widget for mid-text inline embeds (no `Decoration.replace`; uniform
-  chrome, placement differs only), block vs inline mode, the StateField rebuild on
-  docChange / selection / mode toggle (`@codemirror` does not resolve under vitest).
+- **CM6 decoration & widget behaviour** — the three widget modes with the line left intact: the
+  **inline** standalone widget in a `{…}` embed's own non-BFC cm-line (float escapes → wrap), the
+  **`block:true`** widget for a bare/block-promoted embed, and the **`Decoration.replace`** widget for
+  a mid-text inline icon — uniform chrome, placement differs only; the StateField rebuild on
+  docChange / selection / mode toggle / `<>` dismiss (`@codemirror` does not resolve under vitest).
 - **Obsidian embed rendering** — that an un-replaced line re-triggers Obsidian's own native
-  embed (the basis for `AD5`'s overlay + CSS-suppress model: the native embed is embraced for the
-  image load and the source cursor-reveal, then CSS-hidden), reconcile skipping widget-owned
+  embed (the basis for `AD5`'s widget + uniform CSS-suppress model: the native embed is embraced for
+  the image load and the source cursor-reveal, then CSS-hidden), reconcile skipping widget-owned
   embeds, native spacing.
 - **DOM measurement & responsiveness** — actual box / img sizes, column-cap behaviour, caption
   width-sync, float text-wrap (measuring real line-box rects), the backgrounded-window

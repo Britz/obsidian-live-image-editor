@@ -20,16 +20,17 @@ One file per building block where possible; pure decision logic split into a sib
 | File | Building block (arch §4) | Key exports |
 |---|---|---|
 | `src/main.ts` | AB17 Lifecycle | `Plugin` subclass |
-| `src/transforms.ts` | AB1 Transform model | `ImageTransform` *(native: classes/inline/transform/filter/width/height/aspectRatio/box)*<br>`FilterData`<br>`parseAltText`<br>`serializeTransform`<br>`getRotation`/`setRotation`<br>`toggleFlipH`/`toggleFlipV`/`getFlipH`/`getFlipV`<br>`isCrop`<br>`getFilter`/`setFilter`/`filterToCss`/`parseFilterCss`<br>`getWidthPx`/`getHeightPx`/`getPreset`/`setPresetWidth`/`setWidthPx`/`setHeightPx`<br>`temperatureAdjust`<br>`MARKER_CLASS`<br>`INLINE_CLASS` |
+| `src/transforms.ts` | AB1 Transform model | `ImageTransform` *(native: classes/inline/transform/filter/width/height/aspectRatio/box)*<br>`FilterData`<br>`parseAltText`<br>`serializeTransform`<br>`getRotation`/`setRotation`<br>`toggleFlipH`/`toggleFlipV`/`getFlipH`/`getFlipV`<br>`isCrop`<br>`getFilter`/`setFilter`/`filterToCss`/`parseFilterCss`<br>`getWidthPx`/`getHeightPx`/`getPreset`/`setPresetWidth`/`setWidthPx`/`setHeightPx`<br>`temperatureAdjust` *(dead — see DRY audit)*<br>`MARKER_CLASS` *(backward-compat parse-skip only; no longer emitted or added to the img)*<br>`INLINE_CLASS` |
 | `src/link-format.ts` | AB2 Link form & native-size normalization | `parseEmbedLine`<br>`buildEmbed`<br>`convertEmbedLine`<br>`desiredFormat` |
-| `src/image-resolver.ts` | AB3 Source↔DOM mapping | `findImageInSource`<br>`updateImageSource`<br>`parseLocationTransform` |
+| `src/image-resolver.ts` | AB3 Source↔DOM mapping | `findImageInSource`<br>`findImageInText`<br>`getImageFilename`<br>`parseLocationTransform` *(dead — see DRY audit)* |
+| `src/source-writer.ts` | AB3 / AD1 edit writer (shared) | `writeSource` *(one isolated CM transaction per edit)*<br>`LIE_USER_EVENT` |
 | `src/snippet-scanner.ts` | AB4 Snippet class discovery | `scanSnippets` *(enabled-only)*<br>`SnippetClass`<br>`installBundledSnippet`<br>`resetBundledSnippet`<br>`isBundledSnippetInstalled` |
-| `src/renderer-logic.ts` | AB5 Geometry (pure) | `boxAspectRatio`<br>`innerImageSize`<br>`rotatedAabb`<br>`estimatedBlockHeight` |
-| `src/renderer.ts` | AB6 Uniform box (declarative) + AB8 reading-view adapter | `applyTransformToImage`<br>`applyFilterPreview`<br>`previewBoxSize`<br>`unwrapBox`<br>`BOX_CLASS` |
+| `src/renderer-logic.ts` | AB5 Geometry (pure) | `boxAspectRatio`<br>`innerImageSize`<br>`rotatedAabb`<br>`estimatedBlockHeight`<br>`isTallFloat`<br>`TALL_FLOAT_THRESHOLD_PX` |
+| `src/renderer.ts` | AB6 Uniform box (declarative) + AB8 reading-view adapter | `applyTransformToImage`<br>`applyFilterPreview`<br>`unwrapBox`<br>`BOX_CLASS` |
 | `src/caption-logic.ts` | AB7 Caption (text, pure) | `captionMarkdown`<br>`captionFromAlt` |
 | `src/caption.ts` | AB7 Caption (DOM) | `createCaption`<br>`CaptionHandle` |
 | `src/live-preview-logic.ts` | AB9 LP line→decoration (pure) | `lineDecorations`<br>`inlineEmbeds`<br>`rewriteWidth`<br>`EMBED_LINE` |
-| `src/live-preview.ts` | AB9 Live-preview adapter (+ AB16 overlay + CSS native-suppression) | `createLivePreviewExtension`<br>`refreshDecorations` |
+| `src/live-preview.ts` | AB9 Live-preview adapter (+ AB16 widget + CSS native-suppression) | `createLivePreviewExtension`<br>`refreshDecorations`<br>*(internal: `WidgetMode = block\|inline\|standalone`, `RevealMode = auto\|always`)* |
 | `src/toolbar.ts` | AB10 Toolbar | `ImageToolbar`<br>`buildToolbarElement` |
 | `src/anchored-submenu-logic.ts` | AB11 Sub-menu placement (pure) | `placeSubmenu`<br>`SubmenuPlacement` |
 | `src/anchored-submenu.ts` | AB11 Shared sub-menu host | `AnchoredSubmenu` |
@@ -39,7 +40,7 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/size-submenu.ts` | AB14 Size sub-menu | `buildSizeBody`<br>`SizeState` *(CSS-string width/height)* |
 | `src/export.ts` | AB15 Export | `renderTransformedImage`<br>`suggestExportPath`<br>`saveExport` |
 | `src/commands.ts` | AB18 Commands | `registerCommands` |
-| `src/settings.ts` | AB19 Settings | `LieSettingTab`<br>`LieSettings` *(+defaultRevealShown, presetWidths)*<br>`DEFAULT_SETTINGS` |
+| `src/settings.ts` | AB19 Settings | `LieSettingTab`<br>`LieSettings` *(alwaysShowLink, presetWidths, tallFloatSafe)*<br>`DEFAULT_SETTINGS` |
 | `src/styles-injector.ts` | AB20 Style injection | `StylesInjector`<br>`PresetWidths`<br>`DEFAULT_PRESET_WIDTHS` |
 | `src/editing-toolbar-integration.ts` | AB22 Editing-toolbar integration | `getEditingToolbarStatus`<br>`addEditingToolbarButtons`<br>`removeEditingToolbarButtons` |
 | `src/i18n/` | AB21 Localization | `index.ts`<br>`en.ts`<br>`de.ts` |
@@ -113,7 +114,7 @@ same transform composition**, so the export matches the display
 Canonical serialization (T2, AD2) — native CSS, classes only for what needs them:
 
 ```
-![alt](path.png){.lie-img .lie-left style="transform: rotate(90deg) scaleX(-1); filter: brightness(1.2); width: var(--lie-size-medium)"}
+![alt](path.png){.lie-left style="transform: rotate(90deg) scaleX(-1); filter: brightness(1.2); width: var(--lie-size-medium)"}
 ```
 
 - **Native CSS in `style=`** — the `transform` / `filter` **values pass through verbatim** to the
@@ -134,15 +135,19 @@ Canonical serialization (T2, AD2) — native CSS, classes only for what needs th
   - **size** → `width` / `height`: a **preset** is `width: var(--lie-size-small|medium|large)`
     (re-themeable; value in settings; falls back to `auto` where the var is undefined, F25); a
     **custom** size is a literal px.
-- **Internal `lie-*` classes** (need CSS) — only: `lie-img` (`MARKER_CLASS`, marker), alignment
-  (`lie-left/right/center`), inline (`lie-inline` = `INLINE_CLASS`). **No** size or decoration
-  classes (size → `width` above; decoration → shipped snippets, F16).
+- **Internal `lie-*` classes** (need CSS) — only: alignment (`lie-left/right/center`) and inline
+  (`lie-inline` = `INLINE_CLASS`). There is **no `.lie-img` marker** on the image any more
+  (`serializeTransform` no longer emits it, `renderer.ts` no longer adds it, aff1847); `MARKER_CLASS`
+  survives only so `parseAltText` keeps SKIPPING a `.lie-img` token in old notes. A render-time-only
+  `lie-tall` marker is added to a tall float by the renderer (driving the tall-float cap, §2.4) and is
+  **never written to the source**. **No** size or decoration classes (size → `width` above; decoration
+  → shipped snippets, F16).
 - **Crop** is **fully native too** — the placement is the img's
   `transform: translate(<%>,<%>) rotate(<deg>) scale(<n>)` (translate in **%** → box-relative,
   responsive) and the box is `width` + `height` (the cut frame). **No custom property.** Example:
 
   ```
-  ![alt](img.png){.lie-img style="width:320px; height:240px; transform: translate(-25%,-10%) rotate(12deg) scale(1.8)"}
+  ![alt](img.png){style="width:320px; height:240px; transform: translate(-25%,-10%) rotate(12deg) scale(1.8)"}
   ```
 
   The wrapper's `overflow:hidden` does the clipping; the editor presents `scale` as w/h. Crop is
@@ -163,14 +168,16 @@ Three nested elements, outermost first — **the same for every image** (R0/AD3)
 embed   — the flow container: Obsidian's own .image-embed (reading view) /
           the plugin's OWN overlay container .lie-wrapper in live preview (the widget draws its
           own, while Obsidian's native .image-embed/.image-wrapper stays in the document,
-          CSS-suppressed, §2.4 — the suppression keys on the NATIVE .image-wrapper, NEVER on the
-          plugin's own .lie-wrapper).
+          CSS-suppressed, §2.4 — the suppression keys UNIFORMLY on the NATIVE `> img` and
+          `> .image-wrapper` of EVERY embed, NEVER on the plugin's own .lie-wrapper).
           The flow participant: alignment/float and native vertical spacing (D10) act here.
   ├ box  — .lie-image-area: the plugin's wrapper, ALWAYS present, AXIS-ALIGNED (never rotated).
   │        Box + img are ONE unit. It only RESIZES — to the rotated image's bounding box
   │        (reflow) — and clips; overflow:hidden is set unconditionally.
-  │   └ img — img.lie-img: the image itself, and the ONLY element that is transformed
-  │           (rotate / flip / filter / crop placement = translate+scale). Carries the marker class.
+  │   └ img — the image itself, and the ONLY element that is transformed
+  │           (rotate / flip / filter / crop placement = translate+scale). It carries NO marker
+  │           class — it is identified by its .lie-image-area box parent (and lie-inline for an
+  │           inline icon).
   └ caption — in the EMBED, BELOW the box — NEVER inside the box (overflow:hidden would clip it,
               which would drag back a pile of special rules and waste the native wins). Sized to
               the box width by the embed itself, not by JS.
@@ -211,8 +218,8 @@ directly — correct for the untransformed case, gracefully degraded otherwise, 
 
 **Direction of computation — from the stable intrinsic ratio, applied to the DOM.** The box's
 `aspect-ratio` is **computed at render** from the image's **intrinsic ratio** (read once when the
-image loads) plus the angle — by the pure functions in `renderer-logic.ts` (`rotatedBox`,
-`cropBoxSize`) — and **applied to the DOM box, never written to the source** (writing it back would
+image loads) plus the angle — by the pure functions in `renderer-logic.ts` (`boxAspectRatio`,
+`innerImageSize`, `rotatedAabb`) — and **applied to the DOM box, never written to the source** (writing it back would
 race the user's edits, §2.1). The crucial part: it is derived from the **stable intrinsic** ratio
 (a fixed property of the image), **not** from measuring the rendered, column-dependent box — so
 there is **no measure-then-resize retry loop**, which is exactly what designs out the recurring
@@ -253,18 +260,29 @@ there is no second crop/rotate/scale implementation. (This collapses the old dup
   `.lie-wrapper` overlay container in live preview / Obsidian's `.image-embed` in reading view) via
   `:has(img.lie-left)` — never on the `img` (flex child) or the `.lie-image-area` (inside the
   embed). *(Pitfall §4.)*
-- **Native-suppression (live preview)** — static, scoped rules hide Obsidian's native
-  `.image-wrapper` while the plugin's overlay (`.lie-wrapper`) is shown; the rules **never** hit the
-  plugin's own `.lie-wrapper`. The `{…}` block (real document text) is hidden when the image is
-  rendered and shown when the line is active — keyed on `.cm-active` (fallback: native widget DOM
-  presence via `:has()`). The reveal-for-looking "fake" raw link is shown/hidden by the same CSS —
-  on hover/focus/`.cm-active`, by the `<>` toggle's transient class on the box, or by the **global
-  default-state** class (the *default raw-link reveal state* setting, AB19/F20). **No reactive JS**
-  does any of this — it is static classes the CSS keys on, not a measurement loop, not an edit field,
-  and **not** a per-line AUTO/ON/OFF mode (AD5, AB16).
-- Injected CSS carries **no** transform/filter rules (native) and **no** decoration classes
-  (shipped as snippets, F16) — only the box, alignment routing, inline, the preset-width vars, and
-  the live-preview native-suppression/reveal rules.
+- **Native-suppression (live preview)** — static, **UNIFORM** rules hide Obsidian's native image in
+  **every** embed: `.cm-content .internal-embed.image-embed > img` and `> .image-wrapper` (covering
+  both the Markdown `> img` and the wikilink `.image-wrapper`), plus the native `> .edit-block-button`
+  (so the native `<>` icon never leaks, Bug 12). The rules **never** hit the plugin's own
+  `.lie-wrapper`. The `{…}` block (real document text) is hidden when the image is rendered and shown
+  when the line is active — keyed on `.cm-active` / `.cm-line:has(> .cm-formatting)`.
+- **Reveal-for-looking** — the "fake" raw link + the `{…}` ride on a **mode class**: `lie-rev-auto`
+  (shown on cm-line **hover** or the active line) or `lie-rev-always` (shown everywhere), set from the
+  *default raw-link reveal state* setting `alwaysShowLink` (AB19/F20). The `<>` (eye) toggle stamps a
+  **`.lie-dismissed` LINE class** that overrides the mode and hides the source for that one image
+  (`!important`); it **auto-clears** in auto mode (once the line is neither hovered nor active) and
+  **persists** in always mode until toggled again. **No reactive JS** does the reveal — it is static
+  classes the CSS keys on, not a measurement loop, not an edit field, and **not** a third "hidden"
+  reveal mode (AD5, AB16).
+- **Tall-float cap** — a float marked `.lie-tall` by the renderer (a declarative height estimate,
+  AD6) stacks as a non-floated block under `body.lie-safe-tall-float` in **both** views
+  (`.lie-wrapper:has(img.lie-tall)` in LP, `.image-embed:has(img.lie-tall)` in reading view), so a
+  tall LP float can't derender on scroll (the `tallFloatSafe` setting, default on).
+- The bulk lives in the shipped static `styles.css`: the box/overflow rules, the alignment `:has()`
+  float routing (with `z-index:1` keeping the floated image clickable), inline, the
+  native-suppression/reveal rules and the tall-float cap. `styles-injector.ts` (AB20) adds only the
+  **preset-width vars** and the **toggleable** alignment/inline classes at runtime. Neither carries
+  any **transform/filter** rules (native CSS) or **decoration** classes (shipped as snippets, F16).
 
 ---
 
@@ -285,8 +303,18 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   (Obsidian's wikilink setting) differs, via Obsidian's `fileManager.generateMarkdownLink`,
   defensively (falls back to leaving the link as-is). It folds a Markdown native `|size` into
   the block and leaves a wikilink's native size in place (F5, F6).
-- **`image-resolver.ts`** — `findImageInSource` maps a DOM `img` to its `{ line, ch }` range;
-  `updateImageSource` rewrites that range only, leaving the cursor and scroll untouched (D11).
+- **`image-resolver.ts`** — `findImageInSource` maps a DOM `img` to its `{ line, ch }` range
+  (`findImageInText` is the pure half; `getImageFilename` reads the linkpath). The rewrite itself goes
+  through the shared `writeSource` (below), leaving the cursor and scroll untouched (D11). *(The old
+  `updateImageSource` writer is gone; `parseLocationTransform` is a dead export — DRY audit.)*
+- **`source-writer.ts`** — `writeSource(view, changes)` is the **single funnel** for every plugin
+  edit to the document (AD1, edit direction): it dispatches the change as **one** CM transaction,
+  isolated in history (`isolateHistory.of("full")`) and tagged `LIE_USER_EVENT`, so each plugin edit
+  is **exactly one undo step** (never merged with adjacent typing, never split — regardless of how
+  large the `{…}` block is), and moves neither cursor nor scroll (D11; it re-pins scroll if a reflow
+  nudged it). `@codemirror/commands` is kept an esbuild external; a minimal ambient decl in
+  `env.d.ts` gives tsc the `isolateHistory` type. `main.ts` (`writeTransform → writeToSource`) and the
+  LP resize both funnel through it.
 - **`snippet-scanner.ts`** — `scanSnippets` reads `.obsidian/snippets/*.css` via the vault
   adapter, pattern-matches image classes, filters out `lie-*` and Obsidian-internal classes,
   and re-runs on the file-watcher (F16, T6). The plugin also **ships example decoration snippets**
@@ -295,13 +323,17 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
 
 ### 3.2 Render core
 
-- **`renderer-logic.ts`** (pure, tested) — `rotatedBox` and `cropBoxSize` compute the box and the
-  inner-image geometry as **pure functions of box size + transform** (no DOM measurement);
-  `estimatedBlockHeight` (synchronous CM6 height estimate).
+- **`renderer-logic.ts`** (pure, tested) — `boxAspectRatio` and `innerImageSize` compute the box's
+  `aspect-ratio` and the inner-image geometry as **pure functions of the intrinsic ratio + transform**
+  (no DOM measurement); `rotatedAabb` gives the rotated bounding box; `estimatedBlockHeight` is the
+  synchronous CM6 height estimate; `isTallFloat` / `TALL_FLOAT_THRESHOLD_PX` decide the tall-float cap
+  from the stored size (declarative, AD6 — no measure).
 - **`renderer.ts`** — `applyTransformToImage` builds the one uniform `.lie-image-area` for every
   image (normal = degenerate transform) with `overflow:hidden`, sizes the box (size attr, else
-  column-capped intrinsic) and sets the inner image from box + transform (**box → image**, §2.3);
-  `unwrapBox` tears it down. Rotate/flip/filter are native CSS on the img, so there is no
+  column-capped intrinsic) and sets the inner image from box + transform (**box → image**, §2.3); it
+  also marks a tall float `.lie-tall` (via `isTallFloat`, driving the §2.4 cap) and adds `lie-inline`
+  for an inline icon — but **no `.lie-img` marker** (the img is identified by its `.lie-image-area`
+  box parent). `unwrapBox` tears it down. Rotate/flip/filter are native CSS on the img, so there is no
   var-writing step.
 - **`caption.ts` / `caption-logic.ts`** — `createCaption` renders the alt text via Obsidian's
   `MarkdownRenderer` (AD9) below the box, as a child of the **embed** (never inside the box, §2.3).
@@ -320,33 +352,46 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
 - **Reading view** — `registerMarkdownPostProcessor` runs on rendered sections, calls the render
   core, attaches chrome. Its reconcile skips images already owned by the live-preview pass (the
   plugin's own `.lie-wrapper` overlay) so the two passes never compete (AD5, AD6).
-- **`live-preview.ts`** — `createLivePreviewExtension` is a CM6 `StateField` at `Prec.highest`
-  that, for each embed, draws an `EmbedWidget` **overlay** carrying the plugin's own transformed
-  image (the uniform `.lie-wrapper`, R0/AD3): **block** mode for a standalone line and
-  **inline** mode for a mid-text embed (`inlineEmbeds`) — one widget, two modes, the **same uniform
-  chrome** (R0/AD3, AB9); only its **placement** differs between modes, never the chrome itself
-  (F17). It does **not** replace the line — the line's text is left intact, so Obsidian's native
-  embed still loads the image and provides its own cursor-reveal of the source; the native image is
-  hidden by static scoped CSS (§2.4). Rebuilt on `docChanged` / selection change /
-  `editorLivePreviewField` change.
-- **Overlay + CSS native-suppression (AB16).** Both the suppression and the reveal follow from one
+- **`live-preview.ts`** — `createLivePreviewExtension` is a CM6 `StateField` that, for each embed,
+  draws an `EmbedWidget` carrying the plugin's own transformed image (the uniform `.lie-wrapper`,
+  R0/AD3) in one of **three modes** (`WidgetMode`), the **same uniform chrome** in each — only the
+  *placement* and the decoration kind differ (AB9, F17):
+  - **`standalone`** — a `{…}` embed keeps Obsidian's `.cm-line`, so the widget renders **INLINE in
+    that line** (`side: 1`, not `block:true`). The host cm-line stays a **non-BFC**, so a
+    `lie-left`/`lie-right` `float` **escapes** into `.cm-content`'s BFC and wraps the following lines
+    (F18); the fake link + `{…}` share the line.
+  - **`block`** — a **bare** `![](…)` line (no `{…}`) is block-promoted by Obsidian into a
+    cm-line-less `.cm-content` child that would swallow an inline widget, so the widget is a
+    **`block:true`** decoration landing as its own `.cm-content` child next to the (image-suppressed)
+    native embed. `estimatedHeight` is supplied only for this mode (CM models it out of flow).
+  - **`inline`** — a tiny mid-text icon (`lie-inline`), found by `inlineEmbeds`, rendered via
+    `Decoration.replace`.
+  It does **not** replace the standalone line — the text is left intact, so Obsidian's native embed
+  still loads the image and provides its own cursor-reveal; the native image is hidden by static
+  **uniform** CSS (§2.4). The native-resize-corner drag writes the new width via the shared
+  `writeSource` (`source-writer.ts`). Rebuilt on `docChanged` / selection change /
+  `editorLivePreviewField` change / a `<>` dismiss toggle / a `refreshDecorations` effect.
+- **Widget + CSS native-suppression (AB16).** Both the suppression and the reveal follow from one
   CDP-verified fact: Obsidian builds its native embed from the **document syntax tree** (the raw
   `![[…]]` bytes), independent of our decorations, **and** performs its own cursor-reveal of that
   source as real document text when the caret enters the line. The plugin **embraces** that native
   embed rather than fighting it.
-  - **Suppress native = static CSS, not coverage.** The widget overlays the plugin's own
-    `.lie-wrapper` image; scoped CSS hides Obsidian's native `.image-wrapper` (never the plugin's own
-    `.lie-wrapper`). The document text is **never** edited or covered — it stays the portable
-    `![[…]]{…}` (F1) and the native embed keeps loading the file. (L1 still holds — an *un-replaced*
-    line re-fires the native embed and would show `{…}` as literal text — but that is now **wanted**:
-    we keep the native embed and CSS-hide it, rather than block-replacing the whole line.)
+  - **Suppress native = static CSS, not coverage.** The widget draws the plugin's own `.lie-wrapper`
+    image; **uniform** CSS hides Obsidian's native `> img` and `> .image-wrapper` in **every** embed
+    (never the plugin's own `.lie-wrapper`). The document text is **never** edited or covered — it
+    stays the portable `![[…]]{…}` (F1) and the native embed keeps loading the file. (L1 still holds —
+    an *un-replaced* line re-fires the native embed and would show `{…}` as literal text — but that is
+    now **wanted**: we keep the native embed and CSS-hide it, rather than block-replacing the line.)
   - **Reveal-for-looking (F8)** is a display-only "fake" raw link the plugin paints (it knows the
-    link) plus the `{…}`, shown/hidden **purely by CSS**. It shows on hover/focus/`.cm-active`, when the
-    `<>` toolbar control toggles it (a **binary** show/hide that sets a transient class on the box —
-    **not persisted per image**, F8), or when the **global default-state** setting (AB19/F20) is
-    *shown*. There is **no** per-line AUTO/ON/OFF mode and **no** `cycleRevealMode` (per-image
-    persistence would contradict F8's "not persisted per image"). **No reactive JS**, no plugin-owned
-    **edit** field — just static classes the CSS keys on.
+    link) plus the `{…}`, shown/hidden **purely by CSS** in one of two natural modes from the global
+    *default raw-link reveal state* setting (`alwaysShowLink`, AB19/F20): **auto** (`lie-rev-auto` —
+    shown on cm-line hover or the active line) or **always** (`lie-rev-always` — shown everywhere). The
+    `<>` (eye) toolbar control **dismisses** the source for that one image — a transient
+    **`.lie-dismissed`** LINE class (a `toggleReveal` StateEffect tracked in the field), **not
+    persisted per image** (F8); it **auto-clears** in auto mode once the line is neither hovered nor
+    active, and **persists** in always mode until toggled again. There is **no** third "hidden" reveal
+    mode and **no** `cycleRevealMode`. **No reactive JS** drives the reveal, no plugin-owned **edit**
+    field — just static classes the CSS keys on.
   - **Edit (F9)** is Obsidian's **own native cursor-reveal** of the source as real document text —
     re-verified in-app (2026-06) for **both** standalone and inline embeds (they don't materially
     differ; a standalone embed shifts down a line when its source appears, so the overlay follows).
@@ -359,10 +404,11 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
     to verify is that `.cm-active` flips in lock-step with Obsidian's native reveal (marked to-verify,
     not asserted as proven).
 - **`live-preview-logic.ts`** (pure, tested) — `lineDecorations` (standalone line →
-  decoration; returns brace-less `params`), `inlineEmbeds` (mid-text embeds), and `rewriteWidth`.
-  (`RevealMode`/`cycleRevealMode` are **gone** — no per-line AUTO/ON/OFF. The `<>` control is a
-  transient binary toggle: **Show** = follow the global default-state setting; **Hide** = suppress the
-  reveal entirely, for layout testing — a class on the box the CSS keys on, F8.)
+  decoration; returns brace-less `params`), `inlineEmbeds` (mid-text embeds), `rewriteWidth`, and the
+  `EMBED_LINE` / `INLINE_EMBED` matchers. (`cycleRevealMode` is **gone**; `RevealMode` now lives in
+  `live-preview.ts` as the two-valued `"auto"|"always"` derived from the setting — no per-line mode
+  cycle. The `<>` control is the **eye dismiss**: a `.lie-dismissed` LINE decoration that auto-clears
+  in auto mode, F8.)
 
 ### 3.4 Editing UI
 
@@ -377,7 +423,7 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   `placeSubmenu` computes placement (compact under the toolbar; clamped into the viewport,
   never flipped past the explorer).
 - **`crop-editor.ts` (+ `-logic`)** — `CropEditor` overlay; `snapTranslate` / `snapAngle` /
-  `snapScale` quantize live during the drag (F12), `toCropData` emits the result.
+  `snapScale` quantize live during the drag (F12), `toCropResult` emits the result.
 - **`filter-panel.ts`** — `FilterPanel`: histogram + grouped sliders + temperature; reads/writes
   the native `filter` value; docked beside the image on the roomier side (D7).
 - **`size-submenu.ts`** — `buildSizeBody`: the presets (icon/small/medium/large/original) and the
@@ -408,14 +454,18 @@ caused. These are the low-level half of the decisions in `architecture.md` §2.
   wrapper, no padding on the wrapper box — each reintroduces a divergent path → rotated/normal
   size drift, overflow, or a resize frame offset. Float via `:has()` on the embed, never the
   `img` or `.lie-image-area` → otherwise text never wraps.
-- **AD5 (one path per mode).** The live-preview widget **overlays** the plugin's own image and does
-  **not** replace the line — replacing it block-style was the old model; instead the native embed is
-  kept (it loads the image and reveals the source) and CSS-suppressed. The widget must be a block
-  decoration (a `StateField`, not a `ViewPlugin` — the latter cannot emit block decorations). The
-  `{…}` and the reveal are hidden/shown by **static CSS** keyed on `.cm-active`, never by un-covering
-  a range (which re-fires the native embed, L1) and never by a plugin-owned editable field. Inline
-  images reuse the same widget in inline mode, never a second widget. The reading-view reconcile must
-  skip the plugin's own `.lie-wrapper`, or two passes re-measure at different widths.
+- **AD5 (one path per mode).** The live-preview widget draws the plugin's own image and does **not**
+  replace the line — block-replacing it was the old model; instead the native embed is kept (it loads
+  the image and reveals the source) and CSS-suppressed **uniformly**. A `{…}` embed renders as an
+  **inline** widget in its own **non-BFC** cm-line so a `lie-left`/`lie-right` `float` escapes and
+  wraps (F18) — **not** a block widget below it; a **bare** embed renders as a `block:true` widget
+  (block-promotion leaves no cm-line for an inline one). Because the bare case still needs a *block*
+  decoration, it must be a `StateField`, not a `ViewPlugin` (the latter cannot emit block
+  decorations). The `{…}` and the reveal are hidden/shown by **static CSS** keyed on `.cm-active` /
+  hover, never by un-covering a range (which re-fires the native embed, L1) and never by a
+  plugin-owned editable field. Inline mid-text embeds reuse the **same** widget, never a second
+  widget. The reading-view reconcile must skip the plugin's own `.lie-wrapper`, or two passes
+  re-measure at different widths.
 - **AD6 (sizing direction).** Size **one way: box → image.** Never size the box by measuring the
   loaded image — that imperative measure-then-resize loop is exactly what caused the recurring
   rotated-box drift and forced the old `requestAnimationFrame` / `setTimeout` / `naturalWidth`
