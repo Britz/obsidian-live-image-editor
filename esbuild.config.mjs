@@ -54,9 +54,29 @@ const context = await esbuild.context({
   minify: prod,
 });
 
+// The standalone PORTABLE RUNTIME (AB7a) — a SECOND entry → `lie-runtime.js` (always at the
+// repo root, not the vault). Framework-free IIFE for a browser, the render CSS inlined (a single
+// `<script>` include). NO `obsidian`/CM externals: the runtime imports only the Obsidian-free
+// core, so a stray framework import would FAIL this build — the import-discipline guard that
+// keeps the runtime bundle from pulling Obsidian.
+const runtimeContext = await esbuild.context({
+  entryPoints: ["src/runtime.ts"],
+  bundle: true,
+  format: "iife",
+  target: "es2018",
+  logLevel: "info",
+  define: { __LIE_DEV__: JSON.stringify(!prod) },
+  sourcemap: prod ? false : "inline",
+  treeShaking: true,
+  outfile: "lie-runtime.js",
+  minify: prod,
+});
+
 if (watch) {
   await context.watch();
+  await runtimeContext.watch();
 } else {
   await context.rebuild();
+  await runtimeContext.rebuild();
   process.exit(0);
 }

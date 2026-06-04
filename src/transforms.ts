@@ -1,10 +1,13 @@
 // The transform model (AB1) — the single place that knows the trailing attr_list
-// `{…}` block's syntax, identical for the Markdown and wikilink form (T2). Transforms
-// are stored as NATIVE CSS (AD2): `transform` / `filter` declarations pass through
-// VERBATIM to the <img>, `width` / `height` / `aspect-ratio` route to the box. There
-// is no `--lie-*` custom-property layer and no separate crop type — "one uniform
-// geometry" (R0): crop is just the case where the otherwise-identity translate/scale
-// of the img's native `transform` becomes explicit.
+// `{…}` block's syntax, identical for the Markdown and wikilink form (T2). The model is
+// ROUTED PER LAYER (AD2/AD3, the 3-layer R0 structure): ORIENTATION (`rotate`/`flip`) acts
+// on the inner-frame (composed about its centre), the crop PLACEMENT (`transform`) + the
+// `filter` act on the <img> verbatim, and the footprint (`width`/`height`/`aspect-ratio`)
+// acts on the outer. Separating orientation from the crop placement is what makes
+// re-orienting an already-cropped image pivot structurally instead of drifting (Bug 25):
+// the toolbar's rotate/flip set the orientation fields (frame), never the img transform.
+// The target block format (T2.3) is bare keys (`rotate=`/`flip=`/`transform="…"`/`filter="…"`/
+// `aspect-ratio=`); a legacy `style="transform: …"` is still read (back-compat).
 
 // FilterData is the editor-facing decomposition of the native `filter` string — used
 // only by the filter panel (sliders) and the export's canvas filter; the renderer
@@ -19,22 +22,37 @@ export interface FilterData {
   sepia?: number;
 }
 
+export type Align = "left" | "right" | "center";
+
 export interface ImageTransform {
-  // Non-internal classes (alignment lie-left/right/center, decoration, vault snippets).
+  // Non-internal classes (decoration, vault snippets). Alignment is NOT here — it is the
+  // `align` field (a bare key); legacy `.lie-left/right/center` classes parse INTO `align`.
   classes: string[];
   inline?: boolean;
-  // Routed to the IMG, verbatim native CSS (AD2). A power user's skew()/extra filter
-  // functions pass through untouched.
+  // Alignment → the OUTER/flow participant (AD3). Stored as the bare key `align=left|right|center`
+  // (a real HTML attr → faithful fallback). The renderer re-derives the `lie-left/right/center`
+  // marker class on the img so the `:has(img.lie-…)` float/centre rules still match.
+  align?: Align;
+  // ORIENTATION → the INNER-FRAME (AD3): rotate + flip composed about the frame centre, so
+  // re-orienting a cropped image pivots structurally and never touches the crop placement on
+  // the <img> (Bug 25). Stored as the bare keys `rotate=`/`flip=`, never inside the img
+  // transform — that is the separation Bug 25 turns on.
+  rotate?: number;   // degrees (quarter-turns or free)
+  flipH?: boolean;
+  flipV?: boolean;
+  // CONTENT → the <img>, verbatim CSS (AD2). `transform` is the crop PLACEMENT only
+  // (pan/zoom + optional content-rotate); `filter` the CSS filter. A power user's
+  // skew()/extra filter functions pass through untouched.
   transform?: string;
   filter?: string;
-  // Routed to the BOX. width/height are CSS length strings ("320px") or a preset var
-  // ("var(--lie-size-medium)"); aspectRatio is a deliberate, non-derivable aspect
-  // change (a distorting resize, a width+height modal, or an off-original crop frame).
+  // OUTER (footprint). width/height are CSS length strings ("320px") or a preset var
+  // ("var(--lie-size-medium)"); aspectRatio is the cut-frame shape, stored only when it
+  // differs from the original (a crop ≠ original, a distorting resize, or a width+height modal).
   width?: string;
   height?: string;
   aspectRatio?: string;
-  // Any other style declaration → the box (routing rule #5: everything but
-  // transform/filter goes to the box). Preserved so hand-authored extras survive.
+  // Any other style declaration → the outer passthrough (routing rule #5). Preserved so
+  // hand-authored extras survive.
   box?: Record<string, string>;
 }
 
@@ -68,40 +86,75 @@ const FILTER_FNS: Record<keyof FilterData, { fn: string; unit: string }> = {
 
 /**
  * Parse the content of a trailing attr_list block (the text inside `{…}`) into an
- * ImageTransform. Understands `.class` tokens, `key=value` attrs and a `style="…"`
- * declaration carrying NATIVE CSS. `params` must be brace-LESS (T-L9).
+ * ImageTransform. Understands `.class` tokens and `key=value` attrs — the bare keys
+ * `rotate` / `flip` (orientation → inner-frame), `transform` / `filter` (content → img),
+ * `width` / `height` / `aspect-ratio` (footprint → outer) — plus a legacy `style="…"`
+ * declaration carrying native CSS (back-compat: an old `transform: rotate(…) scaleX(-1)`
+ * is decomposed into the orientation fields). `attrs` must be brace-LESS (T-L9).
  */
 export function parseAltText(attrs: string): ImageTransform {
   const result: ImageTransform = { classes: [] };
   if (!attrs || !attrs.trim()) return result;
 
-  // Pull out style="…" / style='…' first so its spaces don't break tokenizing.
+  // Pull out quoted key="…" / key='…' values first — their spaces would otherwise break
+  // tokenizing (covers `transform=`/`filter=`/`style=` and any quoted value).
   let rest = attrs;
-  const styleMatch = rest.match(/style\s*=\s*(?:"([^"]*)"|'([^']*)')/);
-  if (styleMatch) {
-    parseStyle(styleMatch[1] ?? styleMatch[2] ?? "", result);
-    rest = rest.slice(0, styleMatch.index) + rest.slice((styleMatch.index ?? 0) + styleMatch[0].length);
+  const quoted = /([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  const spans: Array<[number, number]> = [];
+  let m: RegExpExecArray | null;
+  while ((m = quoted.exec(rest)) !== null) {
+    applyKey(m[1] ?? "", m[2] ?? m[3] ?? "", result);
+    spans.push([m.index, m.index + m[0].length]);
   }
+  for (let i = spans.length - 1; i >= 0; i--) rest = rest.slice(0, spans[i]![0]) + rest.slice(spans[i]![1]);
 
   for (const token of rest.trim().split(/\s+/).filter(Boolean)) {
     if (token.startsWith(".")) {
       const cls = token.slice(1);
       if (cls === MARKER_CLASS) continue;
       if (cls === INLINE_CLASS) { result.inline = true; continue; }
+      const legacyAlign = LEGACY_ALIGN[cls];
+      if (legacyAlign) { result.align = legacyAlign; continue; } // back-compat: class → align field
       result.classes.push(cls);
     } else if (token.startsWith("#")) {
       continue; // ids are not used by transforms
     } else if (token.includes("=")) {
       const eq = token.indexOf("=");
-      const key = token.slice(0, eq);
-      const val = token.slice(eq + 1).replace(/^["']|["']$/g, "");
-      if (key === "width") result.width = lengthValue(val);
-      else if (key === "height") result.height = lengthValue(val);
+      applyKey(token.slice(0, eq), token.slice(eq + 1).replace(/^["']|["']$/g, ""), result);
     }
   }
 
   return result;
 }
+
+// Route one key=value into the model. The bare keys are the target format (T2.3); `style=`
+// is the legacy / power-user escape, routed by CSS property name.
+function applyKey(key: string, val: string, result: ImageTransform): void {
+  const v = val.trim();
+  switch (key) {
+    case "style": parseStyle(v, result); break;
+    case "transform": result.transform = v || undefined; break;
+    case "filter": result.filter = v || undefined; break;
+    case "rotate": { const d = parseFloat(v); if (!Number.isNaN(d)) result.rotate = d; break; }
+    case "flip":
+      for (const f of v.split(/[\s,]+/).filter(Boolean)) {
+        if (f === "horizontal" || f === "h") result.flipH = true;
+        else if (f === "vertical" || f === "v") result.flipV = true;
+        else if (f === "both") { result.flipH = true; result.flipV = true; }
+      }
+      break;
+    case "width": result.width = lengthValue(v); break;
+    case "height": result.height = lengthValue(v); break;
+    case "aspect-ratio": result.aspectRatio = v || undefined; break;
+    case "align": if (v === "left" || v === "right" || v === "center") result.align = v; break;
+    // other keys (id; …) are ignored.
+  }
+}
+
+// Legacy alignment CLASS → the `align` field (back-compat; old notes still render unchanged).
+const LEGACY_ALIGN: Record<string, Align | undefined> = {
+  "lie-left": "left", "lie-right": "right", "lie-center": "center",
+};
 
 function parseStyle(style: string, result: ImageTransform): void {
   for (const decl of style.split(";")) {
@@ -112,7 +165,7 @@ function parseStyle(style: string, result: ImageTransform): void {
     if (!prop || !value) continue;
 
     switch (prop) {
-      case "transform": result.transform = value; break;
+      case "transform": assignLegacyTransform(value, result); break;
       case "filter": result.filter = value; break;
       case "width": result.width = value; break;
       case "height": result.height = value; break;
@@ -122,30 +175,61 @@ function parseStyle(style: string, result: ImageTransform): void {
   }
 }
 
+// Back-compat: split a LEGACY `style="transform: …"` value — an orientation-only string
+// (rotate/scaleX/scaleY, NO crop translate/scale) decomposes into the rotate/flipH/flipV
+// fields (so it routes to the inner-frame like the new format); a crop placement (has
+// translate or scale — incl. its content-rotate) stays whole on the <img>. A BARE
+// `transform=` key is never decomposed (it is, by definition, the verbatim crop placement).
+function assignLegacyTransform(value: string, result: ImageTransform): void {
+  const fns = parseFns(value);
+  if (fns.some((f) => f.name === "translate" || f.name === "scale")) {
+    result.transform = value;
+    return;
+  }
+  const kept: Fn[] = [];
+  for (const f of fns) {
+    if (f.name === "rotate") result.rotate = parseFloat(f.args) || 0;
+    else if (f.name === "scaleX" && parseFloat(f.args) < 0) result.flipH = true;
+    else if (f.name === "scaleY" && parseFloat(f.args) < 0) result.flipV = true;
+    else kept.push(f);
+  }
+  result.transform = fnsToString(kept);
+}
+
 /**
- * Serialize an ImageTransform back into attr_list block content (without the
- * surrounding `{…}`). Native CSS in `style=`, internal classes only for inline. No marker
- * class is emitted (a bare embed renders fine via the block widget). Empty transform →
- * empty string (so no `{…}` block is written).
+ * Serialize an ImageTransform back into attr_list block content (without the surrounding
+ * `{…}`). Bare-key format (T2.3): `align=` (outer), orientation `rotate=`/`flip=` (inner-frame),
+ * the crop placement + filter `transform="…"`/`filter="…"` (img), the cut-frame shape
+ * `aspect-ratio=` and `width=N` px (outer, a real HTML attr → faithful). A non-px width (var/%)
+ * and any `height`/box passthrough keep the `style=` escape. Classes only for inline + the user's
+ * own (decoration, snippets). No `.lie-img` marker (parseAltText still SKIPS it). Empty → "".
  */
 export function serializeTransform(t: ImageTransform): string {
+  const parts: string[] = [];
+  if (t.inline) parts.push(`.${INLINE_CLASS}`);
+  for (const c of t.classes) parts.push(`.${c}`);
+  if (t.align) parts.push(`align=${t.align}`);
+  if (t.rotate) parts.push(`rotate=${roundDeg(t.rotate)}`);
+  if (t.flipH) parts.push("flip=horizontal");
+  if (t.flipV) parts.push("flip=vertical");
+  if (t.transform) parts.push(`transform="${t.transform}"`);
+  if (t.filter) parts.push(`filter="${t.filter}"`);
+  if (t.aspectRatio) parts.push(`aspect-ratio=${t.aspectRatio}`);
+  // width=N as a bare key (a real HTML attr → faithful) ONLY for a literal px width; a preset is
+  // baked to px so it qualifies. A var()/%/other width keeps the `style=` escape (no bare form).
+  const widthPx = t.width && /^\d+(?:\.\d+)?px$/.test(t.width) ? t.width.slice(0, -2) : null;
+  if (widthPx) parts.push(`width=${widthPx}`);
+
   const style: string[] = [];
-  if (t.transform) style.push(`transform: ${t.transform}`);
-  if (t.filter) style.push(`filter: ${t.filter}`);
-  if (t.width) style.push(`width: ${t.width}`);
+  if (t.width && !widthPx) style.push(`width: ${t.width}`);
   if (t.height) style.push(`height: ${t.height}`);
-  if (t.aspectRatio) style.push(`aspect-ratio: ${t.aspectRatio}`);
   if (t.box) for (const [k, v] of Object.entries(t.box)) style.push(`${k}: ${v}`);
-
-  // No `.lie-img` marker (parseAltText still SKIPS it, so old `{.lie-img …}` notes still
-  // parse — backward-compat). Only the inline class + the user's own classes are emitted.
-  const classes: string[] = [];
-  if (t.inline) classes.push(INLINE_CLASS);
-  classes.push(...t.classes);
-
-  const parts = classes.map((c) => `.${c}`);
   if (style.length) parts.push(`style="${style.join("; ")}"`);
   return parts.join(" ");
+}
+
+function roundDeg(deg: number): string {
+  return `${Math.round(deg * 10) / 10}`;
 }
 
 // A bare numeric value becomes a px length; an already-unit'd / var() value passes
@@ -155,9 +239,11 @@ function lengthValue(v: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Native `transform` manipulation — the editor extracts/edits only the one
-// function it touches and leaves the rest (incl. crop's translate/scale and any
-// power-user functions) intact (implementation-plan §2.2).
+// Orientation (rotate/flip) is now a FIELD on the model (routed to the inner-frame),
+// separate from the crop placement `transform` (the img). The toolbar's rotate/flip edit
+// these fields and never the img transform — so re-orienting a cropped image can't drift
+// it (Bug 25). `parseFns`/`fnsToString` remain for parsing the crop placement (isCrop, the
+// legacy decompose, the crop editor's own reader).
 // ---------------------------------------------------------------------------
 
 interface Fn { name: string; args: string; }
@@ -175,42 +261,22 @@ function fnsToString(fns: Fn[]): string | undefined {
   return fns.length ? fns.map((f) => `${f.name}(${f.args})`).join(" ") : undefined;
 }
 
-/** The quarter/free rotation currently applied to the img (deg, 0 if none). */
+/** The orientation rotation (deg, 0 if none) — applied to the inner-frame. */
 export function getRotation(t: ImageTransform): number {
-  const fn = parseFns(t.transform).find((f) => f.name === "rotate");
-  return fn ? parseFloat(fn.args) || 0 : 0;
+  return t.rotate ?? 0;
 }
 
-/** Set the rotate() function (removing it at 0), preserving every other function. */
+/** Set the orientation rotation (clearing it at 0). Never touches the crop placement. */
 export function setRotation(t: ImageTransform, deg: number): void {
-  const fns = parseFns(t.transform);
-  const i = fns.findIndex((f) => f.name === "rotate");
-  if (deg) {
-    const nf: Fn = { name: "rotate", args: `${deg}deg` };
-    if (i >= 0) fns[i] = nf; else fns.unshift(nf);
-  } else if (i >= 0) {
-    fns.splice(i, 1);
-  }
-  t.transform = fnsToString(fns);
+  t.rotate = deg ? deg : undefined;
 }
 
-export function getFlipH(t: ImageTransform): boolean { return hasFlip(t, "scaleX"); }
-export function getFlipV(t: ImageTransform): boolean { return hasFlip(t, "scaleY"); }
-export function toggleFlipH(t: ImageTransform): void { toggleFlip(t, "scaleX"); }
-export function toggleFlipV(t: ImageTransform): void { toggleFlip(t, "scaleY"); }
+export function getFlipH(t: ImageTransform): boolean { return !!t.flipH; }
+export function getFlipV(t: ImageTransform): boolean { return !!t.flipV; }
+export function toggleFlipH(t: ImageTransform): void { t.flipH = t.flipH ? undefined : true; }
+export function toggleFlipV(t: ImageTransform): void { t.flipV = t.flipV ? undefined : true; }
 
-function hasFlip(t: ImageTransform, name: "scaleX" | "scaleY"): boolean {
-  return parseFns(t.transform).some((f) => f.name === name && parseFloat(f.args) < 0);
-}
-
-function toggleFlip(t: ImageTransform, name: "scaleX" | "scaleY"): void {
-  const fns = parseFns(t.transform);
-  const i = fns.findIndex((f) => f.name === name && parseFloat(f.args) < 0);
-  if (i >= 0) fns.splice(i, 1); else fns.push({ name, args: "-1" });
-  t.transform = fnsToString(fns);
-}
-
-/** A crop is the case where the img's native transform carries an explicit pan/zoom. */
+/** A crop is the case where the img carries an explicit pan/zoom placement transform. */
 export function isCrop(t: ImageTransform): boolean {
   return parseFns(t.transform).some((f) => f.name === "translate" || f.name === "scale");
 }

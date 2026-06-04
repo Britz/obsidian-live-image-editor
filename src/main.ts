@@ -1,10 +1,10 @@
 import { Plugin, MarkdownView, MarkdownPostProcessorContext, Notice, Editor, TFile } from "obsidian";
 import {
-  ImageTransform, FilterData, parseAltText, serializeTransform,
+  ImageTransform, Align, FilterData, parseAltText, serializeTransform,
   getRotation, setRotation, toggleFlipH, toggleFlipV, getFilter, setFilter,
-  setPresetWidth, PresetKey,
+  setWidthPx, PresetKey,
 } from "./transforms";
-import { applyTransformToImage, applyFilterPreview, unwrapBox } from "./renderer";
+import { buildLayers as applyTransformToImage, applyFilterPreview, unwrapBox } from "./render-core";
 import { ImageToolbar, ToolbarItem, ToolbarButton, ToolbarGroup } from "./toolbar";
 import { findImageInSource, findImageInText, getImageFilename, ImageLocation } from "./image-resolver";
 import { CropEditor } from "./crop-editor";
@@ -467,9 +467,9 @@ export default class LiveImageEditorPlugin extends Plugin {
     const layoutGroup: ToolbarGroup = {
       kind: "group", id: "layout", icon: "layout-list", titleKey: "layout", collapse: "auto",
       buttons: [
-        b("align-left", "align-left", "alignLeft", () => this.applyAlignment("lie-left")),
-        b("align-center", "align-center", "alignCenter", () => this.applyAlignment("lie-center")),
-        b("align-right", "align-right", "alignRight", () => this.applyAlignment("lie-right")),
+        b("align-left", "align-left", "alignLeft", () => this.applyAlignment("left")),
+        b("align-center", "align-center", "alignCenter", () => this.applyAlignment("center")),
+        b("align-right", "align-right", "alignRight", () => this.applyAlignment("right")),
         b("inline", "gallery-horizontal-end", "inlineBlock", () => this.toggleInline()),
       ],
     };
@@ -497,9 +497,9 @@ export default class LiveImageEditorPlugin extends Plugin {
       sizeSmall: () => this.applyPreset("small"),
       sizeMedium: () => this.applyPreset("medium"),
       sizeLarge: () => this.applyPreset("large"),
-      classLeft: () => this.applyAlignment("lie-left"),
-      classRight: () => this.applyAlignment("lie-right"),
-      classCenter: () => this.applyAlignment("lie-center"),
+      classLeft: () => this.applyAlignment("left"),
+      classRight: () => this.applyAlignment("right"),
+      classCenter: () => this.applyAlignment("center"),
       addClass: () => this.addClass(),
       reset: () => this.reset(),
       customSize: () => this.customSize(),
@@ -584,13 +584,8 @@ export default class LiveImageEditorPlugin extends Plugin {
   private flipH(): void { this.modifyTransform((tr) => toggleFlipH(tr)); }
   private flipV(): void { this.modifyTransform((tr) => toggleFlipV(tr)); }
 
-  private applyAlignment(cls: string): void {
-    const aligns = ["lie-left", "lie-center", "lie-right"];
-    this.modifyTransform((tr) => {
-      const had = tr.classes.includes(cls);
-      tr.classes = tr.classes.filter((c) => !aligns.includes(c));
-      if (!had) tr.classes.push(cls);
-    });
+  private applyAlignment(side: Align): void {
+    this.modifyTransform((tr) => { tr.align = tr.align === side ? undefined : side; });
   }
 
   private toggleInline(): void {
@@ -598,7 +593,9 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   private applyPreset(key: PresetKey): void {
-    this.modifyTransform((tr) => setPresetWidth(tr, key));
+    // Bake the preset to a literal px width (faithful no-plugin fallback, the bare width=N key);
+    // NOT setting-reactive — an existing preset image keeps its baked px when the setting changes.
+    this.modifyTransform((tr) => setWidthPx(tr, this.settings.presetWidths[key]));
   }
 
   private applyClass(cls: string): void {
@@ -647,7 +644,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       tr.height = s.height ?? undefined;
       applyTransformToImage(this.liveTarget(img), tr);
     };
-    const sizeBody = buildSizeBody({ width: current.width, height: current.height }, preview, state);
+    const sizeBody = buildSizeBody({ width: current.width, height: current.height }, preview, state, this.settings.presetWidths);
 
     const submenu = new AnchoredSubmenu();
     submenu.open({
@@ -682,8 +679,8 @@ export default class LiveImageEditorPlugin extends Plugin {
         this.modifyTransform((tr) => {
           tr.transform = result.transform;
           tr.width = result.width;
-          tr.height = result.height;
-          tr.aspectRatio = undefined;
+          tr.aspectRatio = result.aspectRatio; // the cut-frame shape (only when ≠ original)
+          tr.height = undefined;               // crop never stores a fixed px height (AD6)
         });
       },
       () => { this.cropEditor = null; }
@@ -799,7 +796,8 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   private hasTransforms(t: ImageTransform): boolean {
-    return !!(t.transform || t.filter || t.width || t.height || t.aspectRatio ||
+    return !!(t.align || t.rotate || t.flipH || t.flipV || t.transform || t.filter ||
+      t.width || t.height || t.aspectRatio ||
       (t.box && Object.keys(t.box).length) || t.classes.length || t.inline);
   }
 }

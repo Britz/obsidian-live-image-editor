@@ -44,10 +44,8 @@
 
 ### Known open bugs
 
-- [ ] **Bug 25 — rotate/flip drifts an already-cropped image out of frame.** Rotating/flipping an
-      already-cropped image via the toolbar drifts it out of frame: the crop renders with a top-left
-      origin, so a composed rotate/flip doesn't pivot about the frame centre. Needs centre-origin
-      composition (or baking the rotation into the crop params) — a focused follow-up, not rushed.
+*(Bug 25 — rotate/flip drifting an already-cropped image — is **SOLVED** by the crop-geometry rework;
+see **Resolved by the crop-geometry & representation rework** under SOLVED / DONE.)*
 
 *(The LP-rendering-rework cluster — live-preview float, the tall-float cap, the reading-view sizing
 cluster, the inline-icon/tiny toolbar position, and the `<>` reveal toggle — has landed; see
@@ -56,12 +54,30 @@ cluster, the inline-icon/tiny toolbar position, and the `<>` reveal toggle — h
 ### Deferred design / elegance (DEFER)
 
 - [ ] **Crop-in-place** vs the mirroring overlay (the overlay duplicates the box+img geometry).
+      **The structural prerequisite has landed** (the 3-layer model — the display *is already*
+      frame+img). What remains is reworking the crop EDITOR to operate on the live structure and drop
+      the clone overlay. *Deliberately not done in the crop-geometry rework pass:* the overlay is
+      `position:fixed` on `document.body` specifically to ESCAPE ancestor clipping (`.lie-frame` /
+      `.lie-image-area` `overflow:hidden`, and `contain:paint` on block widgets) — true in-place
+      editing must solve that — and the interactive pan/zoom/rotate is not autonomously verifiable
+      (it needs manual drag testing). The editor still uses the overlay; it already sits exactly over
+      the image and now serializes the new crop format correctly. A focused follow-up (with manual
+      crop testing) closes this.
 - [ ] Smaller chrome unification: resize handle, anchored sub-menu, filter-panel docking — all anchor
       to the uniform box.
+- [x] **Portable render runtime + `{…}` format — FINAL model — SOLVED.** The bare-key format, the
+      3-layer DOM, the Obsidian-free render core and the standalone runtime bundle have all landed;
+      see **Resolved by the portable-runtime + format-migration rework** under SOLVED / DONE. The
+      `width`/`align` migration to bare keys and the `lie-runtime.js` bundle (the two remaining
+      strands) closed this pass; the 3-layer DOM + crop tokens + export landed in the prior
+      crop-geometry rework. *(Still open, separate: the crop-in-place editor — see DEFER above.)*
 
 ### Under-specified details (SPEC)
 
-- [ ] Exact **crop serialization** tokens (how the cut-frame aspect + placement sit in the attr block).
+- [x] Exact **crop serialization** tokens (how the cut-frame aspect + placement sit in the attr block).
+      **SOLVED** by the crop-geometry rework: placement = `transform="<2D-affine>"` on the inner
+      `<img>`; cut-frame aspect = `aspect-ratio=` on the outer, stored only when the crop shape ≠
+      original (else derived — AD6); the crop never stores a fixed px `height`. See the SOLVED entry.
 - [ ] Shared **sub-menu host** component API (D6 / F14).
 - [ ] **Link-form conversion** edge cases (F5 / F6).
 
@@ -326,6 +342,88 @@ and `lp-rendering-rework-decisions` carry the CDP proof and the per-slice outcom
       (the per-line reveal mode is gone). Code: `live-preview.ts` (`RevealMode = "auto"|"always"`,
       `DISMISSED_LINE`, `toggleReveal`/`setHover` effects); CSS: `lie-rev-auto|always` +
       `.lie-dismissed` (`styles.css:262-271`). (→ AD5/AB16.)
+
+### Resolved by the crop-geometry & representation rework (2026-06-04)
+
+One change to the crop GEOMETRY & REPRESENTATION model resolved three coupled entries at once
+(Bug 25, the crop serialization SPEC, and the structural half of crop-in-place). The model split
+ORIENTATION from PLACEMENT and moved to the 3-layer DOM. Unit-tested (108 passing) + CDP-verified in
+the example vault (the new-format probe note + back-compat on the legacy Demo images).
+
+- [x] **Bug 25 — rotate/flip drifts an already-cropped image — SOLVED✓CDP.** *Cause:* the crop
+      rendered with a **top-left origin** and the toolbar's rotate/flip were composed INTO the same
+      `<img>` transform string (`setRotation` merged a `rotate()`), so a rotate pivoted about the
+      image corner and swung the cut out of frame. *Fix (3-layer, AD3):* ORIENTATION (`rotate`/`flip`)
+      is now its own model field, routed to a new **inner-frame** layer (`.lie-frame`) and composed
+      **about the frame centre** (a structural pivot); the crop PLACEMENT (`transform=`) stays on the
+      `<img>`, untouched. So re-orienting a crop reorients the frame and the `<img>` placement is
+      byte-identical — no drift, no coordinate recompute. CDP: a 4/3 crop and the same crop + `rotate=90`
+      have the **identical** `<img>` transform (`translate(-20%,-10%) scale(1.8)`), the rotate sits on
+      the frame, and the footprint swaps 240×180 → 180×240. Export composes the same way (content →
+      orient): the cut renders at original resolution (667×500) then the orientation rotates it
+      (500×667). (Code: `transforms.ts` `rotate`/`flipH`/`flipV` fields + bare `rotate=`/`flip=`;
+      `renderer.ts` outer/`.lie-frame`/`<img>` + `applyOrientation`; `export.ts` `renderContent` +
+      `orient`. Regression: `tests/transforms.test.ts` "rotating a CROP never touches the placement".)
+- [x] **Crop serialization (SPEC) — SOLVED.** The crop now serializes as the bare keys
+      `transform="<2D-affine placement>"` (on the `<img>`) + `aspect-ratio=<cut shape>` (on the outer,
+      stored **only** when the cut shape ≠ the original ratio, AD6) + `width=` — and **never** a fixed
+      px `height` (that distorts). `toCropResult` emits `{ transform, width, aspectRatio? }`; the
+      renderer drives the crop footprint from the cut shape + angle via `--lie-auto-aspect` (so it
+      swaps on a rotate), not from the natural image ratio. (Code: `crop-editor-logic.ts`;
+      `renderer.ts` `cropAspect`/`shapeFrame`. Regression: `tests/crop-editor-logic.test.ts`.)
+- [x] **3-layer DOM + bare-key format (partial migration) — landed.** The plugin now builds the
+      uniform **outer `.lie-image-area` → inner-frame `.lie-frame` → `<img>`** structure for every
+      image (AD3), upgrading a reused legacy 2-layer DOM. The parser reads **both** the new bare keys
+      (`rotate`/`flip`/`transform`/`filter`/`aspect-ratio`) **and** the legacy `style="transform: …"`
+      (back-compat: an orientation-only legacy transform decomposes into the fields; a crop placement
+      stays whole). The writer emits the new format. *Deferred (a later slice — out of this pass):*
+      `width`/`height` still rode `style=` and `align` was still a `.lie-left/right/center` class — both
+      since migrated to bare keys (see the portable-runtime rework below).
+- [ ] **Crop-in-place editor — still open** (the overlay-vs-live-structure rework). See the DEFER item
+      at the top; the structural prerequisite (3-layer) is in place, the editor rework is a focused
+      follow-up that needs manual interactive crop testing.
+
+### Resolved by the portable-runtime + format-migration rework (2026-06-04)
+
+Closed the two remaining strands of the transform rework. Unit-tested (113 passing) + CDP-verified
+(plugin render parity old↔new in the example vault; the standalone runtime hydrating a plain
+document in a real Chromium engine, no Obsidian). The `{…}` format is now the full bare-key set and
+the portable runtime is built.
+
+- [x] **width / align → bare keys (T2.3) — SOLVED✓CDP.** `align` is now a model FIELD serialized as
+      `align=left|right|center` (a real HTML attr → faithful float/centre fallback); a px `width` is
+      `width=N` (faithful), never with `height=` (distortion goes via `style=`). The parser still
+      reads the legacy `.lie-left/right/center` classes and `style="width:…"` (back-compat — old
+      notes render unchanged); the renderer re-derives the `lie-left/right/center` MARKER class on the
+      img from the field so the `:has(img.lie-…)` float/centre rules still match. Size PRESETS are
+      **baked** to a literal `width=N` px at click time (faithful, not setting-reactive — the user's
+      chosen trade-off). CDP: new bare-key and legacy class/style forms render identically (left→
+      float:left, center→text-align:center, both at the same width). (Code: `transforms.ts` `Align`
+      + `align`; `render-core.ts` marker re-derive; `main.ts` `applyAlignment`/`applyPreset`;
+      `size-submenu.ts` baked presets.)
+- [x] **Obsidian-free render core extracted (AB7a) — SOLVED.** `renderer.ts` → `src/render-core.ts`,
+      a framework-free module (imports only `transforms` + `renderer-logic`; NO obsidian/CM): the
+      3-layer builder `buildLayers(img, transform)` (the plugin renderer and the runtime are two
+      callers of it — DRY/R0), the identification (`CLAIM_SELECTOR` + `readTransform`), and the
+      structural **`RENDER_CSS`** string. The LAYER CSS moved OUT of `styles.css` into `RENDER_CSS`,
+      injected at runtime by BOTH the plugin (`styles-injector`) and the runtime — ONE source, so the
+      render is identical (R0). `styles.css` keeps only the Obsidian embed integration + chrome.
+- [x] **Standalone runtime bundle — SOLVED✓CDP.** `src/runtime.ts` → a SECOND esbuild entry →
+      `lie-runtime.js` (framework-free IIFE, render CSS inlined → a single `<script>` include). On
+      `DOMContentLoaded` (+ a `MutationObserver` for late content) it selects claimed imgs
+      (`[rotate],[flip],[transform],[aspect-ratio],.lie` + the `data-`-prefixed Pandoc variants) and
+      calls `buildLayers`, injecting `RENDER_CSS` + a runtime alignment rule (float/centre the outer,
+      the flow participant on a foreign page). The runtime esbuild entry has NO `obsidian` external,
+      so a stray framework import fails the build (verified: the bundle pulls zero obsidian/CM).
+      Identification rule (verified in a real browser engine via an isolated iframe): a distinctive
+      key OR `.lie` claims; `align`/`width`/`class` alone do NOT (faithful native fallback). Fidelity
+      tiers (T3/F25) hold: with the runtime injectable, full fidelity; without it, `align`/`width`
+      stay faithful and `rotate`/`flip`/`transform` degrade to the original image. `runtime-smoke.html`
+      is the manual/CI browser fixture. *(Limitation, documented + out of scope: kramdown/Jekyll never
+      attach the bare-brace `{…}` to the DOM → unsupported there, the plain original shows.)*
+- [x] **T3 (portable rendering) / F25 (never emit plugin-only Markdown) — fulfilled.** One bare-key
+      format, three consumers (no-JS fallback, the runtime, the toolbar writer); the runtime-only
+      keys degrade to the original image, the native-faithful keys survive everywhere.
 
 ### Resolved decisions (formerly DECIDE / FOLD)
 

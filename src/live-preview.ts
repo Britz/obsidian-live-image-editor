@@ -5,7 +5,7 @@ import { parseAltText, getWidthPx, getHeightPx } from "./transforms";
 import { lineDecorations, inlineEmbeds, rewriteWidth, EMBED_LINE } from "./live-preview-logic";
 import { estimatedBlockHeight } from "./renderer-logic";
 import { captionMarkdown, createCaption, CaptionHandle } from "./caption";
-import { applyTransformToImage } from "./renderer";
+import { buildLayers as applyTransformToImage } from "./render-core";
 import { ToolbarItem, buildToolbarElement } from "./toolbar";
 import { writeSource } from "./source-writer";
 import { t } from "./i18n";

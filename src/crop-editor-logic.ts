@@ -11,12 +11,15 @@ export interface Point {
 }
 
 export interface CropResult {
-  // The img's native transform (routed verbatim to the img). translate is in %
-  // (relative to the img's own box-width baseline) so it rescales with the column.
+  // The img's crop PLACEMENT transform (routed verbatim to the img). translate is in %
+  // (relative to the img's own cut-frame-width baseline) so it rescales with the column.
   transform: string;
-  // The cut frame = the box size.
+  // The cut-frame WIDTH (the footprint base width).
   width: string;
-  height: string;
+  // The cut-frame SHAPE as an aspect-ratio, stored ONLY when it differs from the original
+  // image ratio (AD6 — store only non-derivable intent; a crop that keeps the original aspect
+  // stores nothing and the footprint is derived). NOT a fixed px height (that would distort).
+  aspectRatio?: string;
 }
 
 /** Snap a live drag position to whole pixels. */
@@ -56,12 +59,16 @@ export function toCropResult(
   const fw = Math.max(1, Math.round(frame.w));
   const fh = Math.max(1, Math.round(frame.h));
   const r = intrinsicRatio > 0 ? intrinsicRatio : 1;
-  // Render img display height at the box-width baseline.
+  // Render img display height at the cut-frame-width baseline.
   const imgH = fw / r;
   const txPct = round1((translate.x / fw) * 100);
   const tyPct = round1((translate.y / imgH) * 100);
-  // Re-express the editor scale (relative to baselineWidth) against the box width.
+  // Re-express the editor scale (relative to baselineWidth) against the cut-frame width.
   const s = snapScale((scale * (baselineWidth || fw)) / fw);
   const transform = `translate(${txPct}%, ${tyPct}%) rotate(${snapAngle(rotate)}deg) scale(${s})`;
-  return { transform, width: `${fw}px`, height: `${fh}px` };
+  // Store the cut-frame shape ONLY when it differs from the original ratio (AD6); otherwise the
+  // footprint is derived from the original ratio and nothing is stored.
+  const cutAspect = fw / fh;
+  const aspectRatio = Math.abs(cutAspect - r) / r > 0.01 ? `${fw}/${fh}` : undefined;
+  return { transform, width: `${fw}px`, aspectRatio };
 }

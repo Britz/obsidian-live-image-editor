@@ -69,9 +69,11 @@ no language or link-format setting of its own.
   shared host element** — a modular component, not reimplemented per feature. The host
   provides **reset**, **accept** and **close / dismiss** actions and can be closed with
   **Esc**.
-- **F15 — Built-in classes (alignment & inline).** Built-in, toggleable **alignment**
-  (left / right / center) and **inline** classes, plus a reset that restores defaults. (Size is
-  applied as a width, not a class — F24; decoration ships as example snippets — F16.)
+- **F15 — Built-in alignment & inline.** Built-in, toggleable **alignment** (left / right /
+  center) and **inline** styling, plus a reset that restores defaults. Alignment exists as a
+  functional capability; whether it is carried as an attribute key or a CSS class is an
+  architecture concern, not a requirement. (Size is applied as a width — F24; decoration ships as
+  example snippets — F16.)
 - **F16 — Vault-snippet classes.** Discover image CSS classes defined in the vault's own CSS
   snippets and offer them; each is individually de-selectable; the list refreshes on load and
   on change. The plugin also **ships example decoration snippets** (rounded, shadow, border,
@@ -109,8 +111,11 @@ no language or link-format setting of its own.
   plugin writes must stay a **valid image embed that still renders the image without the
   plugin** — in Obsidian with the plugin disabled, or in another Markdown / wiki renderer.
   Without the plugin the image may not carry its formatting, but it is **always displayed**;
-  the plugin never produces markup that breaks the embed or hides the image. This is the
-  baseline that the storage and rendering choices (T2, T3) must satisfy.
+  the plugin never produces markup that breaks the embed or hides the image. Specifically, the
+  native-CSS-faithful keys (`align`, `width`, `style="filter:…"`) survive in any renderer, while
+  the **runtime-only** transforms (`rotate`, `flip`, the inner crop `transform`) **degrade to the
+  original, untransformed image** — inert but still visible. This is the baseline that the storage
+  and rendering choices (T2, T3) must satisfy.
 
 ---
 
@@ -180,12 +185,36 @@ no language or link-format setting of its own.
   alias / size) — so no pipe-encoding tricks. Where a renderer does not understand the trailing
   block, it is shown as text but the image still renders (F25). Alt text, path and native size
   are never repurposed; the link type is preserved exactly as written.
+  - **T2.3 — Block grammar (target).** The block is a Material-/MkDocs-style attribute list of
+    **bare keys** (no `lie-` prefix — the block is hand-edited plain text in the Markdown, so
+    brevity is a hard requirement, T11): `align=left|right|center`, `width=N` (unitless px),
+    `rotate=<deg>`, `flip=horizontal|vertical`, `transform="<2D-affine CSS transform>"` (the
+    inner crop placement — pan / zoom / optional content-rotate), `filter="<CSS filter>"`,
+    `aspect-ratio=<ratio>` (the footprint shape, stored **only** for a deliberate crop shape ≠
+    original, AD6/T11), plus `.class` (built-in / vault-snippet / decoration classes, F16) and a
+    `style="…"` power-user escape. An optional bare `.lie` is an explicit claim marker. **Never**
+    write `width=` and `height=` together (that distorts the image); a `height` is reached only
+    through `style="…"`. The bare keys carry a small, deliberately accepted collision risk (the
+    brevity trade-off). The same grammar is the single format read by all consumers (T3).
 - **T3 — Portable rendering.** The stored markup must still render the image *with* its
   transforms in a compatible static-site theme **without** the plugin (the same notes are
   published via a static-site generator). This requires the rendering contract to be
-  declarative. Transforms that have a **native CSS equivalent** (rotation, flip, filters) are
-  stored as native CSS and therefore render with **no shipped CSS at all**; only crop (a
-  wrapper), the preset widths and the layout classes rely on CSS being present (plugin or theme).
+  declarative. Portability is achieved by the plugin's **own framework-free JS + CSS bundle**
+  (the read-render core, T4/T5, lifted out as a standalone runtime), **not** by relying on theme
+  CSS. The format splits into two fidelity tiers:
+  - **Native-CSS-faithful subset** — `align` (legacy HTML `align` float / center) and `width`
+    (a real HTML attribute the browser honours) render correctly with **no plugin and no shipped
+    CSS at all**; a `style="filter:…"` escape likewise survives faithfully.
+  - **Runtime-only transforms** — `rotate`, `flip` and the inner `transform` (crop placement)
+    have **no faithful native-CSS path** (a `transform` does not reflow, so a rotated footprint
+    needs an own element); they render only where the runtime bundle is injectable (e.g. MkDocs →
+    full fidelity). Where it is not, they **degrade to the original image** (still visible, F25).
+  Where the bundle can be injected the result is 100% faithful; otherwise the no-JS fallback
+  keeps `align`/`width` and shows the original image for the runtime-only transforms. kramdown /
+  Jekyll do **not** attach a bare-brace `{…}` block to an image at all — an explicit, documented
+  limitation (the image shows, unformatted). *(Implemented — the bare-key format ships, and the
+  framework-free runtime bundle `lie-runtime.js` hydrates claimed images on a foreign page; the
+  no-JS fallback keeps `align`/`width` and degrades the runtime-only keys to the original image.)*
 - **T4 — Two render paths, one result.** Reading view (a Markdown post-processor) and live
   preview (a CodeMirror-6 editor extension) are separate paths *because Obsidian renders the
   two modes differently*; both must produce the same DOM structure and the same visual result.

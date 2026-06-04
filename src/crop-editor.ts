@@ -1,6 +1,6 @@
-import { ImageTransform, getRotation, isCrop } from "./transforms";
+import { ImageTransform, isCrop } from "./transforms";
 import { snapAngle, snapScale, snapTranslate, toCropResult, CropResult } from "./crop-editor-logic";
-import { BOX_CLASS } from "./renderer";
+import { BOX_CLASS } from "./render-core";
 import { AnchoredSubmenu } from "./anchored-submenu";
 import { t } from "./i18n";
 
@@ -87,7 +87,9 @@ export class CropEditor {
     if (isCrop(existing)) {
       const p = parsePlacement(existing.transform);
       this.imgScale = p.scale;
-      this.imgRotation = p.rotate || getRotation(existing);
+      // The crop editor's rotation is the CONTENT rotate (inside the placement transform),
+      // distinct from the orientation `rotate=` (the inner-frame) which the editor leaves alone.
+      this.imgRotation = p.rotate;
       this.imgTranslate = {
         x: (p.tx / 100) * this.frameW,
         y: (p.ty / 100) * (this.frameW / this.intrinsicRatio),

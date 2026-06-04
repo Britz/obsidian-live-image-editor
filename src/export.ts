@@ -22,14 +22,28 @@ const numOf = (a: string | undefined): number => parseFloat(a ?? "") || 0;
  * Render the image WITH all its transforms applied (rotate, flip, free-rotation crop,
  * filters) to a PNG buffer — the SAME visual result as displayed (F13), but sized from
  * the ORIGINAL image's native resolution (the display `width` never reduces export
- * quality). It replays the SAME native `transform`/`filter` the renderer applies (no
- * parallel crop/rotate math): the `filter` string IS the canvas filter; the `transform`
- * functions are replayed onto the ctx.
+ * quality). It replays the SAME 3-layer composition the renderer applies (AB15, no parallel
+ * crop/rotate math): FIRST the content (the cut region for a crop, else the full image) with
+ * the `filter` baked in at original resolution, THEN the inner-frame ORIENTATION (rotate +
+ * flip) about the centre — exactly outer ← frame ← img replayed on the canvas. So a rotated
+ * crop exports with the orientation around the preserved cut (Bug 25), not a parallel branch.
  */
 export async function renderTransformedImage(
   img: HTMLImageElement,
   transform: ImageTransform
 ): Promise<ArrayBuffer> {
+  const content = renderContent(img, transform);
+  const oriented = orient(content, getRotation(transform), getFlipH(transform), getFlipV(transform));
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    oriented.toBlob((b) => (b ? resolve(b) : reject(new Error("Canvas toBlob failed"))), "image/png");
+  });
+  return blob.arrayBuffer();
+}
+
+// The CONTENT layer (the <img>): the cut region for a crop, else the full image — at the
+// ORIGINAL resolution, with the `filter` baked in. The inner-frame ORIENTATION is NOT applied
+// here (orient() does it), matching the layer split: crop placement + filter ride the img.
+function renderContent(img: HTMLImageElement, transform: ImageTransform): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Cannot get canvas context");
@@ -37,21 +51,19 @@ export async function renderTransformedImage(
   const nw = img.naturalWidth;
   const nh = img.naturalHeight;
   const r = nh ? nw / nh : 1;
-  const deg = getRotation(transform);
-  const flipH = getFlipH(transform);
-  const flipV = getFlipV(transform);
 
   if (isCrop(transform)) {
-    // Crop: the cut frame is the box (display px from width/height); the original is
-    // shown at width:100% of the box (= fw display px), height auto, with the native
-    // transform `translate(%) rotate scale` (top-left origin). Replay it at a factor E
-    // that brings the natural image to 1:1 → cut region at original resolution (F13).
+    // Crop: the cut frame is fw × fh display px (width + the cut-frame aspect); the original is
+    // shown at width:100% of the frame (= fw), height auto, with the placement transform
+    // `translate(%) [rotate] scale` (top-left origin, content-rotate included). Replay it at a
+    // factor E that brings the natural image to 1:1 → the cut region at original resolution (F13).
     const fw = getWidthPx(transform) ?? nw;
-    const fh = getHeightPx(transform) ?? Math.round(nw / r);
+    const cutAspect = cropAspect(transform, r);
+    const fh = Math.max(1, Math.round(fw / cutAspect));
     const fns = parseTransformFns(transform.transform);
     const scaleFn = fns.find((f) => f.name === "scale");
     const s = scaleFn ? numOf(scaleFn.args[0]) || 1 : 1;
-    const wCss = fw;                 // img width:100% of box
+    const wCss = fw;                 // img width:100% of frame
     const hCss = nh ? fw / r : fh;   // img height:auto, natural aspect
     const E = fw && s ? nw / (fw * s) : 1;
 
@@ -73,39 +85,51 @@ export async function renderTransformedImage(
       }
     }
     ctx.drawImage(img, 0, 0, wCss, hCss);
-  } else if (deg % 360 !== 0) {
-    // Rotate (+flip, +filter): the rotated bounding box of the NATURAL image (original
-    // resolution — the display width does not reduce it).
-    const box = rotatedAabb(nw, nh, deg);
-    canvas.width = Math.max(1, Math.round(box.w));
-    canvas.height = Math.max(1, Math.round(box.h));
-    if (transform.filter) ctx.filter = transform.filter;
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.rotate((deg * Math.PI) / 180);
-    if (flipH) ctx.scale(-1, 1);
-    if (flipV) ctx.scale(1, -1);
-    ctx.drawImage(img, -nw / 2, -nh / 2, nw, nh);
-  } else {
-    // Normal / flip / filter, optionally distorted (both width+height): keep original
-    // resolution; only a deliberate width+height distortion changes the output aspect.
-    const wPx = getWidthPx(transform);
-    const hPx = getHeightPx(transform);
-    const distort = wPx && hPx ? hPx / wPx : null;
-    const outW = nw;
-    const outH = distort ? Math.max(1, Math.round(nw * distort)) : nh;
-    canvas.width = Math.max(1, Math.round(outW));
-    canvas.height = Math.max(1, Math.round(outH));
-    if (transform.filter) ctx.filter = transform.filter;
-    ctx.translate(outW / 2, outH / 2);
-    if (flipH) ctx.scale(-1, 1);
-    if (flipV) ctx.scale(1, -1);
-    ctx.drawImage(img, -outW / 2, -outH / 2, outW, outH);
+    return canvas;
   }
 
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Canvas toBlob failed"))), "image/png");
-  });
-  return blob.arrayBuffer();
+  // Non-crop: the full image at original resolution, optionally distorted (both width+height);
+  // the filter is baked in. Orientation is applied by orient().
+  const wPx = getWidthPx(transform);
+  const hPx = getHeightPx(transform);
+  const distort = wPx && hPx ? hPx / wPx : null;
+  const outW = nw;
+  const outH = distort ? Math.max(1, Math.round(nw * distort)) : nh;
+  canvas.width = Math.max(1, Math.round(outW));
+  canvas.height = Math.max(1, Math.round(outH));
+  if (transform.filter) ctx.filter = transform.filter;
+  ctx.drawImage(img, 0, 0, outW, outH);
+  return canvas;
+}
+
+// Apply the inner-frame ORIENTATION (rotate + flip, about the centre) to a content canvas →
+// the rotated bounding box (the footprint). Identity (deg 0, no flip) returns the content as-is.
+function orient(content: HTMLCanvasElement, deg: number, flipH: boolean, flipV: boolean): HTMLCanvasElement {
+  if (deg % 360 === 0 && !flipH && !flipV) return content;
+  const box = rotatedAabb(content.width, content.height, deg);
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(box.w));
+  out.height = Math.max(1, Math.round(box.h));
+  const ctx = out.getContext("2d");
+  if (!ctx) throw new Error("Cannot get canvas context");
+  ctx.translate(out.width / 2, out.height / 2);
+  ctx.rotate((deg * Math.PI) / 180);
+  if (flipH) ctx.scale(-1, 1);
+  if (flipV) ctx.scale(1, -1);
+  ctx.drawImage(content, -content.width / 2, -content.height / 2);
+  return out;
+}
+
+// The cut-frame aspect (w/h) for a crop: a stored `aspect-ratio` (T2.3), else explicit
+// width+height px (legacy), else the natural ratio. Mirrors renderer.ts cropAspect.
+function cropAspect(t: ImageTransform, naturalRatio: number): number {
+  const m = (t.aspectRatio ?? "").match(/^\s*([\d.]+)\s*(?:\/\s*([\d.]+))?\s*$/);
+  if (m) {
+    const a = parseFloat(m[1] ?? ""); const b = m[2] ? parseFloat(m[2]) : 1;
+    if (a > 0 && b > 0) return a / b;
+  }
+  const w = getWidthPx(t), h = getHeightPx(t);
+  return w && h ? w / h : (naturalRatio > 0 ? naturalRatio : 1);
 }
 
 // A translate arg expressed as a percent of `basis` (the img display dimension) or a

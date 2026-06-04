@@ -75,33 +75,13 @@
 /* The toolbar greyed out + inert while a sub-menu is open (D6). */
 .lie-toolbar-inactive { opacity: 0.4; pointer-events: none; }
 
-/* ---- The uniform image box (R0 / AD3) --------------------------------- *
-   EVERY image (normal, rotated, flipped, cropped, filtered, sized) lives in the
-   SAME `.lie-image-area` box: axis-aligned, overflow:hidden, an aspect-ratio (derived
-   at render from the intrinsic ratio + angle, as --lie-auto-aspect — overridable by
-   an inline aspect-ratio / explicit width+height), column-capped. The img is the
-   only transformed element, absolute-centred (top/left:50% + a translate(-50%,-50%)
-   prepended to its transform) so a rotation pivots about its centre and box-relative %%
-   sizing fills the box. "Normal" is the degenerate case. (The surrounding chrome
-   container is `.lie-box`; column cap: Obsidian's own --file-line-width, AD9.) */
-.lie-image-area {
-  display: inline-block;
-  position: relative;
-  overflow: hidden;
-  max-width: 100%;
-  aspect-ratio: var(--lie-auto-aspect, auto);
-  line-height: 0;
-  vertical-align: bottom;
-}
-.lie-image-area > img {
-  position: absolute;
-  /* The renderer sets top/left (50%/50% centered, or 0/0 for crop), the width/height
-     (%% for non-crop; 100%/auto for crop), transform-origin and the transform (with a
-     centering `translate(-50%,-50%)` prepended for non-crop). Obsidian's
-     `.internal-embed img:not([width]) { max-width: 100% }` would otherwise clamp the
-     image to the box width — !important wins so a rotated image keeps its size. */
-  max-width: none !important;
-}
+/* ---- The uniform 3-layer image structure (R0 / AD3) ------------------- *
+   The LAYER rules (`.lie-image-area` outer / `.lie-frame` inner-frame / `.lie-frame > img` /
+   `img.lie-inline`) live in ONE source — `RENDER_CSS` in `src/render-core.ts` — injected at
+   runtime by BOTH the plugin (`styles-injector`) and the standalone runtime (AB7a), so the
+   image renders identically in Obsidian and on a foreign page (R0). They are NOT in this
+   stylesheet. What stays here is the Obsidian embed INTEGRATION (below) + native-suppression +
+   reveal + tall-float cap + chrome. */
 
 /* Obsidian's embed containers are inline and won't take the height of the box —
    shrink-wrap the ones holding one. `max-width:100%` caps them against their BLOCK containing
@@ -116,10 +96,6 @@
   display: inline-block;
   max-width: 100%;
 }
-
-/* Inline (mid-text) image: flows in the surrounding text. */
-img.lie-inline { vertical-align: middle; }
-.lie-image-area:has(> img.lie-inline) { vertical-align: middle; }
 
 /* ---- Caption (F22 / D9) — pure CSS sizing ----------------------------- *
    The alt text rendered as Markdown below the image, centred, muted, NEVER wider

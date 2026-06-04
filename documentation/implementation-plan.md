@@ -20,13 +20,13 @@ One file per building block where possible; pure decision logic split into a sib
 | File | Building block (arch §4) | Key exports |
 |---|---|---|
 | `src/main.ts` | AB17 Lifecycle | `Plugin` subclass |
-| `src/transforms.ts` | AB1 Transform model | `ImageTransform` *(native: classes/inline/transform/filter/width/height/aspectRatio/box)*<br>`FilterData`<br>`parseAltText`<br>`serializeTransform`<br>`getRotation`/`setRotation`<br>`toggleFlipH`/`toggleFlipV`/`getFlipH`/`getFlipV`<br>`isCrop`<br>`getFilter`/`setFilter`/`filterToCss`/`parseFilterCss`<br>`getWidthPx`/`getHeightPx`/`getPreset`/`setPresetWidth`/`setWidthPx`/`setHeightPx`<br>`temperatureAdjust` *(dead — see DRY audit)*<br>`MARKER_CLASS` *(backward-compat parse-skip only; no longer emitted or added to the img)*<br>`INLINE_CLASS` |
+| `src/transforms.ts` | AB1 Transform model | `ImageTransform` *(classes/inline; orientation: rotate/flipH/flipV → inner-frame; content: transform/filter → img; footprint: width/height/aspectRatio/box → outer)*<br>`FilterData`<br>`parseAltText` *(bare keys + legacy `style=` back-compat)*<br>`serializeTransform` *(bare keys)*<br>`getRotation`/`setRotation` *(the orientation field)*<br>`toggleFlipH`/`toggleFlipV`/`getFlipH`/`getFlipV` *(fields)*<br>`isCrop`<br>`getFilter`/`setFilter`/`filterToCss`/`parseFilterCss`<br>`getWidthPx`/`getHeightPx`/`getPreset`/`setPresetWidth`/`setWidthPx`/`setHeightPx`<br>`temperatureAdjust` *(dead — see DRY audit)*<br>`MARKER_CLASS` *(backward-compat parse-skip only)*<br>`INLINE_CLASS` |
 | `src/link-format.ts` | AB2 Link form & native-size normalization | `parseEmbedLine`<br>`buildEmbed`<br>`convertEmbedLine`<br>`desiredFormat` |
 | `src/image-resolver.ts` | AB3 Source↔DOM mapping | `findImageInSource`<br>`findImageInText`<br>`getImageFilename`<br>`parseLocationTransform` *(dead — see DRY audit)* |
 | `src/source-writer.ts` | AB3 / AD1 edit writer (shared) | `writeSource` *(one isolated CM transaction per edit)*<br>`LIE_USER_EVENT` |
 | `src/snippet-scanner.ts` | AB4 Snippet class discovery | `scanSnippets` *(enabled-only)*<br>`SnippetClass`<br>`installBundledSnippet`<br>`resetBundledSnippet`<br>`isBundledSnippetInstalled` |
 | `src/renderer-logic.ts` | AB5 Geometry (pure) | `boxAspectRatio`<br>`innerImageSize`<br>`rotatedAabb`<br>`estimatedBlockHeight`<br>`isTallFloat`<br>`TALL_FLOAT_THRESHOLD_PX` |
-| `src/renderer.ts` | AB6 Uniform box (declarative) + AB8 reading-view adapter | `applyTransformToImage`<br>`applyFilterPreview`<br>`unwrapBox`<br>`BOX_CLASS` |
+| `src/render-core.ts` | AB6 Uniform 3-layer box + AB7a core (Obsidian-FREE) | `buildLayers` *(the 3-layer builder, shared by plugin + runtime)*<br>`applyFilterPreview`<br>`unwrapBox`<br>`BOX_CLASS` *(outer)*<br>`FRAME_CLASS` *(inner-frame)*<br>`RENDER_CSS` *(structural layer CSS, the single injected source)*<br>`CLAIM_SELECTOR`/`readTransform` *(identification + attrs→model)* |
 | `src/caption-logic.ts` | AB7 Caption (text, pure) | `captionMarkdown`<br>`captionFromAlt` |
 | `src/caption.ts` | AB7 Caption (DOM) | `createCaption`<br>`CaptionHandle` |
 | `src/live-preview-logic.ts` | AB9 LP line→decoration (pure) | `lineDecorations`<br>`inlineEmbeds`<br>`rewriteWidth`<br>`EMBED_LINE` |
@@ -34,7 +34,7 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/toolbar.ts` | AB10 Toolbar | `ImageToolbar`<br>`buildToolbarElement` |
 | `src/anchored-submenu-logic.ts` | AB11 Sub-menu placement (pure) | `placeSubmenu`<br>`SubmenuPlacement` |
 | `src/anchored-submenu.ts` | AB11 Shared sub-menu host | `AnchoredSubmenu` |
-| `src/crop-editor-logic.ts` | AB12 Crop quantization (pure) | `snapTranslate`<br>`snapAngle`<br>`snapScale`<br>`toCropResult` *(native transform + box w/h)* |
+| `src/crop-editor-logic.ts` | AB12 Crop quantization (pure) | `snapTranslate`<br>`snapAngle`<br>`snapScale`<br>`toCropResult` *(placement transform + cut width + aspect-ratio ≠ original)* |
 | `src/crop-editor.ts` | AB12 Crop editor | `CropEditor` |
 | `src/filter-panel.ts` | AB13 Filter panel | `FilterPanel` |
 | `src/size-submenu.ts` | AB14 Size sub-menu | `buildSizeBody`<br>`SizeState` *(CSS-string width/height)* |
@@ -45,6 +45,7 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/editing-toolbar-integration.ts` | AB22 Editing-toolbar integration | `getEditingToolbarStatus`<br>`addEditingToolbarButtons`<br>`removeEditingToolbarButtons` |
 | `src/i18n/` | AB21 Localization | `index.ts`<br>`en.ts`<br>`de.ts` |
 | `src/dev-bridge.ts` | AB23 Dev bridge | CDP relay (dev builds only) |
+| `src/runtime.ts` | AB7a Portable runtime | second esbuild entry → `lie-runtime.js` (framework-free IIFE; `RENDER_CSS` inlined → single `<script>` include, CSS-in-JS); on `DOMContentLoaded` + `MutationObserver` it hydrates claimed imgs via the shared `buildLayers`/`readTransform`; tolerant selector `[rotate],[flip],[transform],[aspect-ratio],.lie` (+ `data-*` Pandoc variants); no `obsidian` external (import-discipline guard) |
 
 ---
 
@@ -111,49 +112,64 @@ same transform composition**, so the export matches the display
 
 ### 2.2 The attribute block (the `attr_list` `{…}`)
 
-Canonical serialization (T2, AD2) — native CSS, classes only for what needs them:
+Canonical serialization — **implemented**: a portable bare-key attribute list (T2.3, AD2), short
+enough to hand-edit. The writer emits the bare keys; the parser ALSO reads the legacy forms
+(`style="transform:…"`, the `.lie-left/right/center` classes, `style="width:…"`) for back-compat
+(§2.2a). The keys, each routed to its layer (§2.3):
+
+```
+![alt](path.png){align=right width=240 rotate=90 flip=horizontal filter="brightness(1.2)"}
+```
+
+- **`align=left|right|center`** → the **outer**. Material syntax; left/right → legacy HTML `align`
+  float (faithful float fallback even with no plugin/CSS), center → `vertical-align:middle` in the
+  fallback (a harmless no-op for a block, correct for inline) with real centering done by the
+  plugin's CSS on the flow host (the `lie-center` rule: full-width block + `text-align:center`, not
+  `margin:auto` — Obsidian's `.cm-content>*{margin:0!important}` would beat it).
+- **`width=N`** → the **outer**. Unitless px, a real HTML attribute the browser honours, ratio
+  preserved; faithful fallback. **Never** with `height=` (distortion); %/responsive needs
+  `style="width:…%"`.
+- **`rotate=<deg>`** → the **inner-frame**. Quarter-turns + free angle. **Runtime-only** (no
+  faithful native path — `transform` does not reflow); inert → original image in the fallback.
+- **`flip=horizontal|vertical`** → the **inner-frame**. Runtime-only.
+- **`transform="<2D-affine CSS transform>"`** → the **`<img>`**. The crop placement (pan/zoom +
+  optional content-rotate) as a raw CSS transform value (a power user may write any affine
+  transform). Named `transform`, not `crop` — it is a placement, not a crop. Inert on the `<img>`
+  in the fallback.
+- **`filter="<CSS filter>"`** → the **`<img>`**. Default key=value form; `style="filter:…"` is the
+  power-user escape that stays **faithful** in the fallback. Matches `ctx.filter` in the export.
+- **`aspect-ratio=<ratio>`** → the **outer**. The footprint shape; **derived** from rotate +
+  natural ratio (AD6 — store only non-derivable intent), stored **only** for a deliberate crop
+  shape ≠ original.
+- **`.class`** → the **outer**. Built-in alignment / vault-snippet / decoration classes (F16).
+- **`style="…"`** → the **outer**. The power-user escape on the visible image; the user owns its
+  fallback consequences.
+- **`.lie`** → optional explicit claim marker (enforce). Inert in the fallback.
+
+#### 2.2a Legacy forms the parser still reads (back-compat)
+
+The writer emits the bare keys (§2.2). The PARSER also accepts the earlier native-CSS forms so old
+notes render unchanged; nothing is rewritten until the user next edits the image (then it serializes
+to the bare keys). The legacy forms `parseAltText` decomposes:
 
 ```
 ![alt](path.png){.lie-left style="transform: rotate(90deg) scaleX(-1); filter: brightness(1.2); width: var(--lie-size-medium)"}
 ```
 
-- **Native CSS in `style=`** — the `transform` / `filter` **values pass through verbatim** to the
-  img (a power user can drop in `skew()`, `perspective()`, extra `filter` functions … and they just
-  work); the render path splits the `style` into declarations and routes each by **property name** —
-  `transform` / `filter` → the **img**, `width` / `height` / `aspect-ratio` → the **box**. It does
-  **one targeted read**: the **rotate angle**, to compute the box's auto `aspect-ratio` (the
-  swapped intrinsic ratio for a quarter-turn). It needs **no presence check** (CSS precedence, §2.1)
-  and does **not** parse the rest. A **crop** does not derive its box ratio from the transform — its
-  **cut-frame `aspect-ratio`** is set by the crop editor (the user shapes the frame / edits the
-  image within it, never typing a ratio) and written to the source on commit, overriding the auto
-  default. Transforms use `transform-origin: center` (default). The pieces the editor writes:
-  - **rotate + flip** → `transform: rotate(…) scaleX/Y(-1)`, **centered** — so a quarter-turn needs
-    **no `translate`**; the box reshapes via its `aspect-ratio` (the swapped intrinsic ratio,
-    derived at render).
-  - **filters** → `filter: brightness(…) contrast(…) …`; `serializeTransform` maps `FilterData` ↔
-    the `filter` functions, `temperatureAdjust` derives temperature (not stored, F10).
-  - **size** → `width` / `height`: a **preset** is `width: var(--lie-size-small|medium|large)`
-    (re-themeable; value in settings; falls back to `auto` where the var is undefined, F25); a
-    **custom** size is a literal px.
-- **Internal `lie-*` classes** (need CSS) — only: alignment (`lie-left/right/center`) and inline
-  (`lie-inline` = `INLINE_CLASS`). There is **no `.lie-img` marker** on the image any more
-  (`serializeTransform` no longer emits it, `renderer.ts` no longer adds it, aff1847); `MARKER_CLASS`
-  survives only so `parseAltText` keeps SKIPPING a `.lie-img` token in old notes. A render-time-only
-  `lie-tall` marker is added to a tall float by the renderer (driving the tall-float cap, §2.4) and is
-  **never written to the source**. **No** size or decoration classes (size → `width` above; decoration
-  → shipped snippets, F16).
-- **Crop** is **fully native too** — the placement is the img's
-  `transform: translate(<%>,<%>) rotate(<deg>) scale(<n>)` (translate in **%** → box-relative,
-  responsive) and the box is `width` + `height` (the cut frame). **No custom property.** Example:
-
-  ```
-  ![alt](img.png){style="width:320px; height:240px; transform: translate(-25%,-10%) rotate(12deg) scale(1.8)"}
-  ```
-
-  The wrapper's `overflow:hidden` does the clipping; the editor presents `scale` as w/h. Crop is
-  still the **least-portable** feature (T3): a no-plugin renderer applies the transform without
-  the wrapper clip, so it shows the image transformed and **unclipped** (and, with the explicit
-  `height`, stretched) — acceptable, and no worse than any native transform without a clip.
+- **`style="transform: …"`** — an orientation-only string (`rotate`/`scaleX`/`scaleY`, no crop
+  `translate`/`scale`) decomposes into the `rotate`/`flipH`/`flipV` fields; a crop placement (has
+  `translate`/`scale`, incl. its content-rotate) stays whole on the `<img>`. (A BARE `transform=`
+  key is never decomposed — it is the verbatim crop placement.)
+- **`style="filter: …"` / `style="width: …"` / `style="aspect-ratio: …"`** → the same model fields;
+  any other declaration → the `box` passthrough.
+- **`.lie-left/right/center` classes** → the `align` field (the renderer re-derives the marker class
+  on the img). **`.lie-img`** is skipped (`MARKER_CLASS`, never re-emitted). **`.lie-inline`** → the
+  inline flag. A **preset var** (`width: var(--lie-size-…)`) is read as a non-px width and kept in
+  `style=` on re-write (a new preset bakes to `width=N` px instead).
+- **Crop** legacy form `style="width:320px; height:240px; transform: translate(…) rotate(…) scale(…)"`
+  → the placement on the `<img>`; the renderer derives the cut shape from `width`/`height` (the bare
+  form stores `aspect-ratio=` instead — §2.3). A render-time-only `lie-tall` marker is added to a tall
+  float by the renderer (the tall-float cap, §2.4) and is **never written to the source**.
 - **The same block trails both link forms** (T2.1 Markdown, T2.2 wikilink) verbatim; conversion
   rewrites only the link, never the block.
 - **`params` handed to `parseAltText` is the block CONTENT without the `{` `}` braces.** The
@@ -162,36 +178,40 @@ Canonical serialization (T2, AD2) — native CSS, classes only for what needs th
 
 ### 2.3 DOM layers & sizing model
 
-Three nested elements, outermost first — **the same for every image** (R0/AD3):
+Nested elements, outermost first — **the same for every image** (R0/AD3). **Implemented:** the
+plugin's structure is **three layers** — `.lie-image-area` (outer) / `.lie-frame` (inner-frame) /
+`<img>` — inside the flow container (`ensureLayers` in `render-core.ts` builds them and upgrades a
+reused legacy 2-layer DOM).
 
 ```
-embed   — the flow container: Obsidian's own .image-embed (reading view) /
-          the plugin's OWN overlay container .lie-wrapper in live preview (the widget draws its
-          own, while Obsidian's native .image-embed/.image-wrapper stays in the document,
-          CSS-suppressed, §2.4 — the suppression keys UNIFORMLY on the NATIVE `> img` and
-          `> .image-wrapper` of EVERY embed, NEVER on the plugin's own .lie-wrapper).
-          The flow participant: alignment/float and native vertical spacing (D10) act here.
-  ├ box  — .lie-image-area: the plugin's wrapper, ALWAYS present, AXIS-ALIGNED (never rotated).
-  │        Box + img are ONE unit. It only RESIZES — to the rotated image's bounding box
-  │        (reflow) — and clips; overflow:hidden is set unconditionally.
-  │   └ img — the image itself, and the ONLY element that is transformed
-  │           (rotate / flip / filter / crop placement = translate+scale). It carries NO marker
-  │           class — it is identified by its .lie-image-area box parent (and lie-inline for an
-  │           inline icon).
-  └ caption — in the EMBED, BELOW the box — NEVER inside the box (overflow:hidden would clip it,
-              which would drag back a pile of special rules and waste the native wins). Sized to
-              the box width by the embed itself, not by JS.
+embed       — the flow container: Obsidian's own .image-embed (reading view) /
+              the plugin's OWN overlay container .lie-wrapper in live preview (the widget draws
+              its own, while Obsidian's native .image-embed/.image-wrapper stays in the document,
+              CSS-suppressed, §2.4 — keyed UNIFORMLY on the NATIVE `> img` / `> .image-wrapper`
+              of EVERY embed, NEVER the plugin's own .lie-wrapper).
+  ├ outer     — the FLOW PARTICIPANT / FOOTPRINT: width, aspect-ratio, align, style, .class.
+  │             Reserves the (swapped) flow space; AXIS-ALIGNED, NEVER rotated (so the footprint
+  │             stays correct — rotate does not reflow). Alignment/float and native vertical
+  │             spacing (D10) act here.
+  │   └ inner-frame — ORIENTATION + CROP CLIP: rotate + flip on ONE element (composed in written
+  │   │               `{}` order); overflow:hidden.
+  │   │   └ img — CONTENT: the crop placement `transform` (pan/zoom + optional content-rotate)
+  │   │           and `filter`. Carries NO marker class for our own render (identified by its
+  │   │           frame parent; lie-inline for an inline icon); on a FOREIGN page it is the
+  │   │           claimed element (§3.6 identification).
+  └ caption   — in the EMBED, BELOW the outer — NEVER inside the frame (overflow:hidden would clip
+                it). Sized to the outer width by the embed itself, not by JS.
 ```
 
-The `{…}` block is authored on the image, so its classes/style land on the **img** in any
-renderer (the box/embed are built by the plugin and do not exist without it). The plugin then
-routes each value to the element it must act on:
+The `{…}` block is authored on the image, so without the plugin its keys land on the **img** (the
+outer/inner-frame are built by the plugin/runtime and do not exist otherwise). With the plugin (or
+the runtime) each datum is routed to the layer it must act on:
 
 | Acts on | Values | How |
 |---|---|---|
-| **img** | rotate, flip, filter, **crop placement** (translate+scale) | the img's own `transform` / `filter` (encoding: §2.2) |
-| **box** | size (`width`/`height`), the crop **cut** (clip), rotation reflow | the wrapper, sized + `overflow:hidden`, by the render core |
-| **embed** | alignment / float, inline | a class the CSS routes via `:has(img.lie-…)` |
+| **outer** | `align`, `width`, `aspect-ratio`, `style`, `.class` | the flow footprint, sized + aspect by the render core; align/float via `:has()` class routing |
+| **inner-frame** | `rotate`, `flip`, the crop **clip** | one element, `overflow:hidden`, by the render core |
+| **`<img>`** | crop placement `transform`, `filter` | the img's own `transform` / `filter` (encoding: §2.2) |
 
 **Two sizes, one rule.** Every image has a **box** size (the visible result) and an **inner
 image** size; their relation is purely a function of the transform:
@@ -238,7 +258,7 @@ and consumed by both consumers: the **renderer** applies it as DOM/CSS; the **ex
 *same* box size + inner-image transform + native `filter` onto a **box-sized canvas**, whose bounds
 clip exactly like `overflow:hidden`. So export is literally *"render the box, as displayed"* (F12) —
 there is no second crop/rotate/scale implementation. (This collapses the old duplication where
-`renderer.ts` and `export.ts` each carried their own crop math.)
+`render-core.ts` and `export.ts` each carried their own crop math.)
 
 ### 2.4 The CSS contract (`styles.css`)
 
@@ -294,10 +314,14 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
 
 - **`transforms.ts`** — `parseAltText` (block content → `ImageTransform`) and
   `serializeTransform` (the inverse); tokenizes on whitespace, reads `.class` and `key=value`
-  tokens. The `transform` / `filter` declarations are kept as **pass-through strings** (routed
-  whole to the img, not decomposed for rendering); the **editor** extracts only the one function
-  it edits (targeted regex). The old `filterToVars` / `FILTER_VAR_NAMES` → `--lie-*` composing
-  layer is **gone** (native `filter` *is* the final CSS). Round-trip and edge cases unit-tested
+  tokens. **Target state (T2.3):** the recognized keys are the bare set `align` / `width` /
+  `rotate` / `flip` / `transform` / `filter` / `aspect-ratio` (+ `.class`, `style=`, `.lie`); the
+  `transform` / `filter` values are kept as **pass-through strings** (routed whole to the `<img>`,
+  not decomposed for rendering); the **editor** extracts only the one function it edits (targeted
+  regex). This same parse/serialize is the **shared logic for all three consumers** (no-JS
+  fallback, runtime, toolbar writer, AB7a). *(The present code parses native-CSS `style=`; the
+  bare-key set is the change. The old `filterToVars` / `FILTER_VAR_NAMES` → `--lie-*` composing
+  layer is gone — `filter` is the final CSS.)* Round-trip and edge cases unit-tested
   (`tests/transforms.test.ts`).
 - **`link-format.ts`** — `convertEmbedLine` rewrites the link form when `desiredFormat`
   (Obsidian's wikilink setting) differs, via Obsidian's `fileManager.generateMarkdownLink`,
@@ -328,13 +352,20 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   (no DOM measurement); `rotatedAabb` gives the rotated bounding box; `estimatedBlockHeight` is the
   synchronous CM6 height estimate; `isTallFloat` / `TALL_FLOAT_THRESHOLD_PX` decide the tall-float cap
   from the stored size (declarative, AD6 — no measure).
-- **`renderer.ts`** — `applyTransformToImage` builds the one uniform `.lie-image-area` for every
-  image (normal = degenerate transform) with `overflow:hidden`, sizes the box (size attr, else
-  column-capped intrinsic) and sets the inner image from box + transform (**box → image**, §2.3); it
-  also marks a tall float `.lie-tall` (via `isTallFloat`, driving the §2.4 cap) and adds `lie-inline`
-  for an inline icon — but **no `.lie-img` marker** (the img is identified by its `.lie-image-area`
-  box parent). `unwrapBox` tears it down. Rotate/flip/filter are native CSS on the img, so there is no
-  var-writing step.
+- **`render-core.ts`** (Obsidian-FREE) — `buildLayers` builds the uniform structure for every image
+  (normal = degenerate transform): the 3-layer outer / inner-frame / `<img>` (§2.3) with
+  `overflow:hidden` on the frame; it sizes the **outer** (width attr, else column-capped intrinsic)
+  + sets its derived `aspect-ratio`, applies `rotate` + `flip` to the **inner-frame** about its
+  centre (`applyOrientation`, the structural pivot that fixes Bug 25) and the crop `transform` +
+  `filter` to the **`<img>`** (outer → frame → image sizing direction, §2.3); it shapes the frame
+  from the base shape (natural ratio, or the cut shape for a crop) + angle (`shapeFrame`/`cropAspect`);
+  it re-derives the `lie-left/right/center` marker class from the `align` field, marks a tall float
+  `.lie-tall` (via `isTallFloat`, §2.4 cap) and adds `lie-inline` for an inline icon. `ensureLayers`
+  upgrades a reused legacy 2-layer DOM; `unwrapBox` tears the layers down. It also exports `RENDER_CSS`
+  (the structural layer rules, injected by the plugin AND the runtime — one source, R0) and the
+  identification (`CLAIM_SELECTOR` + `readTransform`). The plugin renderer and the runtime are **two
+  callers of this one builder** (DRY); the reading-view adapter (the post-processor wiring) lives in
+  `main.ts`.
 - **`caption.ts` / `caption-logic.ts`** — `createCaption` renders the alt text via Obsidian's
   `MarkdownRenderer` (AD9) below the box, as a child of the **embed** (never inside the box, §2.3).
   It is sized to the box width by **pure CSS**: `.lie-caption { width: 0; min-width: 100% }` inside
@@ -433,8 +464,14 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   `overflow:hidden`), producing the **same visual** as displayed but sized from the **original
   image's native resolution** (F13, highest quality — the display `width` does not reduce it; the
   box geometry is scaled up to original pixels) — **no** separate crop/rotate block (removes the
-  current `applyCrop` ↔ export duplication). Decoupled from `saveExport`; `suggestExportPath`
-  pre-fills the next free `{name}-{n}` and prefers the native dialog (F13).
+  current `applyCrop` ↔ export duplication). It replays the **layer nesting** on the canvas
+  (`save` → inner-frame transforms → img transform → `drawImage` source-rect crop → `restore`),
+  sharing the transform **model** with the CSS adapter (two adapters over one model, AB15) — never
+  a parallel structure, and stored values are never rewritten (only the output bbox is computed).
+  Export fidelity is the **2D-affine + standard-filter** boundary (AB15): 3D/perspective,
+  clip-path, border-radius, box-shadow and non-standard filters are not exportable. Decoupled from
+  `saveExport`; `suggestExportPath` pre-fills the next free `{name}-{n}` and prefers the native
+  dialog (F13).
 
 ### 3.5 Plugin shell
 
@@ -442,6 +479,41 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   gated on image context), `LieSettingTab` (`settings.ts`), and `StylesInjector`
   (`styles-injector.ts`). `i18n/` follows the Obsidian locale. `editing-toolbar-integration.ts`
   is version-gated and off by default (F23, T10). `dev-bridge.ts` is tree-shaken from production.
+
+### 3.6 Portable runtime (AB7a — IMPLEMENTED)
+
+The standalone bundle that delivers T3 portability. **Built.**
+
+- **Shared logic.** It imports the **same** model parse/serialize (`transforms.ts`'s
+  `parseAltText` / `serializeTransform`) and the geometry (`renderer-logic.ts`) via the
+  Obsidian-free core (`render-core.ts`) — one format, three consumers (AB7a). No reimplementation
+  of the grammar or the box math.
+- **DOM builder.** A single `buildLayers(img, transform)` (in `render-core.ts`) constructs the
+  **3-layer** structure (outer / inner-frame / `<img>`) around a claimed `<img>` and routes each
+  datum to its layer (the same routing table as §2.3): `align`/`width`/`aspect-ratio`/`style`/`.class`
+  → outer; `rotate`+`flip` → inner-frame; `transform`+`filter` → `<img>`. The plugin renderer and
+  this runtime are **two callers of the same builder** (DRY); the plugin wraps it in Obsidian's embed,
+  the runtime hydrates a bare page.
+- **Runtime entry + build target.** A **second esbuild entry** (`src/runtime.ts`) produces a
+  framework-free **`lie-runtime.js`** (named for the plugin id — *not* `live-image-runtime.js`), a
+  browser **IIFE**. The **render CSS is inlined as the `RENDER_CSS` string in the shared core** and
+  injected at startup (CSS-in-JS — the same pattern `src/styles-injector.ts` uses), so the standalone
+  is a **single `<script>` include**, no separate stylesheet. That core string is the **one source**
+  the plugin injects too (R0: identical render); `styles.css` keeps only the Obsidian embed
+  integration + editing-**chrome** rules. The entry runs on `DOMContentLoaded` (+ a `MutationObserver`
+  for late content), selects claimed images and calls `buildLayers`. The runtime esbuild entry has
+  **no `obsidian` external**, so a stray framework import fails the build (the import-discipline guard
+  keeping the bundle Obsidian-free). `runtime-smoke.html` is the manual/CI browser fixture.
+- **Tolerant selector / identification (§ identification rule).** The runtime claims an `<img>`
+  **iff** it carries a distinctive transform key or `.lie` — selector
+  `[rotate],[flip],[transform],[aspect-ratio],.lie` (and the **data-prefixed** Pandoc variants
+  `[data-rotate],[data-flip],[data-transform],[data-aspect-ratio]`, since Pandoc force-prepends
+  `data-`). `align`/`width`/`style`/`class` alone are **not** claimed (native CSS handles them).
+  No prefix on the bare keys → a small accepted collision risk (T2.3).
+- **Per-layer CSS application.** The runtime applies the routed values as inline styles/attributes
+  on the built layers; the injected render-CSS string carries only the structural rules
+  (overflow:hidden on the frame, the float `:has()` routing, the column cap) — `align`/`width`
+  already work natively, so the no-JS fallback needs none of it.
 
 ---
 

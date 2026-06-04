@@ -111,9 +111,11 @@ Pure box / inner-image geometry; the single source shared by the renderer and th
 - **`snapAngle`** — quantizes rotation to the fixed angle step live; verifies the rotation cut
   is quantized continuously, not only on commit (`F12`).
 - **`snapScale`** — quantizes zoom to its step; verifies the scaled cut stays on a clean step.
-- **`toCropResult`** — composes the quantized pan / angle / scale + frame into the stored
-  transform (translate% + rotate + scale + box w/h). Verifies the editor emits exactly the
-  native-CSS placement the renderer and export consume (`AD2`, rendering ≡ export).
+- **`toCropResult`** — composes the quantized pan / angle / scale + frame into the stored crop
+  PLACEMENT transform (translate% + content-rotate + scale) plus the cut-frame **width** and an
+  **`aspect-ratio`** stored only when the cut shape ≠ the original ratio (never a fixed px height,
+  `AD6`). Verifies the editor emits exactly the placement + cut shape the renderer and export consume
+  (`AD2`, rendering ≡ export).
 
 ### 2.5 `anchored-submenu-logic.ts` — placement (`AB11`)
 
@@ -129,6 +131,17 @@ Pure box / inner-image geometry; the single source shared by the renderer and th
   class-bearing inputs; unknown / pass-through `transform` and `filter` functions survive
   untouched (a power-user `skew()` / extra filter passes through, `AD2`). Verifies the canonical
   block is the lossless single encoding (`F1`, `T2`).
+- **Bare-key format round-trip (`T2.3`, implemented for orientation/crop/filter)** — `rotate` /
+  `flip` parse to the orientation FIELDS (inner-frame, NOT the img transform), `transform` /
+  `filter` to the img verbatim (a bare `transform`'s own `rotate()` stays content, not decomposed),
+  `aspect-ratio` to the cut shape; a legacy `style="transform: rotate(…) scaleX(-1)"` **decomposes**
+  into the orientation fields (back-compat) while a legacy crop placement stays whole. `.class`,
+  `style=` and the `.lie` marker survive. *(Deferred: `width`/`align` still ride `style=` / a class.)*
+  Verifies the routed-per-layer format and the orientation↔placement split (`AD2`, `AD3`, Bug 25).
+- **Bug 25 regression (orientation never touches the placement)** — `setRotation` on a cropped
+  transform sets `rotate` and leaves `transform` (the crop placement) byte-identical; a rotated crop
+  round-trips with both the orientation field and the placement intact. Verifies the structural
+  pivot that designs out the rotate-a-crop drift.
 - **Brace-stripping (`T-L9`)** — when given content **with** braces the leading `.class` token
   is lost, but the model's own entry point strips them, so an end-to-end parse keeps the leading
   class. Verifies the contract pitfall is guarded at the unit boundary (`implementation-plan.md`
@@ -163,15 +176,19 @@ run via CDP eval against the example vault (`T-L6`, `AD7`).
   and confirm the render reflects the **source**, not a cached state; confirm no second store
   exists (the only mutation path is the source). *Verifies: no stale render survives a mode
   switch or reused embed (`F2`).*
-- **AD2 — Declarative native-CSS routing, verbatim.** Confirm `transform` / `filter` land on the
-  **img** and `width` / `height` / `aspect-ratio` on the **box**, by **property name**, with the
-  declaration contents passed through unparsed (a hand-authored `skew()` or extra filter
-  function survives on the rendered img). *Verifies the contract is applied verbatim, no value
+- **AD2 — Declarative per-layer routing, verbatim.** Confirm each datum lands on its layer
+  (target, §2.3): `align` / `width` / `aspect-ratio` / `style` / `.class` on the **outer**,
+  `rotate` + `flip` on the **inner-frame**, the crop `transform` + `filter` on the **`<img>`** — by
+  key, with `transform` / `filter` contents passed through unparsed (a hand-authored `skew()` or
+  extra filter survives on the rendered img). *Verifies the contract is applied verbatim, no value
   parser (`T2`, `T3`, `F25`).*
-- **AD3 — Uniform box, box→image direction.** Confirm normal, rotated, flipped, cropped,
-  filtered and sized images all have the **same** embed → box → img structure (no
-  `display:contents`, no per-state fork), and that the **box** carries the size while the **img**
-  follows. *Verifies the uniform element and one sizing direction (`T5`).*
+- **AD3 — Uniform 3-layer box, outer→image direction.** Confirm normal, rotated, flipped, cropped,
+  filtered and sized images all have the **same** embed → outer → inner-frame → `<img>` structure
+  (no `display:contents`, no per-state fork), and that the **outer** carries the footprint
+  (width/aspect, never rotated) while the inner-frame orients and the `<img>` follows. Confirm
+  re-orienting (inner-frame) leaves the crop placement on the `<img>` untouched, and `flip`-inner ∘
+  `rotate`-frame reaches all eight orientations. *Verifies the uniform 3-layer element and one
+  sizing direction (`T5`).*
 - **AD4 — Two adapters, one DOM.** Render the same image in reading view and live preview;
   diff the produced DOM structure and the resulting box / img sizes. *Verifies both adapters
   produce the same structure and visual result (`T4`, `F4`).*
@@ -210,6 +227,32 @@ run via CDP eval against the example vault (`T-L6`, `AD7`).
   uses the native handle/frame, the column cap reads `--file-line-width`, link conversion calls
   `fileManager.generateMarkdownLink`, and i18n follows Obsidian's locale. *Verifies the platform
   is the building block, not a parallel reimplementation (`F5`, `F22`, `F21`, `D4`).*
+
+- **AB7a — Portable runtime & fallback degradation (IMPLEMENTED).** On a plain page (no Obsidian) —
+  the `runtime-smoke.html` fixture, verified in a real Chromium engine via an isolated iframe (no
+  Obsidian markdown):
+  - **Hydration** — the runtime claims the right images and builds the **3-layer** structure
+    around each via the shared `buildLayers`, injecting `RENDER_CSS` (CSS-in-JS) + a runtime
+    alignment rule. *Verifies one shared builder hydrates a foreign page (`T3`, `T5`). ✓ CDP.*
+  - **Identification** — an `<img>` is claimed **iff** it carries a distinctive key
+    (`rotate`/`flip`/`transform`/`aspect-ratio`) or `.lie`; an `align`-only / `width`-only /
+    `style`-only / `class`-only image is **not** claimed (no runtime structure built). Both the
+    bare and the `data-`-prefixed Pandoc variants are recognized. *Verifies the claim rule (`T3`). ✓ CDP.*
+  - **Fallback degradation per key (no runtime, no plugin)** — with neither plugin nor runtime:
+    `align` and `width` (and a `style="filter:…"`) render **faithfully** (real HTML attrs); `rotate`,
+    `flip` and the inner crop `transform` are **inert and the original, untransformed image still
+    shows** (`F25`); a kramdown/Jekyll page (the bare brace never reaches the DOM) shows the plain
+    original. *Verifies the never-emit-plugin-only-Markdown baseline (`F25`, `T3`) — comment out the
+    runtime `<script>` in `runtime-smoke.html` to confirm.*
+  - **Import discipline** — the runtime bundle pulls **no** obsidian/CodeMirror (the runtime esbuild
+    entry has no `obsidian` external, so a stray import fails the build). *Verifies the Obsidian-free
+    core (`T3`, AB7a).*
+
+- **Format migration (width/align → bare keys) — IMPLEMENTED.** Render parity (CDP): a new
+  `align=`/`width=N` image and the legacy `.lie-left`/`style="width:…"` form render identically
+  (same float/centre/width); the renderer re-derives the marker class from the `align` field.
+  Round-trip + back-compat are unit-tested (`transforms.test.ts`). *Verifies the bare-key writer +
+  legacy reader (`T2.3`, `F15`, `F24`).*
 
 *(AD7 — testability — is verified by §2 existing at all: every decision logic has a pure unit.)*
 
@@ -302,6 +345,7 @@ lessons). Pure-logic regressions become **unit** tests (§2); the rest are **CDP
 | Tall float | a float taller than ~250px stacks as a non-floated block in **both** views (no LP derender on scroll) | **unit** (`isTallFloat`) + CDP |
 | Bare embed | a bare `![](…)` line renders the plugin's `block:true` widget (a real height, not a blank line), native image CSS-suppressed | CDP (`AD5`, `T-L13`) |
 | Inline-icon / tiny toolbar | the floating bar sits truly ABOVE a too-small image (`rect.top − h − gap`, below-fallback near the viewport top); float-out fires by coverage | CDP (`D1.1`) |
+| Bug 25 | rotate/flip of a cropped image rides the inner-frame (centre pivot) and never touches the `<img>` crop placement — no drift; export composes content → orient the same way | **unit** (`transforms` setRotation-on-crop, `crop-editor-logic`) + CDP (`AD3`, the 3-layer geometry) |
 
 ### 5.2 Per learned lesson (`T-Ln`)
 

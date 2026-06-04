@@ -16,23 +16,25 @@ describe("crop live snapping (F12 — quantize during the interaction)", () => {
   });
 });
 
-describe("toCropResult (editor state → native transform + box w/h, AD2)", () => {
-  it("emits translate% (box-relative), rotate, scale + the cut-frame box size", () => {
-    // baseline = box width = 200; frame 200×150; r = 2 → img display height = 100.
+describe("toCropResult (editor state → placement transform + cut-frame width/aspect, AD2/AD6)", () => {
+  it("emits translate% (cut-relative), rotate, scale + cut width; aspect ≠ original is stored", () => {
+    // baseline = cut width = 200; frame 200×150 (4:3) ≠ original 2:1; r = 2 → img display height = 100.
     const r = toCropResult({ x: 50, y: 25 }, { w: 200, h: 150 }, 0, 1, 200, 2);
     expect(r.transform).toBe("translate(25%, 25%) rotate(0deg) scale(1)");
     expect(r.width).toBe("200px");
-    expect(r.height).toBe("150px");
+    expect(r.aspectRatio).toBe("200/150");
   });
-  it("re-expresses the editor scale against the box-width baseline", () => {
-    // editor baseline 400, frame width 200, editor scale 1 → render scale = 1·400/200 = 2.
+  it("omits aspect-ratio when the cut keeps the original ratio (derived, AD6)", () => {
+    // frame 200×200 (1:1) == original 1:1 → nothing stored.
     const r = toCropResult({ x: 0, y: 0 }, { w: 200, h: 200 }, 0, 1, 400, 1);
-    expect(r.transform).toContain("scale(2)");
+    expect(r.transform).toContain("scale(2)"); // editor scale re-expressed: 1·400/200 = 2
+    expect(r.aspectRatio).toBeUndefined();
+    expect(r.width).toBe("200px");
   });
-  it("produces integer-px cut frame and a quantized angle", () => {
+  it("produces an integer-px cut width, a stored aspect-ratio and a quantized angle", () => {
     const r = toCropResult({ x: 0, y: 0 }, { w: 123.9, h: 45.1 }, 12.34, 1, 124, 1);
     expect(r.width).toBe("124px");
-    expect(r.height).toBe("45px");
+    expect(r.aspectRatio).toBe("124/45");
     expect(r.transform).toContain("rotate(12.3deg)");
   });
 });

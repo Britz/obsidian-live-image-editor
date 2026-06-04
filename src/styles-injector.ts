@@ -1,3 +1,5 @@
+import { RENDER_CSS } from "./render-core";
+
 const PREFIX = "lie";
 
 export interface PresetWidths {
@@ -76,7 +78,9 @@ export class StylesInjector {
       .map((c) => c.css)
       .join("\n");
 
-    this.styleEl.textContent = `${presetVars}\n${classCss}`;
+    // RENDER_CSS (the 3-layer LAYER rules) is the SINGLE source shared with the standalone
+    // runtime (AB7a) — injected here so the plugin and the runtime render identically (R0).
+    this.styleEl.textContent = `${RENDER_CSS}\n${presetVars}\n${classCss}`;
   }
 
   getClassNames(): string[] {

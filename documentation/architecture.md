@@ -61,30 +61,53 @@ current code and are restated here as architecture, not invented anew.
   layer owns parse/serialize; the editing UI never mutates display state directly, only the
   source.
 
-- **AD2 — Declarative rendering contract; native CSS preferred.** *(T2, T3, F1, F25)* Transforms
-  are stored **declaratively** in the embed's `style` and classes — never imperative DOM
-  scripting. Where a transform has a **native CSS equivalent** (rotation, flip, all filters) the
-  **native shorthand** is used (`transform`, `filter`), so the image renders in any renderer with
-  no plugin and no shipped CSS (strongest backward-compatibility, F25). Even **crop** is native
-  (its placement is the img's `transform`); only the **clip** needs the wrapper. Named/semantic
-  state stays in classes (alignment, inline; decoration via shipped snippets). Each value is routed
-  to the element it must act on **by property name** — `transform`/`filter` to the **img**,
-  `width`/`height` to the **box**, alignment classes to the **embed**. This is **less work than
-  custom properties**: the native `transform`/`filter` string *is* the final CSS, so the render
-  path applies it **verbatim** — no value parser, no `--lie-*` → CSS composing rule, no
-  serialize/parse mapping (and arbitrary extra transform functions pass through). Only the editing
-  tools and the rotated-box reflow read the one token they need.
+- **AD2 — Declarative rendering contract; portable attribute keys routed per layer.** *(T2, T3,
+  F1, F25)* Transforms are stored **declaratively** in the trailing `{…}` block as a portable
+  attribute list — never imperative DOM scripting. The block is **not** "all transforms as native
+  CSS": it is a set of **bare keys** (`align`, `width`, `rotate`, `flip`, `transform`, `filter`,
+  `aspect-ratio`) plus `.class` and a `style=` escape (grammar in T2.3). Native CSS is used **only
+  for the faithful subset** — `align` (legacy HTML float / center) and `width` (a real HTML
+  attribute) render with no plugin and no shipped CSS; a `style="filter:…"` escape likewise stays
+  faithful. The **runtime-only** keys (`rotate`, `flip`, the inner crop `transform`) have no
+  faithful native path — `transform` does not reflow, so a rotated **footprint** needs its own
+  element — and are realized by the render core / runtime, degrading to the original image
+  otherwise (F25). Each datum is routed to the layer it must act on (AD3, 3-layer model):
+  `align` / `width` / `aspect-ratio` / `style` / `.class` → the **outer** (the flow footprint);
+  `rotate` + `flip` → the **inner-frame** (orientation + crop clip); `transform` (crop placement)
+  + `filter` → the **`<img>`** (content). A `filter` and a `transform` value pass through
+  **verbatim** to the `<img>` (a power user's extra `filter` functions or affine `transform`
+  functions just work); only the editing tools and the rotated-footprint reflow read the one token
+  they need. *(Implemented — `align`, `width`, orientation (`rotate`/`flip`), the crop placement
+  (`transform`), the cut shape (`aspect-ratio`) and `filter` are all bare keys routed per layer; a
+  non-px `width` (preset var / %) and a `height`/box passthrough use the `style=` escape. The parser
+  still reads the legacy forms — `style="transform:…"`, the `.lie-left/right/center` classes,
+  `style="width:…"` — for back-compat. Presets are baked to a literal `width=N`.)*
 
-- **AD3 — One uniform image element, one sizing direction (R0).** *(T5, T6, D3, D4)* Normal, rotated,
-  flipped, cropped, filtered and sized images share the **same** nested structure (embed → box →
-  img) and the **same** sizing routine; "normal" is the degenerate transform, never a special
-  case. The box clips **uniformly** (so crop is not a structural fork — it is just the case with
-  content beyond the box). Sizing runs **one way: the size attribute sizes the box, and the inner
-  image is a pure function of the box and the transform** — never the reverse. That single
-  direction is the permanent guard against the recurring rotated-image sizing drift (there is no
-  measure-the-image-then-size-the-box loop that can fall out of sync) and is what makes every
-  image behave like a native embed. Layout and alignment act on the **embed** (the document-flow
-  participant), not the image, so surrounding text wraps.
+- **AD3 — One uniform 3-layer image element, one sizing direction (R0).** *(T5, T6, D3, D4)*
+  Normal, rotated, flipped, cropped, filtered and sized images share the **same** nested structure
+  and the **same** sizing routine; "normal" is the degenerate transform, never a special case. The
+  uniform structure is **three layers**, each owning one concern (this is the realization of the
+  "uniform wrapper", T5):
+  - **outer** — the **flow participant / footprint**: carries `width`, `aspect-ratio`, `align`,
+    `style`, `.class`. It reserves the (possibly swapped) flow space and **does not rotate**, so
+    the footprint stays correct even though `rotate` would not reflow.
+  - **inner-frame** — **orientation + crop clip**: carries `rotate` + `flip` on **one** element
+    (composed in written `{}` order) and `overflow:hidden`.
+  - **`<img>`** — **content**: carries the crop `transform` (pan / zoom / optional content-rotate)
+    and `filter`.
+
+  This decoupling is load-bearing: re-orienting (the inner-frame) never touches the crop placement
+  on the `<img>`, so no coordinates are recomputed by hand; the footprint is reserved
+  independently, so the rotated **box-swap** is solved; `rotate` + `flip` share one element so the
+  written order composes directly; and `flip`-inner ∘ `rotate`-frame reaches all eight
+  orientations, so the reverse order is never needed. The frame clips **uniformly** (crop is not a
+  structural fork — just the case with content beyond it). Sizing runs **one way: the stored size
+  sizes the outer, and the inner content is a pure function of the outer and the transform** —
+  never the reverse; the permanent guard against the recurring rotated-image sizing drift (no
+  measure-then-resize loop). Layout and alignment act on the **outer** (the document-flow
+  participant), not the image, so surrounding text wraps. *(Implemented — the plugin builds the three
+  layers `.lie-image-area` (outer) → `.lie-frame` (inner-frame) → `<img>`, upgrading a reused legacy
+  2-layer DOM.)*
 
 - **AD4 — Two view adapters, one render core.** *(T4, F4)* Reading view (a Markdown
   post-processor) and live preview (a CodeMirror-6 extension) are separate **only** because
@@ -103,7 +126,13 @@ current code and are restated here as architecture, not invented anew.
   `lie-left`/`lie-right` `float` **escapes** into `.cm-content`'s block formatting context and shortens
   the following sibling cm-lines (F18 — real multi-line wrap), with **no height desync** (the float
   counts to no line's height) and no `contain:paint` clip, and the image **shares the cm-line** with the
-  source, giving the reveal a uniform home. A **bare** `![](…)` line (no `{…}`) is block-promoted by
+  source, giving the reveal a uniform home. Because the float is out of flow and the host line's only
+  in-flow content (the fake link + `{…}`) is hidden when idle, the host cm-line **collapses to ~0px on its
+  own** (no forced height) — the wrapped text therefore sits **flush with the image top**, exactly as a
+  native float declared on its own line behaves, minus the paragraph margins cm-lines don't have; the line
+  regains its full text height the moment it is active/hovered (for editing). Forcing the host line to a
+  fixed one-text-line height would push the wrap down by a line — the **1-line top offset of the earlier
+  approach, now understood as a bug, not a baseline to restore**. A **bare** `![](…)` line (no `{…}`) is block-promoted by
   Obsidian into a cm-line-less `.cm-content` child that would swallow an inline widget — so the plugin
   renders a **`block:true` widget** for it instead, landing as its own `.cm-content` child next to the
   (image-suppressed) native embed. There is **no normalization**: `{…}` is written only by a real plugin
@@ -123,14 +152,15 @@ current code and are restated here as architecture, not invented anew.
   *observation* still holds): the native embed is now *wanted* for its image load and cursor-reveal, and
   merely CSS-hidden. Reading view is unaffected by the cursor logic (no editing). No competing passes.
 
-- **AD6 — Sizing is declarative; the original ratio is the ground truth.** *(T7, T11)* The box's
-  vertical extent is an **`aspect-ratio`**, never a fixed height. The **original image's intrinsic
-  ratio is the always-available ground truth**: the box ratio is **derived** from it (plus the
-  angle, for rotation) — read when the image loads, **not** measured from the rendered,
-  column-dependent box, so there is **no measure-then-resize retry loop** (the root of the recurring
-  sizing drift, designed out). An explicit `aspect-ratio` is **stored only for a deliberate,
-  non-derivable aspect change** (a distorting resize, a width+height modal, or an off-original crop
-  frame); it is the genuine user intent. The derived ratio is **applied to the DOM as an overridable
+- **AD6 — Sizing is declarative; the original ratio is the ground truth.** *(T7, T11)* The
+  **outer**'s vertical extent (the footprint shape) is an **`aspect-ratio`**, never a fixed height.
+  The **original image's intrinsic ratio is the always-available ground truth**: the footprint
+  ratio is **derived** from it (plus the angle, for rotation) — read when the image loads, **not**
+  measured from the rendered, column-dependent box, so there is **no measure-then-resize retry
+  loop** (the root of the recurring sizing drift, designed out). An explicit `aspect-ratio` is
+  **stored only for a deliberate, non-derivable aspect change** (a distorting resize, a
+  width+height set via the modal, or a crop frame whose shape differs from the original) — the
+  only-store-non-derivable-intent rule; it is the genuine user intent. The derived ratio is **applied to the DOM as an overridable
   default, never written into the source** (which would make the plugin edit the text the user
   edits — a JS-vs-editor race); CSS precedence resolves the rest with **no source parsing** (ignored
   when both `width`+`height` are set; a stored `aspect-ratio` overrides). Being width-*independent*,
@@ -209,17 +239,45 @@ the correct geometry.
 - **AB5 — Geometry (pure)** — the box and inner-image geometry as pure functions of the image's
   **intrinsic ratio** and the transform — no DOM measurement. The **single source** consumed by the
   render core (to derive the box's `aspect-ratio`) and the **canvas export**. Unit-tested (AD7).
-- **AB6 — Uniform box** — builds the same wrapper box for every image and gives it an
-  **`aspect-ratio`** derived from the intrinsic ratio (+ transform), **applied to the DOM, not
-  written to the source** (AD6); the inner image follows in box-relative units, and the box clips
-  uniformly. The image's own visuals (rotate/flip/filter, and a crop's pan/zoom) are native CSS on
-  the img (AD2).
+- **AB6 — Uniform 3-layer box** — builds the same outer / inner-frame / `<img>` structure for
+  every image (AD3) and gives the **outer** an **`aspect-ratio`** derived from the intrinsic ratio
+  (+ angle), **applied to the DOM, not written to the source** (AD6); the inner content follows in
+  outer-relative units, and the **inner-frame** clips uniformly. Orientation (`rotate` + `flip`)
+  sits on the inner-frame; the image's content visuals (`filter`, a crop's pan/zoom `transform`)
+  sit on the `<img>` (AD2). *(Implemented — the render core builds the three layers; orientation on
+  `.lie-frame`, the crop placement + filter on the `<img>`.)*
 - **AB7 — Caption** — renders the alt text as a Markdown caption below the image via the platform
   renderer (AD9). It is a child of the **embed** (below the box, never inside it) and is sized to
   the box width by the **embed's own CSS** — the embed shrink-wraps to the box and the caption is
   constrained to that width — so it needs **no JS width-sync / ResizeObserver**. Text extraction is
   pure and tested (F22, D9). When the image is too small to carry a caption below it, the
   caption is shown on a delayed hover instead (D9.1).
+
+- **AB7a — Portable runtime (the T3 portability mechanism).** *(T3, T4, T5, F25; IMPLEMENTED —
+  `src/render-core.ts` is the Obsidian-free core, `src/runtime.ts` → the `lie-runtime.js` bundle.)*
+  The framework-free read-render core (the T4/T5 goal) is **lifted out as a standalone JS bundle**
+  (`lie-runtime.js`, a second esbuild entry) that shares the model + geometry and the 3-layer
+  builder `buildLayers`; the structural **render CSS is inlined as a string (`RENDER_CSS`)** —
+  CSS-in-JS, so a single `<script>` include suffices, and it is the **same source** the plugin
+  injects (R0). **One format, three consumers**: the no-JS fallback, this runtime, and the
+  toolbar writer — there is no parallel format. On a foreign page the runtime **hydrates claimed
+  `<img>`s** (on `DOMContentLoaded` + a `MutationObserver`) by building the **3-layer structure**
+  (AD3) and routing the CSS per layer.
+  **Identification rule:** an `<img>` is claimed **iff** it carries a distinctive transform key
+  (`rotate` / `flip` / `transform` / `aspect-ratio`) **or** the explicit `.lie` marker; `align` /
+  `width` / `style` / `class` alone do **not** claim (native CSS already handles them, and an
+  align-only image needs no runtime structure). The bare-key choice (no prefix) accepts a small
+  collision risk for brevity (T2.3). Where the bundle is injectable (e.g. MkDocs) fidelity is
+  100%; otherwise the no-JS fallback keeps `align`/`width` and degrades the runtime-only transforms
+  to the original image (F25). kramdown/Jekyll never attach the bare-brace block to the DOM, so
+  there it is unsupported (shows the original) — a documented limitation.
+  **Split & CSS.** The shared core is **Obsidian-free** (parse/serialize, geometry, the layer
+  builder, the **render CSS as a string**, identification); the plugin's view adapters and editing
+  UI import it, the standalone bundle adds only a scan-and-hydrate entry. The render CSS is injected
+  from the core by **both** consumers — one source, so the plugin and the standalone render
+  identically (R0), and the standalone is a single `.js` include needing no separate stylesheet.
+  The editing-**chrome** CSS (toolbar / panels / crop editor) stays plugin-only in `styles.css`
+  (Obsidian auto-loads it; the runtime never needs it).
 
 ### 4.3 View adapters
 
@@ -261,10 +319,22 @@ display state — each produces an edit that round-trips through the model layer
   width/height entry fields side by side, hung under the toolbar through the shared host
   (F10, F24, D6.1).
 - **AB15 — Export** — replays the **same** box geometry, transform and filter (from AB5) onto a
-  canvas whose bounds clip the result like the wrapper — the **same visual** as displayed, but
+  canvas whose bounds clip the result like the inner-frame — the **same visual** as displayed, but
   sized from the **original image's native resolution** (highest quality; the display size does not
-  reduce it, F13), with **no** parallel crop/rotate math. Decoupled from the save, which offers the
-  native dialog with a free name pre-filled and never overwrites silently (F13, AD9).
+  reduce it, F13), with **no** parallel crop/rotate math. The canvas loads the **original** at
+  native resolution and replays the transform via `ctx`: the `filter` string passes through 1:1 as
+  `ctx.filter`; rotate / scale / translate become the canvas matrix; the crop is the
+  `drawImage` source rectangle; the output canvas is the rotated bounding box. Export and the CSS
+  adapter **share the transform model, not the renderer** — two thin adapters over one model (the
+  same shape as the two view-render paths, AD4): no parallel structure. Composition is by
+  **replaying the layer nesting** (`save` → inner-frame transforms → img transform → `drawImage` →
+  `restore`); the canvas matrix composes automatically, stored values are never rewritten, and the
+  only extra computation is the output bounding box. This is **not** DOM-to-image (a `foreignObject`
+  taints the canvas and only captures display resolution) and **not** canvas-as-display (which would
+  break R0/T3/T5). The **export-fidelity limit** is 2D-affine + standard filters: 3D / perspective,
+  clip-path, border-radius, box-shadow and non-standard filters are **not** exportable. Decoupled
+  from the save, which offers the native dialog with a free name pre-filled and never overwrites
+  silently (F13, AD9).
 - **AB16 — Raw-link reveal & edit** *(F8, F9, D5)* — **reveal** is a display-only fake raw link the
   plugin paints before the `{…}`. Its **natural state** has two modes from the **global default-state
   setting** (AB19/F20): *auto* — revealed on cursor (`.cm-active`) or hover of the image's line — or
@@ -294,8 +364,9 @@ display state — each produces an edit that round-trips through the model layer
   plugin's own `.lie-wrapper`), and the
   hover/`.cm-active`-keyed rules — plus the `<>`-toggle class and the global default-state class — that
   hide the `{…}` and the fake raw link when rendered and reveal them otherwise. It carries **no**
-  transform/filter rules (those are native CSS, AD2) and **no** decoration classes (shipped as
-  snippets, F16).
+  transform/filter rules — `rotate`/`flip`/`transform`/`filter` are applied as inline CSS on their
+  layer by the render core / runtime (AD2/AD3), not by injected class rules — and **no** decoration
+  classes (shipped as snippets, F16).
 - **AB21 — Localization** — follows Obsidian's locale, reusing platform strings, English fallback
   (F21, AD9).
 - **AB22 — Editing-toolbar integration** — installs/removes the plugin's commands into the
@@ -351,8 +422,8 @@ Confirms every requirement is realized by a building block or decision (and surf
 | D10 Native spacing | Style injection (on the embed) |
 | D11 No disruption | Source↔DOM map (write without cursor/scroll move) |
 | T1 No runtime deps | Crop/histogram/export all in-house (canvas) |
-| T2 Portable storage | AD2 · Transform model |
-| T3 Portable rendering | AD2 |
+| T2 Portable storage | AD2 · Transform model (bare-key block, T2.3) |
+| T3 Portable rendering | AD2 · AB7a Portable runtime (own JS+CSS bundle) |
 | T4 Two paths, one result | AD4 |
 | T5 Uniform wrapper | AD3 |
 | T6 One path per mode | AD5 |

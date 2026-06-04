@@ -1,4 +1,5 @@
 import { setIcon } from "obsidian";
+import { PresetWidths } from "./styles-injector";
 import { t } from "./i18n";
 
 // CSS length strings (or null = unset). Width null + height null == "Original".
@@ -7,9 +8,9 @@ export interface SizeState {
   height: string | null;
 }
 
-// One-tap size preset (F24): each yields a width/height CSS pair. small/medium/large
-// use the re-themeable preset var (configurable in settings); icon sets a line-height
-// height (the inline icon size); original clears both.
+// One-tap size preset (F24): each yields a width/height CSS pair. small/medium/large BAKE the
+// configured px width (faithful → the bare width=N key, not setting-reactive); icon sets a
+// line-height height (the inline icon size); original clears both.
 interface SizePreset {
   key: string;
   labelKey: Parameters<typeof t>[0];
@@ -17,13 +18,15 @@ interface SizePreset {
   height: string | null;
 }
 
-const PRESETS: SizePreset[] = [
-  { key: "original", labelKey: "original", width: null, height: null },
-  { key: "icon", labelKey: "icon", width: null, height: "1.5em" },
-  { key: "small", labelKey: "small", width: "var(--lie-size-small)", height: null },
-  { key: "medium", labelKey: "medium", width: "var(--lie-size-medium)", height: null },
-  { key: "large", labelKey: "large", width: "var(--lie-size-large)", height: null },
-];
+function presets(widths: PresetWidths): SizePreset[] {
+  return [
+    { key: "original", labelKey: "original", width: null, height: null },
+    { key: "icon", labelKey: "icon", width: null, height: "1.5em" },
+    { key: "small", labelKey: "small", width: `${widths.small}px`, height: null },
+    { key: "medium", labelKey: "medium", width: `${widths.medium}px`, height: null },
+    { key: "large", labelKey: "large", width: `${widths.large}px`, height: null },
+  ];
+}
 
 export interface SizeBody {
   body: HTMLElement;
@@ -40,7 +43,8 @@ export interface SizeBody {
 export function buildSizeBody(
   current: { width?: string; height?: string },
   onPreview: (s: SizeState) => void,
-  state: SizeState
+  state: SizeState,
+  presetWidths: PresetWidths
 ): SizeBody {
   state.width = current.width ?? null;
   state.height = current.height ?? null;
@@ -59,7 +63,7 @@ export function buildSizeBody(
 
   const quick = document.createElement("div");
   quick.classList.add("lie-size-quick");
-  for (const p of PRESETS) {
+  for (const p of presets(presetWidths)) {
     const btn = document.createElement("button");
     btn.classList.add("lie-size-choice");
     btn.textContent = t(p.labelKey);
