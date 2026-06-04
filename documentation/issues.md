@@ -48,58 +48,13 @@
       already-cropped image via the toolbar drifts it out of frame: the crop renders with a top-left
       origin, so a composed rotate/flip doesn't pivot about the frame centre. Needs centre-origin
       composition (or baking the rotation into the crop params) — a focused follow-up, not rushed.
-- [x] **Live-preview float (`lie-left`/`lie-right`) breaks CM6 layout (cluster) — RESOLVED by the LP
-      rendering rework.** The block-widget overlay's float fought CM6's virtualized line/height
-      measurement → wrap rendered late / only sometimes, content jumped on scroll, the toolbar/menu
-      didn't appear, and clicks on wrapped text were stolen (off-by-one caret). **This SUPERSEDES the
-      old "Option A" (reading-view-only float).** *Fix (the rework):* render every image as an INLINE
-      widget in the embed's OWN non-BFC `.cm-line`; a `float:left/right` then ESCAPES into
-      `.cm-content`'s BFC and shortens the line boxes of the following sibling cm-lines → real
-      multi-line wrap, with **zero height desync** (the float counts to no line's height), no
-      `contain:paint` clip, and the image kept clickable via `z-index:1`. The missing float↔text gap
-      ("Bug 20") dissolved with it: the inline wrapper is NOT a `.cm-content` direct child, so
-      `.cm-content > * { margin:0 !important }` never touches it — no out-specifying / `!important`
-      needed (the uncommitted Bug-20 hack was reverted). CDP-verified: multi-line wrap on hard-wrapped
-      paragraphs, 0 desync over 35 lines, 0 click-steal, image clickable, native edit intact.
-      *No normalization dependency* (corrected after A/B'/C): a floated image already carries `{…}`
-      (its `lie-left`/`lie-right` class keeps the line a text line → inline widget + float-escape); a
-      BARE image renders via our OWN `block:true` widget with the native image suppressed uniformly
-      (cca476e), so Obsidian's block-promotion no longer matters and the auto-normalization was removed
-      (4053f95). (→ AD5; memories `lp-float-wrap-feasibility` / `lp-rendering-rework-decisions`; plan
-      `lp-rendering-rework-plan.md`.)
-- [x] **Tall float (>~250px) derenders on scroll in LP — CAPPED.** A float taller than CM6's ~250px
-      above-viewport render margin (`VP.MaxCoverMargin`, an inlined const in `@codemirror/view`)
-      derenders when its anchor line scrolls out of the render window → the wrap dissolves (harmless:
-      **no desync**, top-exit direction only). *Fix:* the shared renderer marks such a float `.lie-tall`
-      and, in safe mode (**default**; the `tallFloatSafe` setting → `body.lie-safe-tall-float`), it
-      STACKS as a non-floated block — in **both** views for cross-view consistency. Permissive mode
-      floats it regardless, accepting the LP-only glitch.
-- [x] **Reading-view sizing of transformed images (cluster) — RESOLVED.** (a) A transformed box
-      (e.g. a rotated image sized to its natural rotated AABB) overflowed the column because the box
-      `max-width:100%` was circular against the shrink-wrapping inline-block `.internal-embed`. *Fix:*
-      `max-width:100%` on the embed shrink-wrap rule caps the host against its BLOCK containing block
-      (the reading-view column), so the box caps too — CDP: a rotate-90 image now caps at the 521px
-      column (was 800px), matching LP. (b) Not reproducible — the per-image vertical overhead is the
-      native ~6px (CDP: 6px embed padding, 6px inter-image gap); the old "huge gap" was intervening
-      headings/text between image groups. (c) A floated image + its wrap text on consecutive source
-      lines render as `[floated .image-embed][<br>][text]` in ONE paragraph, and that first `<br>`
-      pushed the wrap text a full line below the image top. *Fix:* hide the `<br>` that is the
-      next-element-sibling of a floated embed (reading view, float-only) → the text wraps from the
-      image top — CDP: was +23px, now 0px. LP unaffected (0 desync, float-escape intact; R0 — reader
-      now matches LP).
-- [ ] **Inline-icon toolbar mis-positioned.** The floating toolbar for an inline icon sits on/below
-      the icon (`positionAbove` = `rect.top + 8`); it should sit above the icon.
-- [ ] **`<>` reveal toggle — semantics to revisit.** The LP rendering rework gave "auto" mode a
-      cm-line **hover** reveal (the image and its source now share the line), and `<>` (hidden)
-      suppresses that hover reveal — so the toggle is no longer a strict no-op in auto. Still worth
-      rethinking the `<>` semantics (e.g. a per-image "always show this one" toggle) for clarity.
 
-*(Fixed this session — toolbar missing on ≤311px images: the reflow now keeps the wrapped bar
-in-chrome while it fits the image height, else shows the same toolbar floating on the body.)*
+*(The LP-rendering-rework cluster — live-preview float, the tall-float cap, the reading-view sizing
+cluster, the inline-icon/tiny toolbar position, and the `<>` reveal toggle — has landed; see
+**Resolved by the LP rendering rework + follow-ups** under SOLVED / DONE.)*
 
 ### Deferred design / elegance (DEFER)
 
-- [ ] **Toolbar unification:** one CSS positioning mechanism for both views (currently two).
 - [ ] **Crop-in-place** vs the mirroring overlay (the overlay duplicates the box+img geometry).
 - [ ] Smaller chrome unification: resize handle, anchored sub-menu, filter-panel docking — all anchor
       to the uniform box.
@@ -114,45 +69,46 @@ in-chrome while it fits the image height, else shows the same toolbar floating o
 
 - [ ] **Test Plan** (`documentation/test-plan.md`): a **draft** only — review/validate together; the
       actual tests aren't written.
-- [ ] **CLAUDE.md doc-map cross-references.** CLAUDE.md still points at `documentation/issues.md`
-      (the Documentation map and the L4 note); update those to `open-items.md` after this merge.
 
-### DRY/KISS audit — fresh against HEAD (2026-06-03)
+### DRY/KISS audit — fresh against HEAD (2026-06-04)
 
-Re-grounded on the current `src/` after the big rework (commits `15bdac9` pure-CSS reveal + box
-rename `lie-rotate-box`→`lie-image-area`/`lie-box` swap, `23b60e9` small/inline toolbar reflow).
-Supersedes the stale 2026-06-02 audit (its dissolved points moved to **Solved / Done** below).
-Every box here is a **pure, functionality-preserving refactor** (each says why behaviour is
-preserved); effort S/M/L. Behaviour-affecting items are split out at the end and **not** ticked
-as pure refactors. Per `methodology.md`, each was checked first against a missing
-requirement/architecture point.
+Re-grounded on the current `src/` after the **LP rendering rework** (Slice 1's shared
+`source-writer.ts` writer, the A/B'/C uniform-render follow-up, and the `.lie-img`-marker removal)
+on top of the earlier box rename (`lie-rotate-box`→`lie-image-area`/`lie-box` swap) and the
+small/inline toolbar reflow. Supersedes the stale 2026-06-03 audit (its dissolved points are in
+**Solved / Done** below). Every box here is a **pure, functionality-preserving refactor** (each
+says why behaviour is preserved); effort S/M/L. Behaviour-affecting items are split out at the end
+and **not** ticked as pure refactors. Per `methodology.md`, each was checked first against a
+missing requirement/architecture point.
 
 DRY — one source of a piece of logic:
 
-- [ ] **`main.ts` panel openers re-implement the location boilerplate.** `customSize`
-      (`src/main.ts:626-631`), `crop` (`:664-669`), `toggleFilters` (`:696-699`), `addClass`
-      (`:735-739`) and `exportImage` (`:771-776`) each repeat
+- [ ] **`main.ts` panel openers re-implement the location LOOKUP.** `customSize`
+      (`src/main.ts:632-635`), `crop` (`:670-673`), `toggleFilters` (`:702-705`), `addClass`
+      (`:742-745`) and `exportImage` (`:778-780`) each repeat
       `getActiveViewOfType → editor → findImageInSource → parseAltText` and `return` silently on
-      failure — the exact thing `resolveLocation()` (`:503-517`) already encapsulates *with* its two
-      user-facing Notices. Funnel them through `resolveLocation()` (returning `{ editor, location }`)
-      and parse once. **Why behaviour-preserving:** same lookup, same early-out; the only observable
-      change is the *added* Notice on failure — to avoid even that, keep the openers silent by reusing
-      the lookup without the Notice (extract the lookup half). *Effort M.*
-- [ ] **`updateImageSource` / `parseLocationTransform` in `image-resolver.ts` are dead AND duplicate
-      live code.** `src/image-resolver.ts:79-93` (`updateImageSource`) and `:95-97`
-      (`parseLocationTransform`) have **zero callers** in `src/` or `tests/` (verified by grep);
-      `updateImageSource` is a byte-for-byte copy of the `replaceRange` in `main.ts writeTransform`
-      (`:552-562`), and `parseLocationTransform` is just `parseAltText(location.params)`. Delete both.
-      **Why behaviour-preserving:** unreferenced exports — removal changes no runtime path. *Effort S.*
-- [ ] **"filter ≠ default" predicate iterated twice.** `transforms.ts isDefaultFilter` (`:255-257`)
-      and `filterToCss`'s per-key guard (`:246-252`) both test `val !== FILTER_DEFAULTS[key]`, and
+      failure — the exact lookup `resolveLocation()` (`:512-526`) already encapsulates *with* its two
+      user-facing Notices. *(The WRITE half is already DRY — every edit funnels through
+      `writeTransform` → `writeToSource` → the shared `writeSource` in `source-writer.ts`; only this
+      lookup half is still duplicated.)* Funnel the openers through the lookup too. **Why
+      behaviour-preserving:** same lookup, same early-out; the only observable change is the *added*
+      Notice on failure — to keep the openers silent, reuse the lookup without the Notice (extract the
+      lookup half). *Effort M.*
+- [ ] **`parseLocationTransform` in `image-resolver.ts` is dead.** `src/image-resolver.ts:79-81` has
+      **zero callers** in `src/` or `tests/` (verified by grep) and is just
+      `parseAltText(location.params)`. Delete it. **Why behaviour-preserving:** an unreferenced export
+      — removal changes no runtime path. *Effort S.* *(The sibling `updateImageSource` named in the old
+      audit is already gone — removed with Slice 1 when the shared `source-writer` writer landed; see
+      Solved.)*
+- [ ] **"filter ≠ default" predicate iterated 3×.** `transforms.ts isDefaultFilter` (`:256-258`) and
+      `filterToCss`'s per-key guard (`:249`) both test `val !== FILTER_DEFAULTS[key]`, and
       `filter-panel.ts currentFilter` (`:119-127`) re-implements the same "collect non-default keys"
       loop against its own `getFilterDefaults()`. Add one `nonDefaultFilter(f): FilterData` in
       `transforms.ts` and have `currentFilter` call it (it already builds exactly that object).
       **Why behaviour-preserving:** identical comparison and result object, computed in one place.
       *Effort S.* *(Down from the old "4×": `filterToVars` is gone.)*
-- [ ] **`.lie-image-area` queried as a magic string instead of `BOX_CLASS`.** `main.ts:188` and
-      `:309` hard-code the literal `"lie-image-area"` that `renderer.ts` already exports as
+- [ ] **`.lie-image-area` queried as a magic string instead of `BOX_CLASS`.** `main.ts:198` and
+      `:318` hard-code the literal `"lie-image-area"` that `renderer.ts` already exports as
       `BOX_CLASS` (`src/renderer.ts:10`); `crop-editor.ts` and `live-preview.ts` correctly use the
       export. Import and use `BOX_CLASS` in `main.ts`. **Why behaviour-preserving:** the literal and
       the constant are the same string. *Effort S.* *(The related `lie-image-area-rotate` mismatch is
@@ -161,30 +117,34 @@ DRY — one source of a piece of logic:
 KISS — fewer moving parts / one shared component:
 
 - [ ] **`crop-editor.ts` teardown duplicated.** `close()` (`src/crop-editor.ts:131-138`) and
-      `confirm()` (`:319-324`) both run the same four steps (remove `lie-cropping`, remove + null the
+      `confirm()` (`:310-325`) both run the same teardown (remove `lie-cropping`, remove + null the
       overlay, detach the two `pointermove`/`pointerup` listeners). Extract one private `teardown()`
-      both call (confirm then fires `onConfirm`, close then closes the controls). **Why
-      behaviour-preserving:** same statements in the same order, only hoisted. *Effort S.*
-- [ ] **Icon-button build repeated 3× in `anchored-submenu.ts buildHeader`** (`src/anchored-submenu.ts:218-244`):
-      reset / cancel / confirm each do `createElement("button")` + classes + `aria-label` + `title` +
-      `setIcon` + click. One `iconBtn(icon, labelKey, onClick, extraClass)` helper. **Why
-      behaviour-preserving:** produces the identical DOM and the same listeners. *Effort S.*
+      both call (confirm runs its `toCropResult` + `onConfirm` first, then tears down; close then
+      closes the controls). **Why behaviour-preserving:** same statements in the same order, only
+      hoisted. *Effort S.*
+- [ ] **Icon-button build repeated 3× in `anchored-submenu.ts buildHeader`** (`:205-246`): reset
+      (`:219-225`) / cancel (`:228-233`) / confirm (`:235-240`) each do `createElement("button")` +
+      classes + `aria-label` + `title` + `setIcon` + click. One `iconBtn(icon, labelKey, onClick,
+      extraClass)` helper. **Why behaviour-preserving:** produces the identical DOM and the same
+      listeners. *Effort S.*
 - [ ] **Text/preset-button build repeated across the three panels.** `filter-panel.ts buildPresets`
-      (`src/filter-panel.ts:150-156`), `size-submenu.ts` quick presets (`src/size-submenu.ts:63-72`)
-      and `crop-editor.ts openControls` (`src/crop-editor.ts:159-163`) each build a labelled
-      `<button>` with a class + `textContent` + click. One small `textBtn(label, cls, onClick)`
-      helper (co-located, e.g. in `toolbar.ts` or a tiny `ui.ts`). **Why behaviour-preserving:** same
-      element/text/handler; classes stay per-panel via the arg. *Effort S.* *(The old "slider row
-      duplicated (temperature + normal)" is DISSOLVED — there is now a single `buildSlider` called in
-      a loop and no separate temperature row in the panel; see Solved.)*
-- [ ] **`styles.css` repeats the button base 5×.** `.lie-crop-preset-btn` (`styles.css:381`),
-      `.lie-filter-preset-btn` (`:421`), `.lie-class-dropdown-item` (`:465`), `.lie-submenu-icon-btn`
-      (`:497`) and `.lie-size-choice` (`:516`) each redeclare `border-radius`, `cursor: pointer`,
-      transparent background and `:hover { background: var(--background-modifier-hover) }`. Add one
-      base `.lie-btn` (the shared rules) and let each keep only its specifics. **Why
-      behaviour-preserving:** the computed styles are unchanged if the markup also gets the base class
-      (a docs-only proposal — implementing it touches `.ts` + CSS together; mark the CSS+class pair as
-      one change). *Effort M.*
+      (`src/filter-panel.ts:139-159`, loop `:150-156`), `size-submenu.ts` quick presets
+      (`src/size-submenu.ts:60-73`, loop `:62-73`) and `crop-editor.ts openControls`
+      (`src/crop-editor.ts:155-179`, loop `:158-163`) each build a labelled `<button>` with a class +
+      `textContent` + click. One small `textBtn(label, cls, onClick)` helper (co-located, e.g. in
+      `toolbar.ts` or a tiny `ui.ts`). **Why behaviour-preserving:** same element/text/handler;
+      classes stay per-panel via the arg. *Effort S.* *(The old "slider row duplicated (temperature +
+      normal)" is DISSOLVED — there is now a single `buildSlider` called in a loop and no separate
+      temperature row in the panel; see Solved.)*
+- [ ] **`styles.css` repeats the button base 5×.** `.lie-crop-preset-btn` (`styles.css:439`),
+      `.lie-filter-preset-btn` (`:479`), `.lie-class-dropdown-item` (`:518`), `.lie-submenu-icon-btn`
+      (`:555`) and `.lie-size-choice` (`:574`) each redeclare `border-radius`, `cursor: pointer`, a
+      background and `:hover { background: var(--background-modifier-hover) }`. Add one base `.lie-btn`
+      (the shared rules) and let each keep only its specifics (two set
+      `background:var(--background-primary)`, three `transparent`). **Why behaviour-preserving:** the
+      computed styles are unchanged if the markup also gets the base class (a docs-only proposal —
+      implementing it touches `.ts` + CSS together; mark the CSS+class pair as one change).
+      *Effort M.*
 
 Behaviour-near — verify carefully (L8 / L10 / Bug-2 territory):
 
@@ -192,7 +152,7 @@ Behaviour-near — verify carefully (L8 / L10 / Bug-2 territory):
       *deliberately different* capture groups: `image-resolver.ts:18-19` (`WIKI_EMBED`/`MD_EMBED`,
       global, path + block), `link-format.ts:19-20` (`WIKI`/`MD`, caption + path + block),
       `live-preview-logic.ts:5,15` (`EMBED_LINE`/`INLINE_EMBED`, whole-line anchored), `caption-logic.ts:17,24`
-      (caption only), `live-preview.ts:34,41,187-188` (highlight split + file resolve), `main.ts:254`
+      (caption only), `live-preview.ts:48,55` (highlight split + file resolve), `main.ts:264`
       (native-size fold). Share only the **embed-token sub-pattern** (the
       `!\[…\]\(…\)|!\[\[…\]\]` alternation and the `(\{[^}]*\})?` block) as named fragments; do **not**
       force one regex. **Why behaviour-preserving (IF done as pure factoring):** the composed regexes
@@ -204,17 +164,19 @@ Behaviour-near — verify carefully (L8 / L10 / Bug-2 territory):
 >   `buildToolbarElement` (`toolbar.ts:115`); only host + positioning differ (intended, D1/D1.1).
 > - The crop overlay's mirroring image vs the rendered box is tracked as a **design** item
 >   (Deferred → "Crop-in-place"), not a pure refactor.
-> - `RevealMode = "auto"|"always"|"hidden"` (`live-preview.ts:19`) is **not** the retired tri-state
->   cycle — it is a derived display state (auto/always from the setting, hidden from the `<>` toggle);
->   `cycleRevealMode` is gone. Leave it.
+> - `RevealMode = "auto" | "always"` (`live-preview.ts:29`) is **not** a retired mode cycle — the two
+>   values are derived from the global default-state setting (`alwaysShowLink`); the `<>` (eye) dismiss
+>   is a SEPARATE per-line override (a `lie-dismissed` line decoration, auto-clearing in auto mode),
+>   not a third reveal mode. `cycleRevealMode` is gone. Leave it.
 
 > **Behaviour-affecting — NOT a pure refactor, flagged for a decision (do NOT bundle into the pure pass):**
-> - **`temperatureAdjust` (`transforms.ts:307-320`) is dead in `src/`** — exported and unit-tested
+> - **`temperatureAdjust` (`transforms.ts:308-321`) is dead in `src/`** — exported and unit-tested
 >   (`tests/transforms.test.ts`) but with **no production caller** (the filter panel builds no
->   temperature row). It backs F11 (the virtual temperature control), so removing it *drops a
->   documented capability* — that is a requirements decision (reopen F11), not a refactor. Either wire
->   the temperature slider back into `filter-panel.ts` (restores F11) or retire F11 + the function +
->   its test. **Behaviour-risk — excluded from the pure-refactor list.**
+>   temperature row; its comments at `filter-panel.ts:216,261` still describe one). It backs F11 (the
+>   virtual temperature control), so removing it *drops a documented capability* — that is a
+>   requirements decision (reopen F11), not a refactor. Either wire the temperature slider back into
+>   `filter-panel.ts` (restores F11) or retire F11 + the function + its test. **Behaviour-risk —
+>   excluded from the pure-refactor list.**
 
 ### `*-logic.ts` split — KISS analysis (keep, unless a test shim is added)
 
@@ -273,8 +235,9 @@ parallel to the real APIs — exactly the cost AD7 pays the `-logic` split to av
         rAF+setTimeout / `ResizeObserver` sizing is **removed** (intrinsic read once on load).
       - **Pure-CSS caption** — `width:0; min-width:100%` inside the shrink-wrapping host; the JS
         width-sync/poll/`ResizeObserver` is gone.
-      - **LP overlay + native edit** — see L11/L11b; reveal-for-looking is a display-only fake link +
-        binary `<>` toggle keyed by static CSS, with a global default-state setting.
+      - **LP overlay + native edit** — see L11/L11b; reveal-for-looking is a display-only fake link
+        keyed by static CSS (auto/always modes + the eye `<>` dismiss), with a global default-state
+        setting.
       - **Export** reuses `renderer-logic` + the native `filter` string, renders at the original
         resolution; the duplicate crop/rotate math is gone.
       - **Size presets** (icon/small/medium/large/original) apply via re-themeable `--lie-size-*` vars;
@@ -293,19 +256,92 @@ parallel to the real APIs — exactly the cost AD7 pays the `-logic` split to av
       "normal" special case removed); alt text → Markdown caption, centred, wraps within the image
       width, settings toggle, off by default.
 
+### Resolved by the LP rendering rework + follow-ups (2026-06-04)
+
+The rework folded into the canonical docs (`architecture.md` AD5/AB9/AB16/AB20,
+`implementation-plan.md` §2.4/§3.3, `test-plan.md` §3/§4). Memories `lp-float-wrap-feasibility`
+and `lp-rendering-rework-decisions` carry the CDP proof and the per-slice outcome. *(The standalone
+`lp-rendering-rework-plan.md` has been removed — its content lives in those artifacts now.)*
+
+- [x] **Live-preview float (`lie-left`/`lie-right`) breaks CM6 layout (cluster) — RESOLVED.** The old
+      block-widget overlay's float fought CM6's virtualized line/height measurement → wrap rendered
+      late / only sometimes, content jumped on scroll, the toolbar/menu didn't appear, clicks on
+      wrapped text were stolen (off-by-one caret). **This SUPERSEDED the old "Option A"
+      (reading-view-only float).** *Fix:* render a `{…}` image as an **INLINE** widget in the embed's
+      OWN non-BFC `.cm-line`; a `float:left/right` then ESCAPES into `.cm-content`'s BFC and shortens
+      the following sibling cm-lines → real multi-line wrap, with **zero height desync** (the float
+      counts to no line's height), no `contain:paint` clip, and the image kept clickable via
+      `z-index:1`. The missing float↔text gap ("Bug 20") dissolved with it: the inline wrapper is NOT
+      a `.cm-content` direct child, so `.cm-content > * { margin:0 !important }` never touches it.
+      *No normalization dependency* (A/B'/C): a floated image already carries `{…}` (its alignment
+      class keeps the line a text line → inline widget + float-escape); a BARE image renders via our
+      OWN `block:true` widget with the native image suppressed **uniformly** (cca476e), so Obsidian's
+      block-promotion no longer matters and the auto-normalization was removed (4053f95).
+      CDP-verified: multi-line wrap on hard-wrapped paragraphs, 0 desync over 35 lines, 0 click-steal,
+      image clickable, native edit intact. (→ AD5.)
+- [x] **Tall float (>~250px) derenders on scroll in LP — CAPPED.** A float taller than CM6's ~250px
+      above-viewport render margin (`VP.MaxCoverMargin`, an inlined const in `@codemirror/view`)
+      derenders when its anchor line scrolls out of the render window → the wrap dissolves (harmless:
+      **no desync**, top-exit direction only). *Fix:* the shared renderer marks such a float `.lie-tall`
+      (via `isTallFloat`/`TALL_FLOAT_THRESHOLD_PX` in `renderer-logic.ts`) and, in safe mode
+      (**default**; the `tallFloatSafe` setting → `body.lie-safe-tall-float`), it STACKS as a
+      non-floated block — in **both** views (`.lie-wrapper` in LP, `.image-embed` in reading view) for
+      cross-view consistency. Permissive mode floats it regardless, accepting the LP-only glitch.
+- [x] **Reading-view sizing of transformed images (cluster) — RESOLVED.** (a) A transformed box
+      (e.g. a rotated image sized to its natural rotated AABB) overflowed the column because the box
+      `max-width:100%` was circular against the shrink-wrapping inline-block `.internal-embed`. *Fix:*
+      `max-width:100%` on the embed shrink-wrap rule caps the host against its BLOCK containing block
+      (the reading-view column), so the box caps too — CDP: a rotate-90 image now caps at the 521px
+      column (was 800px), matching LP. (b) Not reproducible — the per-image vertical overhead is the
+      native ~6px (CDP: 6px embed padding, 6px inter-image gap); the old "huge gap" was intervening
+      headings/text between image groups. (c) A floated image + its wrap text on consecutive source
+      lines render as `[floated .image-embed][<br>][text]` in ONE paragraph, and that first `<br>`
+      pushed the wrap text a full line below the image top. *Fix:* hide the `<br>` that is the
+      next-element-sibling of a floated embed (reading view, float-only) → the text wraps from the
+      image top — CDP: was +23px, now 0px. LP unaffected (0 desync, float-escape intact; R0 — reader
+      now matches LP).
+- [x] **Inline-icon / tiny-image toolbar mis-positioned — RESOLVED (commit `c192dcf`).** The floating
+      (body) toolbar for an image too small to hold the in-chrome bar sat ON / below the image because
+      `positionAbove` used `top = rect.top + 8`. *Fix:* place the bar truly ABOVE the image
+      (`top = rect.top − toolbar.offsetHeight − gap`, measured after it is on the DOM), with a BELOW
+      fallback (`rect.bottom + gap`) when there is no room above so it never goes off-screen; the left
+      edge is clamped against the right viewport edge (`toolbar.ts:239-257`). Also, the float-out
+      trigger now fires by **coverage** (`COVER_LIMIT = 0.6` of the image height,
+      `reflowToolbar:194-197`), not by whether the bar still physically fits — so a short-wide image
+      escapes early while a narrow-but-tall one keeps its in-chrome bar. The shared body-float path is
+      unchanged: the bare/paint-contained case still needs the DOM move to `document.body`
+      (`contain:paint` makes a CSS-only escape impossible), so the **two positioning mechanisms (LP
+      JS body-float + reading-view CSS) are deliberate, not a duplicate** — this also retired the old
+      "Toolbar unification" deferred idea. CDP-verified across the A bare / B `{…}` / C inline-icon
+      fixtures at sizes 24/100/240/782px. *(This also subsumes the earlier "toolbar missing on ≤311px
+      images" note — the reflow now keeps the wrapped bar in-chrome while it fits, else floats it.)*
+- [x] **`<>` reveal toggle — RESOLVED into an eye "dismiss" (landed at HEAD).** The rework collapsed
+      the reveal to **two natural modes** — `auto` (reveal on cm-line hover or the active line) and
+      `always` (reveal everywhere) — driven by the global *Always show the link source* setting
+      (`alwaysShowLink`). The toolbar's `<>` icon is now an **eye toggle** that transiently
+      **dismisses** this image's source (fake link + `{…}`): a `lie-dismissed` LINE decoration that
+      overrides the natural reveal. In **auto** mode it AUTO-CLEARS once the line is neither hovered
+      nor the active line (so the next hover/edit reveals it again); in **always** mode it persists
+      until toggled again or reload. There is **no** third "hidden" mode and **no** `cycleRevealMode`
+      (the per-line reveal mode is gone). Code: `live-preview.ts` (`RevealMode = "auto"|"always"`,
+      `DISMISSED_LINE`, `toggleReveal`/`setHover` effects); CSS: `lie-rev-auto|always` +
+      `.lie-dismissed` (`styles.css:262-271`). (→ AD5/AB16.)
+
 ### Resolved decisions (formerly DECIDE / FOLD)
 
 - [x] **Reveal/edit model — overlay + CSS reveal + native edit (landed at HEAD).** Supersedes the
       earlier "native path CLOSED → self-built field" conclusion. The LP adapter **does not replace**
       the line (AD5): Obsidian renders its own (CSS-suppressed) native embed and provides the
       cursor-reveal; the plugin overlays its own image. Reveal-for-looking (F8) is a display-only fake
-      raw link + the `{…}`, with a **binary** `<>` show/hide toggle (not persisted per image) and a
-      global default-state setting (AB19/F20); per-line display mode lives in a CSS class
-      (`lie-rev-auto|always|hidden`). No tri-state `RevealMode` cycling — `cycleRevealMode` is gone
-      (code: `src/live-preview.ts`). Editing (F9) is Obsidian's native cursor-reveal of the source as
-      real document text (works standalone + inline). `{…}` (F3) is hidden by CSS when rendered, shown
-      on the active line. *(Now fully declarative in CSS — the fake link yields to the native source
-      via `.cm-line:has(> .cm-formatting)`; commit 15bdac9.)*
+      raw link + the `{…}`, with **two natural modes** — `auto` (reveal on cm-line hover or the active
+      line) and `always` (reveal everywhere) — from the global default-state setting `alwaysShowLink`
+      (AB19/F20), plus an **eye `<>` toggle that transiently DISMISSES** this image's source
+      (`lie-dismissed`, not persisted per image; auto-clears in auto mode). There is no third "hidden"
+      reveal mode and no `cycleRevealMode` cycling (code: `src/live-preview.ts`). Editing (F9) is
+      Obsidian's native cursor-reveal of the source as real document text (works standalone + inline).
+      `{…}` (F3) is hidden by CSS when rendered, shown on the active line. *(Fully declarative in CSS —
+      the fake link yields to the native source via `.cm-line:has(> .cm-formatting)`; the dismiss/eye
+      refinement is recorded under "Resolved by the LP rendering rework + follow-ups" above.)*
 
 - [x] **Temperature — virtual-control LOGIC kept; the SLIDER is currently absent (F11, re-verified
       2026-06-03).** `temperatureAdjust` still lives in `src/transforms.ts:307` (nudges
@@ -380,10 +416,10 @@ architecture encodes most in its decisions (`AD…`).
   (still true):* an un-replaced line makes Obsidian render its own native embed and leave the trailing
   `{…}` as visible text (CDP-verified). *Superseded conclusion:* the old "always replace the whole
   line" fix is gone. The native embed is now **embraced** (it loads the image and gives Obsidian's own
-  cursor-reveal of the source); the plugin draws its OWN transformed image as the R0 overlay widget
-  and **suppresses** the native image with scoped static CSS (hides Obsidian's `.image-wrapper`, never
-  the plugin's `.lie-wrapper`); the `{…}` is real document text hidden by CSS while rendered, shown
-  when the line is active. (→ AD5.)
+  cursor-reveal of the source); the plugin draws its OWN transformed image as the R0 widget
+  and **suppresses** the native image with **uniform** static CSS (hides Obsidian's `> img` and
+  `> .image-wrapper` in *every* embed, never the plugin's `.lie-wrapper`); the `{…}` is real document
+  text hidden by CSS while rendered, shown when the line is active. (→ AD5.)
 - **L2 — Use a StateField, NOT a ViewPlugin.** *Cause:* ViewPlugins can't emit block decorations.
   *Fix:* a StateField rebuilt on doc/selection/mode change; it adds the plugin's own overlay widget
   alongside the (CSS-hidden) native embed. Reveal-for-looking and the hide-when-rendered are static

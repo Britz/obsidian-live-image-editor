@@ -13,8 +13,7 @@ This file is the **build & debug guide** only. The design — requirements, arch
 - **`documentation/architecture.md`** — mid-level decisions (`AD1–AD9`) and building blocks (`AB…`); data flow; the **R0** uniform-rendering model.
 - **`documentation/implementation-plan.md`** — low-level: the module map (file → block → exports), per-layer realization, pitfalls.
 - **`documentation/test-plan.md`** — the test strategy (currently a draft).
-- **`documentation/issues.md`** — the bug & lesson registry: every defect and hard-won lesson, open or solved, each with cause + fix (the old `[LEARNED]` `T-Ln` are here as `L1–L10`).
-- **`documentation/open-items.md`** — the live backlog: open decisions, verifications, deferred ideas, the DRY/KISS audit, and the implementation effort.
+- **`documentation/issues.md`** — the backlog **and** the bug & lesson registry, merged into one file: the **open** items at the top (open decisions, verifications, deferred ideas, the DRY/KISS audit, known open bugs) and the **solved/done** registry at the bottom (every resolved defect and hard-won lesson with cause + fix; the old `[LEARNED]` `T-Ln` are here as `L1–L13`).
 - **`documentation/methodology.md`** / **`agent_methodology.md`** — the core principles (DRY, KISS, elegance, think-first, ground-up) and how we work.
 
 ## Build & Test
@@ -37,6 +36,8 @@ Install into a vault for testing:
 ```
 
 Build gotcha — `esbuild: Failed to write to output file: open /workspace/main.js: permission denied`: a pre-existing `main.js` couldn't be overwritten (verified fix: `rm -f main.js && npm run build`; likely cause — the file was owned by another uid, e.g. created on the host or by root, so the container user couldn't write it; not independently confirmed).
+
+Fresh-devcontainer gotcha (verified 2026-06-03) — after the podman named volume is recreated, the `node_modules` binaries can land without the execute bit (and/or root-owned, non-readable): `esbuild … EACCES`, `vitest: Permission denied`, `Cannot find type definition file for 'node'`. **Do NOT** blanket-`chmod +x node_modules` — it can flip files to `711` root-owned (execute-only, so Node can no longer *read* `.mjs`/`.d.ts`), making it worse. Clean fix: `rm -rf node_modules && npm install` (network needed). Minimal fix when only the bundler is hit: `chmod +x node_modules/@esbuild/*/bin/esbuild`. The install script itself also loses its `+x` — invoke it as `bash scripts/dev-install.sh <vault>`. Use that script to install into a vault (it builds + copies `main.js`/`manifest.json`/`styles.css`) rather than copying by hand.
 
 ## Live debugging in Obsidian (CDP)
 
