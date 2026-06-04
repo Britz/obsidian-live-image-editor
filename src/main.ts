@@ -22,6 +22,7 @@ import { Prec } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { setLocale, detectLocale, t } from "./i18n";
 import { convertEmbedLine, desiredFormat, LinkFormat } from "./link-format";
+import { writeSource } from "./source-writer";
 
 export default class LiveImageEditorPlugin extends Plugin {
   settings: LieSettings = DEFAULT_SETTINGS;
@@ -552,20 +553,18 @@ export default class LiveImageEditorPlugin extends Plugin {
   private writeTransform(editor: Editor, location: ImageLocation, transform: ImageTransform): void {
     const params = serializeTransform(transform);
     const block = params ? `{${params}}` : "";
-    const scroll = editor.getScrollInfo();
-    editor.replaceRange(
-      block,
-      { line: location.line, ch: location.headEnd },
-      { line: location.line, ch: location.end }
-    );
-    this.restoreScroll(editor, scroll);
+    const from = editor.posToOffset({ line: location.line, ch: location.headEnd });
+    const to = editor.posToOffset({ line: location.line, ch: location.end });
+    this.writeToSource(editor, from, to, block);
   }
 
-  private restoreScroll(editor: Editor, scroll: { top: number; left: number }): void {
-    const restore = () => editor.scrollTo(scroll.left, scroll.top);
-    restore();
-    window.requestAnimationFrame(restore);
-    window.setTimeout(restore, 0);
+  // Funnel a document edit through the shared isolateHistory writer (one undo step per
+  // edit, cursor/scroll left untouched — D11). CM6 is always present in the editing
+  // modes; the editor.replaceRange fallback only guards a hypothetical non-CM6 editor.
+  private writeToSource(editor: Editor, from: number, to: number, insert: string): void {
+    const cm = (editor as unknown as { cm?: EditorView }).cm;
+    if (cm) { writeSource(cm, { from, to, insert }); return; }
+    editor.replaceRange(insert, editor.offsetToPos(from), editor.offsetToPos(to));
   }
 
   private rotateCw(): void {

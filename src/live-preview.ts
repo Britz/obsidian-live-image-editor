@@ -7,6 +7,7 @@ import { estimatedBlockHeight } from "./renderer-logic";
 import { captionMarkdown, createCaption, CaptionHandle } from "./caption";
 import { applyTransformToImage } from "./renderer";
 import { ToolbarItem, buildToolbarElement } from "./toolbar";
+import { writeSource } from "./source-writer";
 import { t } from "./i18n";
 
 // Force a rebuild when external state (captions / reveal mode settings) changed.
@@ -208,7 +209,7 @@ class EmbedWidget extends WidgetType {
         const line = view.state.doc.lineAt(view.posAtDOM(wrapper));
         const replacement = rewriteWidth(line.text, widthAt(ev));
         if (replacement === null) return;
-        view.dispatch({ changes: { from: line.from, to: line.to, insert: replacement } });
+        writeSource(view, { from: line.from, to: line.to, insert: replacement });
       };
       document.addEventListener("pointermove", onMove);
       document.addEventListener("pointerup", onUp);

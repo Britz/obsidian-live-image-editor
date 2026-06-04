@@ -1,5 +1,5 @@
 import { Editor } from "obsidian";
-import { ImageTransform, serializeTransform, parseAltText } from "./transforms";
+import { ImageTransform, parseAltText } from "./transforms";
 
 export interface ImageLocation {
   line: number;
@@ -74,22 +74,6 @@ function matchInLine(line: string, lineNo: number, src: string): ImageLocation |
     }
   }
   return null;
-}
-
-export function updateImageSource(
-  editor: Editor,
-  location: ImageLocation,
-  transform: ImageTransform
-): void {
-  const params = serializeTransform(transform);
-  const block = params ? `{${params}}` : "";
-
-  // Replace only the {…} region; the link head (caption, path, size) is kept.
-  editor.replaceRange(
-    block,
-    { line: location.line, ch: location.headEnd },
-    { line: location.line, ch: location.end }
-  );
 }
 
 export function parseLocationTransform(location: ImageLocation): ImageTransform {
