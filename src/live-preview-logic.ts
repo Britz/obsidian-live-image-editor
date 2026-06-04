@@ -1,4 +1,4 @@
-import { parseAltText, serializeTransform, setWidthPx, MARKER_CLASS } from "./transforms";
+import { parseAltText, serializeTransform, setWidthPx } from "./transforms";
 
 // A line that is exactly an image embed, with an OPTIONAL trailing {…} block —
 // so every standalone image gets the widget (toolbar/chrome), block or not.
@@ -76,42 +76,4 @@ export function rewriteWidth(lineText: string, width: number): string | null {
   transform.height = undefined;
   const params = serializeTransform(transform);
   return `${match[1] ?? ""}${match[2] ?? ""}${params ? `{${params}}` : ""}`;
-}
-
-// ---------------------------------------------------------------------------
-// Normalization (the rendering rework): every embed must carry a `{…}` block so
-// Obsidian keeps the line a TEXT line and never block-promotes a bare `![](…)` into
-// its own `.cm-content` child (which has no `.cm-line` and swallows our inline widget).
-// The marker `{.lie-img}` is the invisible (no CSS), portable hook that achieves this.
-// ---------------------------------------------------------------------------
-
-/** The marker-only block appended to a bare embed to keep it a `{…}`-carrying line. */
-export const MARKER_BLOCK = `{.${MARKER_CLASS}}`;
-
-/**
- * For a BARE standalone embed line (one that is just `![](…)` / `![[…]]` with NO trailing
- * `{…}` block), the column at which to insert {@link MARKER_BLOCK} — right after the embed.
- * Returns null when the line is not a bare standalone embed (not an embed line at all, or
- * it already carries a `{…}` block). Pure, unit-testable (AD7).
- */
-export function bareEmbedMarkerInsert(lineText: string): number | null {
-  const m = EMBED_LINE.exec(lineText);
-  if (!m || m[3]) return null;
-  return (m[1]?.length ?? 0) + (m[2]?.length ?? 0);
-}
-
-/**
- * Append the marker block to every bare standalone embed line in a whole document's text
- * (the bulk normalize behind the note / vault commands). Returns the new text, or null if
- * nothing needed changing. Pure, unit-testable (AD7).
- */
-export function normalizeMarkersInText(text: string): string | null {
-  const lines = text.split("\n");
-  let changed = false;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    const at = bareEmbedMarkerInsert(line);
-    if (at !== null) { lines[i] = line.slice(0, at) + MARKER_BLOCK + line.slice(at); changed = true; }
-  }
-  return changed ? lines.join("\n") : null;
 }

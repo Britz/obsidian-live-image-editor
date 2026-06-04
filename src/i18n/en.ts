@@ -57,8 +57,6 @@ export default {
   settingsCaptionsDesc: "Render the image's alt text as a caption below the image (supports Markdown).",
   settingsRevealDefault: "Always show the link source",
   settingsRevealDefaultDesc: "Off = auto-reveal (the link source appears on hover). On = always shown. The toolbar's ‹› control temporarily hides it per image, independent of this.",
-  settingsAutoNormalize: "Auto-normalize images",
-  settingsAutoNormalizeDesc: "Add the invisible `{.lie-img}` marker to plain `![](…)` embeds as you edit, so every image renders consistently and floated images wrap surrounding text. Turn off to leave your source untouched — the “Normalize images” commands still do it on demand.",
   settingsTallFloat: "Stack tall floated images",
   settingsTallFloatDesc: "Live Preview can't keep a left/right-floated image taller than ~250px on screen while scrolling past it, so by default such an image stops wrapping text and stacks as a block — applied in Reading view too, so it looks the same in both. Turn off to always wrap, accepting that a tall float may briefly disappear when scrolled past in Live Preview.",
   settingsPresetWidths: "Preset widths",
@@ -81,9 +79,4 @@ export default {
   settingsEditingToolbarVersionWarning: "Unsupported version — integration disabled",
   settingsAddButtons: "Add buttons",
   settingsRemoveButtons: "Remove buttons",
-  cmdNormalizeNote: "Normalize images in current note",
-  cmdNormalizeVault: "Normalize images in vault",
-  normalizeNoteDone: "Normalized {n} image(s) in this note.",
-  normalizeVaultDone: "Normalized images in {n} note(s).",
-  normalizeNone: "No plain image embeds needed normalizing.",
 };
