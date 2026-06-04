@@ -93,21 +93,21 @@ describe("rewriteWidth (a resize is a minimal source edit — AD1/D11)", () => {
     expect(rewriteWidth("just text", 300)).toBeNull();
   });
   it("creates a {…} block for an embed that has none (resize on a plain image)", () => {
-    expect(rewriteWidth("![a](b.png)", 300)).toBe('![a](b.png){.lie-img style="width: 300px"}');
+    expect(rewriteWidth("![a](b.png)", 300)).toBe('![a](b.png){style="width: 300px"}');
   });
-  it("adds a width to the {…} block, keeping the existing native transform", () => {
+  it("adds a width to the {…} block, keeping the existing native transform (legacy marker dropped)", () => {
     expect(rewriteWidth('![a](b.png){.lie-img style="transform: rotate(90deg)"}', 300)).toBe(
-      '![a](b.png){.lie-img style="transform: rotate(90deg); width: 300px"}'
+      '![a](b.png){style="transform: rotate(90deg); width: 300px"}'
     );
   });
   it("replaces an existing width", () => {
     expect(rewriteWidth('![a](b.png){.lie-img style="width: 100px"}', 250)).toBe(
-      '![a](b.png){.lie-img style="width: 250px"}'
+      '![a](b.png){style="width: 250px"}'
     );
   });
-  it("keeps snippet classes when writing width", () => {
+  it("keeps snippet classes when writing width (legacy marker dropped)", () => {
     expect(rewriteWidth("![a](b.png){.lie-img .rounded}", 200)).toBe(
-      '![a](b.png){.lie-img .rounded style="width: 200px"}'
+      '![a](b.png){.rounded style="width: 200px"}'
     );
   });
 });

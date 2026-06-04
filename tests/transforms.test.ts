@@ -70,21 +70,21 @@ describe("parseAltText (native-CSS attr_list block)", () => {
 });
 
 describe("serializeTransform", () => {
-  it("serializes an empty transform to the bare marker (keeps it a {…} embed — R0)", () => {
-    expect(serializeTransform({ classes: [] })).toBe(".lie-img");
+  it("serializes an empty transform to an empty string (no marker)", () => {
+    expect(serializeTransform({ classes: [] })).toBe("");
   });
-  it("serializes a width with the marker class", () => {
-    expect(serializeTransform({ width: "320px", classes: [] })).toBe('.lie-img style="width: 320px"');
+  it("serializes a width without any marker class", () => {
+    expect(serializeTransform({ width: "320px", classes: [] })).toBe('style="width: 320px"');
   });
   it("serializes transform + filter + size", () => {
     expect(serializeTransform({ transform: "rotate(90deg)", filter: "sepia(0.8)", width: "var(--lie-size-medium)", classes: [] }))
-      .toBe('.lie-img style="transform: rotate(90deg); filter: sepia(0.8); width: var(--lie-size-medium)"');
+      .toBe('style="transform: rotate(90deg); filter: sepia(0.8); width: var(--lie-size-medium)"');
   });
-  it("serializes snippet classes alongside the always-present marker", () => {
-    expect(serializeTransform({ classes: ["rounded", "shadow"] })).toBe(".lie-img .rounded .shadow");
+  it("serializes snippet classes (no marker)", () => {
+    expect(serializeTransform({ classes: ["rounded", "shadow"] })).toBe(".rounded .shadow");
   });
   it("serializes inline", () => {
-    expect(serializeTransform({ inline: true, classes: [] })).toBe(".lie-img .lie-inline");
+    expect(serializeTransform({ inline: true, classes: [] })).toBe(".lie-inline");
   });
 });
 
@@ -207,8 +207,8 @@ describe("round-trips (the canonical block is the lossless single encoding)", ()
     expect(reparsed.height).toBe("240px");
     expect(isCrop(reparsed)).toBe(true);
   });
-  it("empty round-trips to the stable marker (idempotent — R0)", () => {
-    expect(serializeTransform(parseAltText(""))).toBe(".lie-img");
-    expect(serializeTransform(parseAltText(".lie-img"))).toBe(".lie-img");
+  it("empty round-trips to empty; a legacy .lie-img note re-serializes without the marker", () => {
+    expect(serializeTransform(parseAltText(""))).toBe("");
+    expect(serializeTransform(parseAltText(".lie-img"))).toBe(""); // parse-skip keeps back-compat
   });
 });

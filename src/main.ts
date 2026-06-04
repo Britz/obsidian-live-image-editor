@@ -314,8 +314,7 @@ export default class LiveImageEditorPlugin extends Plugin {
 
   private clearStaleTransform(img: HTMLImageElement | null): void {
     if (!img) return;
-    const ours = img.classList.contains("lie-img") ||
-      img.classList.contains("lie-inline") ||
+    const ours = img.classList.contains("lie-inline") ||
       (img.parentElement?.classList.contains("lie-image-area") ?? false);
     if (ours) {
       applyTransformToImage(img, { classes: [] });

@@ -22,8 +22,9 @@ export function applyTransformToImage(img: HTMLImageElement, t: ImageTransform):
 
   const box = ensureBox(img);
 
-  // The marker so reconcile/selection can tell our images from a plain native embed.
-  img.classList.add(MARKER_CLASS);
+  // No marker class on the img: reconcile/selection identify our images by their
+  // `.lie-image-area` box parent (or the `.lie-inline` class), so the `{…}` source never
+  // needs an invisible hook class. resetLieState still strips a legacy marker defensively.
   if (t.inline) img.classList.add(INLINE_CLASS);
   // Tall-float cap (R0, cross-view): mark a FLOATED image whose estimated height exceeds the
   // CM6 render margin, so the stylesheet stacks it as a non-floated block in safe mode
