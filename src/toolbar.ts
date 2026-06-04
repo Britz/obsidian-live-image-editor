@@ -183,17 +183,18 @@ export function reflowToolbar(toolbar: HTMLElement): void {
     if (!wraps()) break;
     s.classList.add("is-folded");
   }
-  // D1.1 — if even fully folded the bar needs more than one row, that is FINE as long as the
-  // (wrapped) bar still fits the image's HEIGHT: it stays in-chrome, overlaying the image top
-  // on hover. But if the image is too SHORT to hold it (height, not just width), it cannot
-  // live inside Obsidian's `contain: paint` box at all (it would be clipped above/below) — so
-  // FLAG the image `lie-float`; the plugin then shows the SAME toolbar floating on the body,
-  // outside the clip. Comparing height-vs-image (not merely "wraps") is what keeps a
-  // narrow-but-tall image's bar in-chrome. (The floating bar itself is position:fixed → no
-  // offsetParent → host null → fits true → never flagged, no feedback loop.)
+  // D1.1 — keep the in-chrome bar only while it does NOT dominate the image: it may overlay the
+  // image top on hover, but once it would cover more than COVER_LIMIT of the image's HEIGHT the
+  // image is "almost just toolbar", so FLAG it `lie-float` and show the SAME bar floating on the
+  // body (outside Obsidian's `contain: paint` box, and positioned ABOVE the image). COVERAGE —
+  // not "does it physically fit / wrap" — is the trigger, so a short-wide image floats out even
+  // with a single-row bar, while a narrow-but-TALL image (low coverage) keeps its bar in-chrome.
+  // (The floating bar itself is position:fixed → no offsetParent → host null → fits → never
+  // flagged, no feedback loop.)
+  const COVER_LIMIT = 0.6;
   const host = toolbar.offsetParent as HTMLElement | null;
-  const fitsInsideHeight = host ? 8 + toolbar.offsetHeight <= host.clientHeight : true;
-  toolbar.closest(".lie-wrapper")?.classList.toggle("lie-float", wraps() && !fitsInsideHeight);
+  const fitsComfortably = host ? toolbar.offsetHeight + 8 <= host.clientHeight * COVER_LIMIT : true;
+  toolbar.closest(".lie-wrapper")?.classList.toggle("lie-float", !fitsComfortably);
 }
 
 export class ImageToolbar {
@@ -237,11 +238,21 @@ export class ImageToolbar {
 
   private positionAbove(toolbar: HTMLElement, img: HTMLImageElement): void {
     const rect = img.getBoundingClientRect();
+    const gap = 8;
     // position:fixed but recomputed on scroll, so it tracks the image rather than
     // staying pinned to the page (D1).
     toolbar.style.position = "fixed";
-    toolbar.style.top = `${rect.top + 8}px`;
-    toolbar.style.left = `${rect.left + 8}px`;
     toolbar.style.zIndex = "1000";
+    // Place the bar truly ABOVE the image — its bottom sits `gap` above the image top — not
+    // inset on top of it (the old `rect.top + 8` left a ~38px bar sitting on, and overhanging
+    // below, a 24px image, D1.1). The toolbar is already on document.body with position:fixed,
+    // so its offsetHeight/offsetWidth are measurable here.
+    const above = rect.top - toolbar.offsetHeight - gap;
+    // No room above (image near the viewport top) → fall back BELOW the image, not off-screen.
+    toolbar.style.top = `${above >= 0 ? above : rect.bottom + gap}px`;
+    // Anchor at the image's left edge; clamp so the (usually wider) bar doesn't overflow the
+    // right viewport edge.
+    const maxLeft = window.innerWidth - toolbar.offsetWidth - gap;
+    toolbar.style.left = `${Math.max(gap, Math.min(rect.left + 8, maxLeft))}px`;
   }
 }
