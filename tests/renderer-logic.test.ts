@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boxAspectRatio, innerImageSize, rotatedAabb, estimatedBlockHeight } from "../src/renderer-logic";
+import { boxAspectRatio, innerImageSize, rotatedAabb, estimatedBlockHeight, isTallFloat, TALL_FLOAT_THRESHOLD_PX } from "../src/renderer-logic";
 
 const round = (v: number) => Math.round(v);
 
@@ -60,5 +60,18 @@ describe("estimatedBlockHeight (synchronous CM6 height estimate)", () => {
   });
   it("falls back to a constant for an unsized image", () => {
     expect(estimatedBlockHeight({})).toBe(480);
+  });
+});
+
+describe("isTallFloat (the tall-float cap — stack instead of wrap above the CM6 margin)", () => {
+  it("is false at or below the threshold (a normal small float)", () => {
+    expect(isTallFloat({ heightPx: TALL_FLOAT_THRESHOLD_PX })).toBe(false);
+    expect(isTallFloat({ widthPx: 180 })).toBe(false);            // est 126
+    expect(isTallFloat({ widthPx: 400, aspectRatio: 2 })).toBe(false); // est 200
+  });
+  it("is true above the threshold (explicit tall height, wide image, or unsized)", () => {
+    expect(isTallFloat({ heightPx: 300 })).toBe(true);
+    expect(isTallFloat({ widthPx: 400 })).toBe(true);              // est 280
+    expect(isTallFloat({})).toBe(true);                           // est 480 (unsized)
   });
 });

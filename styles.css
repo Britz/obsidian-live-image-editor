@@ -205,6 +205,19 @@ img.lie-inline { vertical-align: middle; }
   margin-bottom: -5px;
 }
 
+/* Tall-float cap (R0): a FLOATED image taller than CM6's ~250px render margin would derender
+   on scroll in Live Preview (the wrap dissolves — harmless, no desync). In safe mode (default)
+   the renderer marks it `.lie-tall` and it STACKS as a non-floated block — in BOTH views, for
+   cross-view consistency. The `body.lie-safe-tall-float` class is toggled by the "Stack tall
+   floated images" setting; permissive mode drops it and the float stands (accepting the LP
+   glitch). `float:none` overrides the injected lie-left/right float (the `!important` wins over
+   its plain declaration); `margin:0` drops the now-pointless float gutter. */
+body.lie-safe-tall-float .lie-wrapper:has(img.lie-tall),
+body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
+  float: none !important;
+  margin: 0 !important;
+}
+
 /* Reveal-for-looking (F8) + native edit (F9). The reveal is two parts living in the embed's
    cm-line, SHARING it with the inline image widget: the FAKE link (an inline widget for the
    `![[…]]`/`![](…)` source — uneditable, syntax-highlighted) and the NATIVE `{…}` text (a

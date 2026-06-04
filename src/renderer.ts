@@ -1,8 +1,8 @@
 import {
   ImageTransform, FilterData, MARKER_CLASS, INLINE_CLASS,
-  getRotation, isCrop, filterToCss,
+  getRotation, isCrop, filterToCss, getWidthPx, getHeightPx,
 } from "./transforms";
-import { boxAspectRatio, innerImageSize, rotatedAabb } from "./renderer-logic";
+import { boxAspectRatio, innerImageSize, rotatedAabb, isTallFloat } from "./renderer-logic";
 
 // The uniform image box (R0/AD3) — the element wrapping and transforming the <img>. Its
 // CSS class is `lie-image-area` (the area the image occupies); the chrome container around
@@ -25,7 +25,16 @@ export function applyTransformToImage(img: HTMLImageElement, t: ImageTransform):
   // The marker so reconcile/selection can tell our images from a plain native embed.
   img.classList.add(MARKER_CLASS);
   if (t.inline) img.classList.add(INLINE_CLASS);
-  applyClasses(img, t.classes);
+  // Tall-float cap (R0, cross-view): mark a FLOATED image whose estimated height exceeds the
+  // CM6 render margin, so the stylesheet stacks it as a non-floated block in safe mode
+  // (`body.lie-safe-tall-float`). Declarative (no DOM measure, AD6); tracked via applyClasses
+  // so reset/re-render clears it. Identical decision in Live Preview and Reading view.
+  const floated = t.classes.includes("lie-left") || t.classes.includes("lie-right");
+  const tall = floated && isTallFloat({
+    widthPx: getWidthPx(t), heightPx: getHeightPx(t),
+    aspectRatio: t.aspectRatio ? parseFloat(t.aspectRatio) : null,
+  });
+  applyClasses(img, tall ? [...t.classes, "lie-tall"] : t.classes);
 
   // IMG filter: native CSS, verbatim (AD2). The transform + centering are set by
   // sizeFromIntrinsic (it differs for crop vs non-crop).

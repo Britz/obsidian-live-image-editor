@@ -40,6 +40,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     await this.loadSettings();
     this.initLocale();
     this.stylesInjector.inject(this.settings.disabledInternalClasses, this.settings.presetWidths);
+    this.applyTallFloatClass();
 
     this.addSettingTab(new LieSettingTab(this.app, this));
     this.registerMarkdownPostProcessor(this.postProcessor.bind(this));
@@ -92,6 +93,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.closeCrop();
     this.toolbar.hide();
     this.stylesInjector.remove();
+    document.body.classList.remove("lie-safe-tall-float");
   }
 
   async loadSettings(): Promise<void> {
@@ -102,9 +104,16 @@ export default class LiveImageEditorPlugin extends Plugin {
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
     this.stylesInjector.inject(this.settings.disabledInternalClasses, this.settings.presetWidths);
+    this.applyTallFloatClass();
     this.initLocale();
     this.refreshLivePreviewDecorations();
     this.reconcileFromSource();
+  }
+
+  // Tall-float cap: the setting flips a body class the stylesheet keys on to stack tall floats
+  // as blocks (safe) or let them float (permissive). Governs Live Preview and Reading view alike.
+  private applyTallFloatClass(): void {
+    document.body.classList.toggle("lie-safe-tall-float", this.settings.tallFloatSafe);
   }
 
   private refreshLivePreviewDecorations(): void {

@@ -67,3 +67,24 @@ export function estimatedBlockHeight(opts: {
   if (opts.widthPx && opts.widthPx > 0) return Math.round(opts.widthPx / ar);
   return 480;
 }
+
+// CodeMirror 6's above-viewport render margin (`VP.MaxCoverMargin`, an inlined const in
+// @codemirror/view — not configurable). A FLOAT taller than this derenders prematurely when
+// its anchor line scrolls out of the render window (the wrap dissolves; no desync, harmless),
+// so the rework caps floats at it: above the threshold a float falls back to a non-floated
+// block (the tall-float cap — governs Live Preview AND Reading view identically).
+export const TALL_FLOAT_THRESHOLD_PX = 250;
+
+/**
+ * Whether an image's estimated rendered height exceeds the tall-float threshold — i.e. a
+ * float at this size would derender on scroll, so it should fall back to a non-floated block.
+ * Uses the synchronous (declarative) estimate, so the decision is the SAME in both views with
+ * no DOM measurement (AD6). Pure (T-L6).
+ */
+export function isTallFloat(opts: {
+  widthPx?: number | null;
+  heightPx?: number | null;
+  aspectRatio?: number | null;
+}): boolean {
+  return estimatedBlockHeight(opts) > TALL_FLOAT_THRESHOLD_PX;
+}

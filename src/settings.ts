@@ -22,6 +22,10 @@ export interface LieSettings {
   // Auto-normalize bare `![](…)` embeds to `{.lie-img}` on edit/navigation, so every
   // image renders uniformly (R0). The "Normalize images" commands do it on demand.
   autoNormalizeImages: boolean;
+  // Tall-float cap: a floated image taller than CM6's ~250px render margin stacks as a
+  // non-floated block (in both views) so it can't derender on scroll in Live Preview.
+  // Off = always wrap (permissive), accepting the LP-only disappear glitch.
+  tallFloatSafe: boolean;
 }
 
 export const DEFAULT_SETTINGS: LieSettings = {
@@ -33,6 +37,7 @@ export const DEFAULT_SETTINGS: LieSettings = {
   disabledSnippetClasses: [],
   editingToolbarEnabled: false,
   autoNormalizeImages: true, // on by default; switchable off (rendering rework)
+  tallFloatSafe: true, // on by default = safe (stack tall floats); off = permissive float
 };
 
 export class LieSettingTab extends PluginSettingTab {
@@ -78,6 +83,14 @@ export class LieSettingTab extends PluginSettingTab {
       .addToggle((toggle) => {
         toggle.setValue(this.plugin.settings.autoNormalizeImages)
           .onChange(async (v) => { this.plugin.settings.autoNormalizeImages = v; await this.plugin.saveSettings(); });
+      });
+
+    new Setting(containerEl)
+      .setName(t("settingsTallFloat"))
+      .setDesc(t("settingsTallFloatDesc"))
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.tallFloatSafe)
+          .onChange(async (v) => { this.plugin.settings.tallFloatSafe = v; await this.plugin.saveSettings(); });
       });
 
     // Preset widths (F24)
