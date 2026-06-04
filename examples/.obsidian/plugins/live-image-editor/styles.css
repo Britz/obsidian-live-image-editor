@@ -154,28 +154,24 @@ img.lie-inline { vertical-align: middle; }
 /* ---- Native vertical spacing (D10) ------------------------------------ */
 .image-embed { padding-top: 3px; padding-bottom: 3px; }
 
-/* ---- Live-preview inline image + native suppression + reveal (AD5) ----- *
+/* ---- Live-preview image + native suppression + reveal (AD5) ------------ *
    The widget does NOT replace the line: Obsidian renders its native embed (and
    leaves `{…}` as text) and provides the cursor-reveal of the source; the plugin
-   draws its OWN transformed image as an inline widget in the SAME cm-line (`.lie-wrapper`)
-   and CSS-SUPPRESSES the native image. All reveal logic is static CSS keyed on
-   `.cm-active` / cm-line hover (no reactive JS). */
+   draws its OWN transformed image — an inline widget in the cm-line for a `{…}`
+   embed, a block widget for a bare (block-promoted) one — and CSS-SUPPRESSES the
+   native image UNIFORMLY. Reveal logic is static CSS keyed on `.cm-active` / cm-line
+   hover (no reactive JS). */
 
-/* Suppress Obsidian's NATIVE rendered image inside an embed we render OURSELVES — i.e. one
-   that lives inside a `.cm-line` (a `{…}`-carrying embed; AD5: the line is NOT replaced, so
-   the native embed still loads the file and provides the cursor-reveal of the source, while
-   the plugin's inline widget carries the visible transformed image). A markdown/wikilink image
-   sits directly or inside `.image-wrapper` — hide both.
-
-   SCOPED to `.cm-line` ON PURPOSE (the bare-embed fallback): a BARE `![](…)` line (no `{…}`)
-   is BLOCK-PROMOTED by Obsidian into a `.cm-content`-DIRECT embed with NO cm-line, which
-   swallows our inline widget — so we must NOT hide its native image; it shows as Obsidian's
-   own block embed (the R0-exception fallback) until normalization adds `{…}` and our widget
-   takes over. The edit-block-button is hidden UNCONDITIONALLY so the native `<>` block button
-   can never leak (Bug 12). */
+/* Suppress Obsidian's NATIVE rendered image in EVERY embed — UNIFORM (AD5): the plugin always
+   draws its OWN transformed image (an inline widget for a `{…}` embed, a block widget for a
+   bare block-promoted one), so the native image must NEVER be visible anywhere. A markdown
+   image puts the <img> directly or inside `.image-wrapper`; a wikilink uses `.image-wrapper` —
+   hide both, unscoped. The native embed ELEMENT stays (it loads the file and gives Obsidian's
+   cursor-reveal of the source) — only its IMAGE is killed. The edit-block-button is hidden too
+   so the native `<>` block button can't leak (Bug 12). Never hits the plugin's `.lie-wrapper`. */
 .cm-content .internal-embed.image-embed > .edit-block-button { display: none; }
-.cm-content .cm-line .internal-embed.image-embed > img,
-.cm-content .cm-line .internal-embed.image-embed > .image-wrapper { display: none; }
+.cm-content .internal-embed.image-embed > img,
+.cm-content .internal-embed.image-embed > .image-wrapper { display: none; }
 
 /* The plugin's image container — its own transformed image + chrome, drawn by the widget.
    The embed line is NOT replaced: Obsidian renders its native embed (image CSS-suppressed)

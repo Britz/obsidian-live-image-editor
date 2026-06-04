@@ -18,10 +18,10 @@ export const refreshDecorations = StateEffect.define<void>();
 const toggleReveal = StateEffect.define<number>();
 
 type RevealMode = "auto" | "always" | "hidden";
-// "standalone" = the MAIN path: an inline widget in the embed's OWN (non-BFC) cm-line, so
+// "standalone" = a `{…}` embed: an inline widget in the embed's OWN (non-BFC) cm-line, so
 // lie-left/right floats escape into `.cm-content` and wrap the following lines (R0). "block"
-// = the block:true fallback kept ONLY for the tall-float (Slice 4) and bare-embed (Slice 5)
-// cases. "inline" = a tiny mid-text icon (lie-inline).
+// = a BARE (block-promoted, no cm-line) embed: a block:true `.cm-content` child, since an
+// inline widget would be swallowed there. "inline" = a tiny mid-text icon (lie-inline).
 type WidgetMode = "block" | "inline" | "standalone";
 
 // Syntax-highlight an embed's source into spans carrying Obsidian's own CM token
@@ -73,10 +73,11 @@ class FakeLinkWidget extends WidgetType {
   ignoreEvent(): boolean { return false; }
 }
 
-// The plugin's OWN transformed-image overlay (AD5). The line is NOT replaced: Obsidian
-// renders its native embed (image CSS-suppressed) and keeps `{…}` as native editable
-// text; this block widget draws the transformed image + chrome BELOW the line (side 1)
-// so the reveal sits above it. `inline` is a mid-text icon.
+// The plugin's OWN transformed image (AD5). The line is NOT replaced: Obsidian renders its
+// native embed (image CSS-suppressed) and keeps `{…}` as native editable text; this widget
+// draws the transformed image + chrome. Rendered INLINE in the cm-line for a `{…}` embed
+// ("standalone"), or as a block:true `.cm-content` child for a bare/block-promoted one
+// ("block"). `inline` is a mid-text icon.
 class EmbedWidget extends WidgetType {
   constructor(
     private app: App,
@@ -273,17 +274,26 @@ export function createLivePreviewExtension(
           if (m && m[3]) {
             builder.add(embedEnd, embedEnd + m[3].length, Decoration.mark({ class: `lie-attr lie-rev-${mode}` }));
           }
-          // (3) The transformed image — an INLINE widget in the embed's own (non-BFC) cm-line,
-          // so a lie-left/right float escapes into `.cm-content` and wraps the following lines,
-          // while the fake-link + {…} share the same line with it (R0). Normalization (Slice 2)
-          // guarantees the {…} that stops Obsidian block-promoting the line — which would
-          // otherwise drop this inline widget (the bare case is Slice 5's JS fallback).
+          // (3) The transformed image — UNIFORM: the plugin always draws it, and the native
+          // image is always CSS-suppressed. A `{…}` embed keeps Obsidian's cm-line, so it is an
+          // INLINE widget in that line (a lie-left/right float then escapes into `.cm-content`
+          // and wraps the following lines; the fake-link + {…} share the line, R0). A BARE
+          // `![](…)` line (no `{…}`) is BLOCK-PROMOTED by Obsidian into a cm-line-less
+          // `.cm-content` child that swallows an inline widget — so render a BLOCK widget
+          // (block:true) for it, which lands as its own `.cm-content` child next to the
+          // (image-suppressed) native embed. `m[3]` is the `{…}` token: absent ⇒ bare.
+          const isBare = !(m && m[3]);
           builder.add(
             d.to, d.to,
-            Decoration.widget({
-              widget: new EmbedWidget(app, d.embed, d.params, sourcePath, getActions, "standalone", mode, showCaptions),
-              side: 1,
-            })
+            isBare
+              ? Decoration.widget({
+                  widget: new EmbedWidget(app, d.embed, d.params, sourcePath, getActions, "block", mode, showCaptions),
+                  block: true, side: 1,
+                })
+              : Decoration.widget({
+                  widget: new EmbedWidget(app, d.embed, d.params, sourcePath, getActions, "standalone", mode, showCaptions),
+                  side: 1,
+                })
           );
         } else {
           builder.add(d.from, d.to, Decoration.mark({ class: d.class }));
