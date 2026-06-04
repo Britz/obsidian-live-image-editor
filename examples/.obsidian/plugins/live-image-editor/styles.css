@@ -240,23 +240,26 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
    DOM, so the fake and the native source are never both present at any instant. */
 .lie-fake-link { display: none; white-space: pre; }
 .lie-attr { display: none; }
-/* Reveal for LOOKING (F8): the fake link + {…} on HOVER of the host cm-line ("auto" mode —
-   the image and its source share the line, so this is the pure-CSS "Auto (with toolbar)"
-   reveal, no JS image→source bridge) or EVERYWHERE ("always" mode). "hidden" (`<>`): no rule
-   → the reveal-for-looking stays off (the fake follows the {…}). */
+/* Reveal for LOOKING (F8): the painted fake link + {…} on HOVER of the host cm-line ("auto"
+   mode — the image and its source share the line, the pure-CSS "Auto (with toolbar)" reveal),
+   EVERYWHERE ("always" mode), AND — crucially — while EDITING the attrs (cursor on the line,
+   `.cm-active`, auto mode). On the active line Obsidian keeps the image EMBED and renders NO
+   separate native source for the `![…]` part, so the painted fake is the ONLY thing showing the
+   link: it MUST stay visible so the source is readable while you edit the {…} (else the link
+   vanishes the moment the cursor enters the line — the bug this fixes). "hidden" (`<>`): no
+   `lie-rev-auto`/`-always` rule matches → the reveal-for-looking stays off. */
 .cm-line:hover .lie-fake-link.lie-rev-auto,
+.cm-active .lie-fake-link.lie-rev-auto,
 .cm-line:hover .lie-attr.lie-rev-auto,
 .lie-fake-link.lie-rev-always,
 .lie-attr.lie-rev-always { display: inline; }
-/* While EDITING — the cursor on the line (`.cm-active`) or a SELECTION overlapping it (e.g.
-   cmd+A; Obsidian renders the revealed source tokens as the line's direct children, which our
-   fake's tokens, nested in `.lie-fake-link`, never are) — Obsidian shows the real editable
-   source. Keep the {…} visible so the whole block stays editable, and HIDE the fake so the
-   link is never shown twice. `.cm-active` is the robust cursor-on-line signal, independent of
-   how Obsidian nests the revealed source tokens (the inline image widget shares the line). */
+/* The {…} attr text shows whenever the line is active or its native source is revealed. The
+   ONLY thing that HIDES the fake is Obsidian GENUINELY revealing the real source as the line's
+   DIRECT children (e.g. a cmd+A selection that overlaps the line — our fake's own tokens are
+   nested inside `.lie-fake-link`, so they never match `> .cm-formatting`), so the link is never
+   shown twice. */
 .cm-active .lie-attr,
 .cm-line:has(> .cm-formatting) .lie-attr { display: inline; }
-.cm-active .lie-fake-link,
 .cm-line:has(> .cm-formatting) .lie-fake-link { display: none !important; }
 
 /* The `<>` reveal control reflects the temporary-hide state (D5). */
