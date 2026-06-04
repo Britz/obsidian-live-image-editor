@@ -18,7 +18,11 @@ export const refreshDecorations = StateEffect.define<void>();
 const toggleReveal = StateEffect.define<number>();
 
 type RevealMode = "auto" | "always" | "hidden";
-type WidgetMode = "block" | "inline";
+// "standalone" = the MAIN path: an inline widget in the embed's OWN (non-BFC) cm-line, so
+// lie-left/right floats escape into `.cm-content` and wrap the following lines (R0). "block"
+// = the block:true fallback kept ONLY for the tall-float (Slice 4) and bare-embed (Slice 5)
+// cases. "inline" = a tiny mid-text icon (lie-inline).
+type WidgetMode = "block" | "inline" | "standalone";
 
 // Syntax-highlight an embed's source into spans carrying Obsidian's own CM token
 // classes (themed because the widget lives inside `.cm-editor`). Only the embed part
@@ -93,7 +97,9 @@ class EmbedWidget extends WidgetType {
   eq(other: EmbedWidget): boolean { return this.sig() === other.sig(); }
 
   get estimatedHeight(): number {
-    if (this.mode === "inline") return -1;
+    // Only block:true widgets need an estimate (CM models them out of flow); inline and
+    // standalone widgets are measured in the line's natural flow.
+    if (this.mode !== "block") return -1;
     const tf = parseAltText(this.params);
     const aspect = tf.aspectRatio ? parseFloat(tf.aspectRatio) : null;
     return estimatedBlockHeight({ widthPx: getWidthPx(tf), heightPx: getHeightPx(tf), aspectRatio: aspect });
@@ -102,9 +108,12 @@ class EmbedWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     const wrapper = document.createElement("div");
     // Inline icons never carry an in-chrome toolbar (too small) — flag them `lie-float` so
-    // the plugin shows the floating toolbar on hover (block widgets get the flag dynamically
-    // from the reflow when they turn out too short).
-    wrapper.className = this.mode === "inline" ? "lie-wrapper lie-wrapper-inline lie-float" : "lie-wrapper lie-wrapper-block";
+    // the plugin shows the floating toolbar on hover (standalone/block widgets get the flag
+    // dynamically from the reflow when they turn out too short).
+    wrapper.className =
+      this.mode === "inline" ? "lie-wrapper lie-wrapper-inline lie-float"
+      : this.mode === "standalone" ? "lie-wrapper lie-wrapper-standalone"
+      : "lie-wrapper lie-wrapper-block";
     wrapper.setAttribute("contenteditable", "false");
 
     const file = this.resolveFile();
@@ -264,12 +273,16 @@ export function createLivePreviewExtension(
           if (m && m[3]) {
             builder.add(embedEnd, embedEnd + m[3].length, Decoration.mark({ class: `lie-attr lie-rev-${mode}` }));
           }
-          // (3) The transformed image overlay BELOW the line (so the reveal is above it).
+          // (3) The transformed image — an INLINE widget in the embed's own (non-BFC) cm-line,
+          // so a lie-left/right float escapes into `.cm-content` and wraps the following lines,
+          // while the fake-link + {…} share the same line with it (R0). Normalization (Slice 2)
+          // guarantees the {…} that stops Obsidian block-promoting the line — which would
+          // otherwise drop this inline widget (the bare case is Slice 5's JS fallback).
           builder.add(
             d.to, d.to,
             Decoration.widget({
-              widget: new EmbedWidget(app, d.embed, d.params, sourcePath, getActions, "block", mode, showCaptions),
-              block: true, side: 1,
+              widget: new EmbedWidget(app, d.embed, d.params, sourcePath, getActions, "standalone", mode, showCaptions),
+              side: 1,
             })
           );
         } else {

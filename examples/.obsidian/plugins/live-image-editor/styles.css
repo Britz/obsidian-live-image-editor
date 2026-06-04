@@ -154,11 +154,12 @@ img.lie-inline { vertical-align: middle; }
 /* ---- Native vertical spacing (D10) ------------------------------------ */
 .image-embed { padding-top: 3px; padding-bottom: 3px; }
 
-/* ---- Live-preview overlay + native suppression + reveal (AD5) --------- *
+/* ---- Live-preview inline image + native suppression + reveal (AD5) ----- *
    The widget does NOT replace the line: Obsidian renders its native embed (and
    leaves `{…}` as text) and provides the cursor-reveal of the source; the plugin
-   draws its OWN transformed image in `.lie-wrapper` and CSS-SUPPRESSES the native
-   image. All reveal logic is static CSS keyed on `.cm-active` (no reactive JS). */
+   draws its OWN transformed image as an inline widget in the SAME cm-line (`.lie-wrapper`)
+   and CSS-SUPPRESSES the native image. All reveal logic is static CSS keyed on
+   `.cm-active` / cm-line hover (no reactive JS). */
 
 /* Suppress Obsidian's NATIVE rendered image + its edit-block-button inside an embed
    (never the plugin's own `.lie-wrapper`) — AD5: the line is NOT replaced (so the
@@ -172,52 +173,68 @@ img.lie-inline { vertical-align: middle; }
 .cm-content .internal-embed.image-embed > .image-wrapper,
 .cm-content .internal-embed.image-embed > .edit-block-button { display: none; }
 
-/* The plugin's overlay container — its own image + chrome, drawn by the widget. A
-   standalone embed line is ALWAYS replaced by this (no native embed renders), so the
-   reveal/edit is owned here, deterministically (AD5, revised). */
+/* The plugin's image container — its own transformed image + chrome, drawn by the widget.
+   The embed line is NOT replaced: Obsidian renders its native embed (image CSS-suppressed)
+   and keeps `{…}` as editable text for the cursor-reveal (AD5); this wrapper carries the
+   visible image. */
 .lie-wrapper {
   position: relative;
   display: inline-block;
   max-width: 100%;
 }
-/* Obsidian paint-contains block widgets (app.css: `.cm-content > [contenteditable="false"]
-   { contain: paint }`), which CLIPS anything past the wrapper edge — including the lower half
-   of the resize marker, which is centred on the image's bottom-right corner and so overflows
-   the bottom. Reserve that overflow INSIDE the contained box with padding-bottom, and cancel
-   the flow gap with an equal negative margin: the marker is fully painted (and, via the
-   containment's own stacking context, above the following line) with no layout shift. */
+/* MAIN path — an INLINE widget living in the embed's OWN cm-line. z-index:1 lifts it above
+   the sibling cm-lines within `.cm-content`'s stacking context, so a lie-left/right FLOAT
+   (which escapes the non-BFC host line and visually overlaps the wrapped text) stays
+   clickable: the hover-toolbar and click-to-select hit the image, not the text underneath.
+   No `contain:paint` here (unlike a block widget it is not a `.cm-content` DIRECT child), so
+   the resize marker is not clipped and needs no padding hack. vertical-align:top removes the
+   inline-block baseline gap on the host line. */
+.lie-wrapper-standalone {
+  z-index: 1;
+  vertical-align: top;
+}
+/* block:true FALLBACK (tall-float / bare-embed). Obsidian paint-contains block widgets
+   (app.css `.cm-content > [contenteditable="false"] { contain: paint }`), which CLIPS the
+   lower half of the resize marker (centred on the image's bottom-right corner). Reserve that
+   overflow INSIDE the box with padding-bottom and cancel the flow gap with a negative margin:
+   the marker is fully painted (and, via the containment's stacking context, above the
+   following line) with no layout shift. */
 .lie-wrapper-block {
   display: block;
   padding-bottom: 5px;
   margin-bottom: -5px;
 }
 
-/* Reveal-for-looking (F8) + native edit (F9). The reveal is two parts in the cm-line,
-   ABOVE the image (the overlay is side:1 below): the FAKE link (an inline widget for the
-   swallowed `![[…]]`/`![](…)` source — uneditable, syntax-highlighted) and the NATIVE
-   `{…}` text (a mark — editable). Visibility is DECLARATIVE in CSS (AD5/R0): it rides on
-   Obsidian's own active-line class `.cm-active` plus the mode class build() stamps on each
-   (`lie-rev-auto|always|hidden`) — NO JS re-derivation of the cursor line. Both are always
-   in the DOM (hidden by default), so revealing is an instant, synchronous class flip with no
-   widget-creation lag and no JS cursor logic. When the cursor enters the embed, Obsidian
-   reveals the native source itself (its syntax tokens become the line's direct children); the
-   fake then yields PURELY in CSS via `.cm-line:has(> .cm-formatting)` — slaved to Obsidian's
-   own DOM, so the fake and the native source are never both present at any instant. */
+/* Reveal-for-looking (F8) + native edit (F9). The reveal is two parts living in the embed's
+   cm-line, SHARING it with the inline image widget: the FAKE link (an inline widget for the
+   `![[…]]`/`![](…)` source — uneditable, syntax-highlighted) and the NATIVE `{…}` text (a
+   mark — editable). Visibility is DECLARATIVE in CSS (AD5/R0): it rides on Obsidian's own
+   active-line class `.cm-active`, on HOVER of the host cm-line, plus the mode class build()
+   stamps on each (`lie-rev-auto|always|hidden`) — NO JS re-derivation of the cursor line.
+   Both are always in the DOM (hidden by default), so revealing is an instant, synchronous
+   class flip with no widget-creation lag. When the cursor enters the embed, Obsidian reveals
+   the native source itself (its syntax tokens become the line's direct children); the fake
+   then yields PURELY in CSS via `.cm-line:has(> .cm-formatting)` — slaved to Obsidian's own
+   DOM, so the fake and the native source are never both present at any instant. */
 .lie-fake-link { display: none; white-space: pre; }
 .lie-attr { display: none; }
-/* "auto": reveal on the cursor's active line. "always": reveal everywhere. "hidden" (`<>`):
-   no rule → stays off (and {…} with it, so the fake follows — no extra check needed). */
-.cm-active .lie-fake-link.lie-rev-auto,
-.cm-active .lie-attr.lie-rev-auto,
+/* Reveal for LOOKING (F8): the fake link + {…} on HOVER of the host cm-line ("auto" mode —
+   the image and its source share the line, so this is the pure-CSS "Auto (with toolbar)"
+   reveal, no JS image→source bridge) or EVERYWHERE ("always" mode). "hidden" (`<>`): no rule
+   → the reveal-for-looking stays off (the fake follows the {…}). */
+.cm-line:hover .lie-fake-link.lie-rev-auto,
+.cm-line:hover .lie-attr.lie-rev-auto,
 .lie-fake-link.lie-rev-always,
 .lie-attr.lie-rev-always { display: inline; }
-/* …and whenever Obsidian reveals the native source — cursor in the embed OR a SELECTION
-   overlapping it (e.g. cmd+A, where the head is on another line, so `.cm-active` alone misses
-   it): the source's syntax tokens become the line's direct children (our fake's tokens are
-   nested in `.lie-fake-link`, so they don't match `> .cm-formatting`). Then show {…} next to
-   the now-visible native link, and hide our fake so the two never collide. One DOM-keyed pair
-   of rules removes the transient double, the boundary gap, and the select-all gap — no JS. */
+/* While EDITING — the cursor on the line (`.cm-active`) or a SELECTION overlapping it (e.g.
+   cmd+A; Obsidian renders the revealed source tokens as the line's direct children, which our
+   fake's tokens, nested in `.lie-fake-link`, never are) — Obsidian shows the real editable
+   source. Keep the {…} visible so the whole block stays editable, and HIDE the fake so the
+   link is never shown twice. `.cm-active` is the robust cursor-on-line signal, independent of
+   how Obsidian nests the revealed source tokens (the inline image widget shares the line). */
+.cm-active .lie-attr,
 .cm-line:has(> .cm-formatting) .lie-attr { display: inline; }
+.cm-active .lie-fake-link,
 .cm-line:has(> .cm-formatting) .lie-fake-link { display: none !important; }
 
 /* The `<>` reveal control reflects the temporary-hide state (D5). */
