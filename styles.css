@@ -186,14 +186,19 @@ img.lie-inline { vertical-align: middle; }
   display: inline-block;
   max-width: 100%;
 }
-/* MAIN path — an INLINE widget living in the embed's OWN cm-line. z-index:1 lifts it above
-   the sibling cm-lines within `.cm-content`'s stacking context, so a lie-left/right FLOAT
-   (which escapes the non-BFC host line and visually overlaps the wrapped text) stays
-   clickable: the hover-toolbar and click-to-select hit the image, not the text underneath.
-   No `contain:paint` here (unlike a block widget it is not a `.cm-content` DIRECT child), so
-   the resize marker is not clipped and needs no padding hack. vertical-align:top removes the
-   inline-block baseline gap on the host line. */
+/* MAIN path — an INLINE widget living in the embed's OWN cm-line. `display:block` makes a
+   NON-floated standalone image sit on its OWN line UNDER the source text (which the fake-link
+   + {…} occupy when revealed/wrapped) with a fixed left position, instead of flowing inline
+   AFTER it (where it ended up behind the link — Bug B). A FLOATED image (lie-left/right)
+   computes `display:block` anyway, so this is inert for floats: the float still escapes the
+   non-BFC host line and wraps the following cm-lines. z-index:1 lifts the floated image above
+   the sibling cm-lines within `.cm-content`'s stacking context so it stays clickable (the
+   hover-toolbar and click-to-select hit the image, not the text underneath). No `contain:paint`
+   here (unlike a block widget it is not a `.cm-content` DIRECT child), so the resize marker is
+   not clipped and needs no padding hack. The inner `.lie-box` keeps `inline-block` shrink-wrap,
+   so the toolbar/resize/caption still hug the image, not this full-width block. */
 .lie-wrapper-standalone {
+  display: block;
   z-index: 1;
   vertical-align: top;
 }
