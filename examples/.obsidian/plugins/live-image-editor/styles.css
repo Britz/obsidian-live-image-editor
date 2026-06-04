@@ -104,12 +104,17 @@
 }
 
 /* Obsidian's embed containers are inline and won't take the height of the box —
-   shrink-wrap the ones holding one. */
+   shrink-wrap the ones holding one. `max-width:100%` caps them against their BLOCK containing
+   block (the reading-view column / the LP `.cm-content`): without it the inline-block host
+   shrink-wraps to the box and the box's own `max-width:100%` is circular against it, so a
+   transformed box (e.g. a rotated image sized to its natural rotated AABB) overflows the column
+   in reading view. With the cap the host (and the box inside it) stay column-capped — matching LP. */
 .internal-embed:has(> .lie-image-area),
 .image-embed:has(> .lie-image-area),
 .image-wrapper:has(> .lie-image-area),
 .lie-wrapper:has(> .lie-image-area) {
   display: inline-block;
+  max-width: 100%;
 }
 
 /* Inline (mid-text) image: flows in the surrounding text. */
@@ -153,6 +158,17 @@ img.lie-inline { vertical-align: middle; }
 
 /* ---- Native vertical spacing (D10) ------------------------------------ */
 .image-embed { padding-top: 3px; padding-bottom: 3px; }
+
+/* Reading view: a floated image and its wrap text on consecutive source lines render in ONE
+   paragraph as [floated .image-embed][<br>][text…]. That first <br> (the newline after the image
+   line) pushes the first wrap line a full line-height below the image top. Drop ONLY that <br>
+   (the next-element-sibling of the floated embed) so the text wraps from the image top — matching
+   LP. Float-only (a non-floated image keeps its <br>, so following text stays below it); the wrap
+   paragraph's own line-break <br>s sit after text nodes, so `+ br` never hits them. */
+.markdown-preview-view .image-embed:has(img.lie-left) + br,
+.markdown-preview-view .image-embed:has(img.lie-right) + br,
+.markdown-reading-view .image-embed:has(img.lie-left) + br,
+.markdown-reading-view .image-embed:has(img.lie-right) + br { display: none; }
 
 /* ---- Live-preview image + native suppression + reveal (AD5) ------------ *
    The widget does NOT replace the line: Obsidian renders its native embed (and

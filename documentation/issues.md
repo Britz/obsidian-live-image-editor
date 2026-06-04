@@ -74,13 +74,19 @@
       and, in safe mode (**default**; the `tallFloatSafe` setting → `body.lie-safe-tall-float`), it
       STACKS as a non-floated block — in **both** views for cross-view consistency. Permissive mode
       floats it regardless, accepting the LP-only glitch.
-- [ ] **Reading-view sizing of transformed images (cluster, can't CDP-test).** (a) Demo img 2–11
-      overflow the page width — the box `max-width:100%` is circular against the inline-block
-      `.internal-embed`, so a transformed box (width = natural rotated size) isn't column-capped.
-      (b) Vertical gap between reading-view images is far larger than the native 6px (inline-block
-      line-height / aspect-ratio reserve). (c) Floated wrap text starts ~1.5–2 lines below the image
-      top (should align to the image top; ~½ line in LP). Reading view does not render headless →
-      fix by reasoning + manual verify.
+- [x] **Reading-view sizing of transformed images (cluster) — RESOLVED.** (a) A transformed box
+      (e.g. a rotated image sized to its natural rotated AABB) overflowed the column because the box
+      `max-width:100%` was circular against the shrink-wrapping inline-block `.internal-embed`. *Fix:*
+      `max-width:100%` on the embed shrink-wrap rule caps the host against its BLOCK containing block
+      (the reading-view column), so the box caps too — CDP: a rotate-90 image now caps at the 521px
+      column (was 800px), matching LP. (b) Not reproducible — the per-image vertical overhead is the
+      native ~6px (CDP: 6px embed padding, 6px inter-image gap); the old "huge gap" was intervening
+      headings/text between image groups. (c) A floated image + its wrap text on consecutive source
+      lines render as `[floated .image-embed][<br>][text]` in ONE paragraph, and that first `<br>`
+      pushed the wrap text a full line below the image top. *Fix:* hide the `<br>` that is the
+      next-element-sibling of a floated embed (reading view, float-only) → the text wraps from the
+      image top — CDP: was +23px, now 0px. LP unaffected (0 desync, float-escape intact; R0 — reader
+      now matches LP).
 - [ ] **Inline-icon toolbar mis-positioned.** The floating toolbar for an inline icon sits on/below
       the icon (`positionAbove` = `rect.top + 8`); it should sit above the icon.
 - [ ] **`<>` reveal toggle — semantics to revisit.** The LP rendering rework gave "auto" mode a
