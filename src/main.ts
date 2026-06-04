@@ -17,9 +17,10 @@ import { StylesInjector } from "./styles-injector";
 import { registerCommands, CommandHandler } from "./commands";
 import { LieSettings, DEFAULT_SETTINGS, LieSettingTab } from "./settings";
 import { createLivePreviewExtension, refreshDecorations } from "./live-preview";
+import { bareEmbedMarkerInsert, normalizeMarkersInText, MARKER_BLOCK } from "./live-preview-logic";
 import { captionFromAlt, createCaption, CaptionHandle } from "./caption";
-import { Prec } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { Prec, Transaction } from "@codemirror/state";
+import { EditorView, ViewUpdate } from "@codemirror/view";
 import { setLocale, detectLocale, t } from "./i18n";
 import { convertEmbedLine, desiredFormat, LinkFormat } from "./link-format";
 import { writeSource } from "./source-writer";
@@ -45,6 +46,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.registerImageSelectionHandler();
     this.registerToolbarDismissHandlers();
     this.registerCommands();
+    this.registerNormalizeCommands();
 
     this.registerEvent(this.app.workspace.on("layout-change", () => this.reconcileFromSource()));
     this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.reconcileFromSource()));
@@ -60,6 +62,11 @@ export default class LiveImageEditorPlugin extends Plugin {
         )
       )
     );
+
+    // Lazy normalization (rendering rework): append the invisible `{.lie-img}` marker to
+    // bare embeds as the user edits/navigates, so every image renders as a uniform inline
+    // widget (R0). A CM update listener sees both doc and selection changes.
+    this.registerEditorExtension(EditorView.updateListener.of((u) => this.onEditorUpdate(u)));
 
     this.registerEvent(this.app.workspace.on("editor-change", () => this.scheduleNormalize()));
 
@@ -269,6 +276,82 @@ export default class LiveImageEditorPlugin extends Plugin {
       const newLine = line.slice(0, m.index) + replacement + line.slice(m.index + m[0].length);
       if (newLine !== line) editor.setLine(i, newLine);
     }
+  }
+
+  // --- Marker normalization (rendering rework): every embed must carry a `{…}` block ---
+
+  private markerNormalizeTimer = 0;
+
+  // Schedule a marker-normalize pass on genuine user edits / navigation. Skips file-open
+  // and programmatic updates (no userEvent) and our OWN writes (userEvent "lie.*"), so it
+  // can never loop on itself (belt-and-suspenders on top of self-termination).
+  private onEditorUpdate(update: ViewUpdate): void {
+    if (!this.settings.autoNormalizeImages) return;
+    if (!update.docChanged && !update.selectionSet) return;
+    const userInitiated = update.transactions.some((tr) => {
+      const ue = tr.annotation(Transaction.userEvent);
+      return ue !== undefined && !ue.startsWith("lie.");
+    });
+    if (!userInitiated) return;
+    const view = update.view;
+    window.clearTimeout(this.markerNormalizeTimer);
+    this.markerNormalizeTimer = window.setTimeout(() => this.normalizeMarkers(view), 300);
+  }
+
+  // Append `{.lie-img}` to every bare standalone embed line, in ONE transaction (one undo
+  // step). The lazy pass skips the cursor's line (the user is editing it); the explicit
+  // note command includes it. Returns how many lines were normalized.
+  private normalizeMarkers(view: EditorView, includeCursorLine = false): number {
+    const doc = view.state.doc;
+    const cursorLine = doc.lineAt(view.state.selection.main.head).number;
+    const changes: { from: number; insert: string }[] = [];
+    for (let i = 1; i <= doc.lines; i++) {
+      if (!includeCursorLine && i === cursorLine) continue;
+      const line = doc.line(i);
+      const at = bareEmbedMarkerInsert(line.text);
+      if (at !== null) changes.push({ from: line.from + at, insert: MARKER_BLOCK });
+    }
+    if (changes.length) writeSource(view, changes);
+    return changes.length;
+  }
+
+  private registerNormalizeCommands(): void {
+    this.addCommand({
+      id: "normalize-note",
+      name: t("cmdNormalizeNote"),
+      checkCallback: (checking: boolean) => {
+        const has = !!this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+        if (has && !checking) this.normalizeActiveNote();
+        return has;
+      },
+    });
+    this.addCommand({
+      id: "normalize-vault",
+      name: t("cmdNormalizeVault"),
+      callback: () => void this.normalizeVault(),
+    });
+  }
+
+  private normalizeActiveNote(): void {
+    const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+    const cm = (editor as unknown as { cm?: EditorView } | undefined)?.cm;
+    if (!cm) return;
+    const n = this.normalizeMarkers(cm, true);
+    new Notice(n ? t("normalizeNoteDone").replace("{n}", String(n)) : t("normalizeNone"));
+  }
+
+  private async normalizeVault(): Promise<void> {
+    let files = 0;
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      let changed = false;
+      await this.app.vault.process(file, (data) => {
+        const norm = normalizeMarkersInText(data);
+        if (norm !== null) changed = true;
+        return norm ?? data;
+      });
+      if (changed) files++;
+    }
+    new Notice(files ? t("normalizeVaultDone").replace("{n}", String(files)) : t("normalizeNone"));
   }
 
   // Reading-view render path only (Obsidian caches embeds). The LP CM6 widget owns its

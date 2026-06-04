@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { lineDecorations, inlineEmbeds, rewriteWidth, URL_CLASS, URL_BRACE_CLASS } from "../src/live-preview-logic";
+import {
+  lineDecorations, inlineEmbeds, rewriteWidth, URL_CLASS, URL_BRACE_CLASS,
+  bareEmbedMarkerInsert, normalizeMarkersInText, MARKER_BLOCK,
+} from "../src/live-preview-logic";
 
 describe("lineDecorations", () => {
   const embedBlock = "![a](b.png){.x}"; // embed (len 11) + block {.x} (len 4)
@@ -107,5 +110,43 @@ describe("rewriteWidth (a resize is a minimal source edit — AD1/D11)", () => {
     expect(rewriteWidth("![a](b.png){.lie-img .rounded}", 200)).toBe(
       '![a](b.png){.lie-img .rounded style="width: 200px"}'
     );
+  });
+});
+
+describe("normalization marker (the rendering rework — every embed carries {…})", () => {
+  it("bareEmbedMarkerInsert: marks a bare markdown / wikilink standalone embed after the embed", () => {
+    expect(bareEmbedMarkerInsert("![](images/a.png)")).toBe("![](images/a.png)".length);
+    expect(bareEmbedMarkerInsert("![alt](a.png)")).toBe("![alt](a.png)".length);
+    expect(bareEmbedMarkerInsert("![[a.png]]")).toBe("![[a.png]]".length);
+  });
+  it("bareEmbedMarkerInsert: keeps the leading indent (inserts after the embed, not the line start)", () => {
+    expect(bareEmbedMarkerInsert("  ![](a.png)")).toBe("  ![](a.png)".length);
+  });
+  it("bareEmbedMarkerInsert: null when the embed already has a {…} block", () => {
+    expect(bareEmbedMarkerInsert("![](a.png){.lie-img}")).toBeNull();
+    expect(bareEmbedMarkerInsert('![](a.png){.lie-left style="width: 180px"}')).toBeNull();
+  });
+  it("bareEmbedMarkerInsert: null for a non-embed line or an inline (mid-text) embed", () => {
+    expect(bareEmbedMarkerInsert("just some text")).toBeNull();
+    expect(bareEmbedMarkerInsert("text ![](a.png) more")).toBeNull();
+  });
+  it("normalizeMarkersInText: appends the marker to every bare standalone embed, leaving others", () => {
+    const src = [
+      "# Note",
+      "![](a.png)",
+      "already ![](b.png){.lie-img} normalized",   // inline w/ block — untouched
+      "![[c.png]]",
+      "![](d.png){.lie-left}",                       // standalone w/ block — untouched
+    ].join("\n");
+    expect(normalizeMarkersInText(src)).toBe([
+      "# Note",
+      `![](a.png)${MARKER_BLOCK}`,
+      "already ![](b.png){.lie-img} normalized",
+      `![[c.png]]${MARKER_BLOCK}`,
+      "![](d.png){.lie-left}",
+    ].join("\n"));
+  });
+  it("normalizeMarkersInText: returns null when there is nothing bare to normalize", () => {
+    expect(normalizeMarkersInText("# Note\n![](a.png){.lie-img}\ntext")).toBeNull();
   });
 });

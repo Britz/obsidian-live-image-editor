@@ -70,8 +70,8 @@ describe("parseAltText (native-CSS attr_list block)", () => {
 });
 
 describe("serializeTransform", () => {
-  it("serializes empty transform to empty string", () => {
-    expect(serializeTransform({ classes: [] })).toBe("");
+  it("serializes an empty transform to the bare marker (keeps it a {…} embed — R0)", () => {
+    expect(serializeTransform({ classes: [] })).toBe(".lie-img");
   });
   it("serializes a width with the marker class", () => {
     expect(serializeTransform({ width: "320px", classes: [] })).toBe('.lie-img style="width: 320px"');
@@ -80,7 +80,7 @@ describe("serializeTransform", () => {
     expect(serializeTransform({ transform: "rotate(90deg)", filter: "sepia(0.8)", width: "var(--lie-size-medium)", classes: [] }))
       .toBe('.lie-img style="transform: rotate(90deg); filter: sepia(0.8); width: var(--lie-size-medium)"');
   });
-  it("serializes snippet classes without the marker when there is no style", () => {
+  it("serializes snippet classes alongside the always-present marker", () => {
     expect(serializeTransform({ classes: ["rounded", "shadow"] })).toBe(".lie-img .rounded .shadow");
   });
   it("serializes inline", () => {
@@ -207,7 +207,8 @@ describe("round-trips (the canonical block is the lossless single encoding)", ()
     expect(reparsed.height).toBe("240px");
     expect(isCrop(reparsed)).toBe(true);
   });
-  it("empty round-trips to empty", () => {
-    expect(serializeTransform(parseAltText(""))).toBe("");
+  it("empty round-trips to the stable marker (idempotent — R0)", () => {
+    expect(serializeTransform(parseAltText(""))).toBe(".lie-img");
+    expect(serializeTransform(parseAltText(".lie-img"))).toBe(".lie-img");
   });
 });

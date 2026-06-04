@@ -57,6 +57,8 @@ export default {
   settingsCaptionsDesc: "Den Alt-Text des Bildes als Bildunterschrift unter dem Bild rendern (unterstützt Markdown).",
   settingsRevealDefault: "Linkquelle immer anzeigen",
   settingsRevealDefaultDesc: "Aus = Auto-Reveal (Linkquelle erscheint beim Hovern). An = immer sichtbar. Die ‹›-Schaltfläche blendet sie pro Bild temporär aus, unabhängig davon.",
+  settingsAutoNormalize: "Bilder automatisch normalisieren",
+  settingsAutoNormalizeDesc: "Fügt einfachen `![](…)`-Einbettungen beim Bearbeiten die unsichtbare `{.lie-img}`-Markierung hinzu, damit jedes Bild einheitlich rendert und umflossene Bilder den Text umbrechen. Aus = Quelltext bleibt unangetastet — die Befehle „Bilder normalisieren“ erledigen es weiterhin auf Wunsch.",
   settingsPresetWidths: "Größen-Vorlagen",
   settingsPresetWidthsDesc: "Die Breiten (px), die die Vorlagen Klein / Mittel / Groß anwenden.",
   settingsSnippets: "CSS-Snippets",
@@ -77,4 +79,9 @@ export default {
   settingsEditingToolbarVersionWarning: "Nicht unterstützte Version — Integration deaktiviert",
   settingsAddButtons: "Buttons anlegen",
   settingsRemoveButtons: "Buttons entfernen",
+  cmdNormalizeNote: "Bilder in aktueller Notiz normalisieren",
+  cmdNormalizeVault: "Bilder im gesamten Vault normalisieren",
+  normalizeNoteDone: "{n} Bild(er) in dieser Notiz normalisiert.",
+  normalizeVaultDone: "Bilder in {n} Notiz(en) normalisiert.",
+  normalizeNone: "Keine einfachen Bild-Einbettungen zu normalisieren.",
 };

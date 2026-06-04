@@ -125,7 +125,8 @@ function parseStyle(style: string, result: ImageTransform): void {
 /**
  * Serialize an ImageTransform back into attr_list block content (without the
  * surrounding `{…}`). Native CSS in `style=`, internal classes only for the marker /
- * inline. Empty transform → empty string (so no block is written).
+ * inline. Empty transform → just the marker, so the image always stays a `{…}`-carrying
+ * embed (never strips back to a bare line — R0; see the rendering rework).
  */
 export function serializeTransform(t: ImageTransform): string {
   const style: string[] = [];
@@ -136,9 +137,10 @@ export function serializeTransform(t: ImageTransform): string {
   if (t.aspectRatio) style.push(`aspect-ratio: ${t.aspectRatio}`);
   if (t.box) for (const [k, v] of Object.entries(t.box)) style.push(`${k}: ${v}`);
 
-  const classes: string[] = [];
-  const hasState = style.length > 0 || t.inline || t.classes.length > 0;
-  if (hasState) classes.push(MARKER_CLASS);
+  // The marker is ALWAYS emitted: it keeps the image a `{…}`-carrying embed so Obsidian
+  // never block-promotes the line back to a bare `![](…)` (which would re-break the inline
+  // rendering). Invisible (no CSS), portable attr_list syntax — R0, the rendering rework.
+  const classes: string[] = [MARKER_CLASS];
   if (t.inline) classes.push(INLINE_CLASS);
   classes.push(...t.classes);
 

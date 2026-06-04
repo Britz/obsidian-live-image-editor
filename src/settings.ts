@@ -19,6 +19,9 @@ export interface LieSettings {
   disabledInternalClasses: string[];
   disabledSnippetClasses: string[];
   editingToolbarEnabled: boolean;
+  // Auto-normalize bare `![](…)` embeds to `{.lie-img}` on edit/navigation, so every
+  // image renders uniformly (R0). The "Normalize images" commands do it on demand.
+  autoNormalizeImages: boolean;
 }
 
 export const DEFAULT_SETTINGS: LieSettings = {
@@ -29,6 +32,7 @@ export const DEFAULT_SETTINGS: LieSettings = {
   disabledInternalClasses: [],
   disabledSnippetClasses: [],
   editingToolbarEnabled: false,
+  autoNormalizeImages: true, // on by default; switchable off (rendering rework)
 };
 
 export class LieSettingTab extends PluginSettingTab {
@@ -66,6 +70,14 @@ export class LieSettingTab extends PluginSettingTab {
       .addToggle((toggle) => {
         toggle.setValue(this.plugin.settings.alwaysShowLink)
           .onChange(async (v) => { this.plugin.settings.alwaysShowLink = v; await this.plugin.saveSettings(); });
+      });
+
+    new Setting(containerEl)
+      .setName(t("settingsAutoNormalize"))
+      .setDesc(t("settingsAutoNormalizeDesc"))
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.autoNormalizeImages)
+          .onChange(async (v) => { this.plugin.settings.autoNormalizeImages = v; await this.plugin.saveSettings(); });
       });
 
     // Preset widths (F24)
