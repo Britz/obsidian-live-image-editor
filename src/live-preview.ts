@@ -13,11 +13,20 @@ import { t } from "./i18n";
 // Force a rebuild when external state (captions / reveal mode settings) changed.
 export const refreshDecorations = StateEffect.define<void>();
 
-// Toggle the per-image TEMPORARY hide of the link source (F8 `<>`): a transient
-// in-memory override, NOT persisted, INDEPENDENT of the global reveal mode.
+// `<>` TOGGLE for the per-line `dismissed` state (F8): transiently click the link source away,
+// click again to bring it back. Transient (not persisted); auto-clears in auto mode.
 const toggleReveal = StateEffect.define<number>();
+// Whether a line's image is mouse-hovered (line-start pos), so the auto-clear can tell when the
+// source is NaturalReveal:false (neither hovered nor the cursor's active line).
+const setHover = StateEffect.define<{ line: number; on: boolean }>();
+// Suppresses a `<>`-dismissed line's source, overriding the natural reveal. Added as a LINE
+// decoration so the CSS (`.lie-dismissed .lie-fake-link/.lie-attr`) can hide it.
+const DISMISSED_LINE = Decoration.line({ class: "lie-dismissed" });
 
-type RevealMode = "auto" | "always" | "hidden";
+// Natural-reveal mode for the link source: "auto" = on cm-line hover / the active line; "always"
+// = everywhere (the global default-state setting). The `<>` dismiss is a SEPARATE per-line
+// override on top of this — no longer a third mode.
+type RevealMode = "auto" | "always";
 // "standalone" = a `{…}` embed: an inline widget in the embed's OWN (non-BFC) cm-line, so
 // lie-left/right floats escape into `.cm-content` and wrap the following lines (R0). "block"
 // = a BARE (block-promoted, no cm-line) embed: a block:true `.cm-content` child, since an
@@ -87,13 +96,14 @@ class EmbedWidget extends WidgetType {
     private getActions: (img: HTMLImageElement) => ToolbarItem[],
     private mode: WidgetMode,
     private revealMode: RevealMode,
-    private showCaptions: boolean
+    private showCaptions: boolean,
+    private dismissed: boolean
   ) {
     super();
   }
 
   private sig(): string {
-    return `${this.embed}|${this.params}|${this.sourcePath}|${this.mode}|${this.revealMode}|${this.showCaptions}`;
+    return `${this.embed}|${this.params}|${this.sourcePath}|${this.mode}|${this.revealMode}|${this.showCaptions}|${this.dismissed}`;
   }
   eq(other: EmbedWidget): boolean { return this.sig() === other.sig(); }
 
@@ -159,6 +169,12 @@ class EmbedWidget extends WidgetType {
       view.focus();
     });
 
+    // Track hover of this image so the auto-clear (auto mode) knows when the line is no longer
+    // NaturalReveal — `dismissed` resets once the line is neither hovered nor the active line.
+    const lineFrom = (): number => view.state.doc.lineAt(view.posAtDOM(wrapper)).from;
+    wrapper.addEventListener("mouseenter", () => view.dispatch({ effects: setHover.of({ line: lineFrom(), on: true }) }));
+    wrapper.addEventListener("mouseleave", () => view.dispatch({ effects: setHover.of({ line: lineFrom(), on: false }) }));
+
     return wrapper;
   }
 
@@ -176,15 +192,16 @@ class EmbedWidget extends WidgetType {
     return toolbar;
   }
 
-  // `<>` — temporarily HIDE the link source for this image, independent of the global
-  // mode (F8). Toggles a transient per-line override; shown faint when hiding.
+  // The eye toggle (F8): click the link source AWAY (dismiss), click again to bring it back.
+  // Transient per-line override; shown faint (`is-off`) + offering "show" while dismissed.
   private makeRevealButton(view: EditorView, wrapper: HTMLElement): HTMLElement {
     const button = document.createElement("button");
     button.className = "lie-toolbar-btn lie-toolbar-reveal";
-    if (this.revealMode === "hidden") button.classList.add("is-off");
-    button.setAttribute("aria-label", t("revealLink"));
-    button.title = t("revealLink");
-    setIcon(button, "code-2");
+    if (this.dismissed) button.classList.add("is-off");
+    const label = this.dismissed ? t("revealLink") : t("hideLinkSource");
+    button.setAttribute("aria-label", label);
+    button.title = label;
+    setIcon(button, this.dismissed ? "eye" : "eye-off");
     button.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
     button.addEventListener("click", (e) => {
       e.preventDefault();
@@ -229,7 +246,8 @@ class EmbedWidget extends WidgetType {
 }
 
 interface LivePreviewState {
-  hidden: Set<number>; // line-start positions whose link is temporarily `<>`-hidden
+  dismissed: Set<number>;     // line-start positions whose source is `<>`-dismissed (transient)
+  hoveredLine: number | null; // line-start of the currently mouse-hovered image (for auto-clear)
   decorations: DecorationSet;
 }
 
@@ -240,39 +258,36 @@ export function createLivePreviewExtension(
   getShowCaptions: () => boolean,
   getAlwaysShow: () => boolean
 ) {
-  const modeFor = (lineFrom: number, hidden: Set<number>): RevealMode =>
-    hidden.has(lineFrom) ? "hidden" : (getAlwaysShow() ? "always" : "auto");
-
   const build = (
     state: import("@codemirror/state").EditorState,
-    hidden: Set<number>
+    dismissed: Set<number>
   ): DecorationSet => {
     const builder = new RangeSetBuilder<Decoration>();
     const isLivePreview = state.field(editorLivePreviewField);
     const sourcePath = getSourcePath();
     const showCaptions = getShowCaptions();
+    const revealMode: RevealMode = getAlwaysShow() ? "always" : "auto";
     const head = state.selection.main.head;
 
     for (let i = 1; i <= state.doc.lines; i++) {
       const line = state.doc.line(i);
       for (const d of lineDecorations(line.text, line.from, isLivePreview)) {
         if (d.kind === "widget") {
-          const mode = modeFor(d.from, hidden);
+          const isDismissed = dismissed.has(d.from);
           const m = EMBED_LINE.exec(line.text);
           const embedEnd = d.from + (m?.[1]?.length ?? 0) + d.embed.length;
-          // The reveal is FULLY DECLARATIVE in CSS (AD5/R0) — no JS cursor logic at all. The
-          // fake link + {…} ride on Obsidian's own active-line class `.cm-active` and the mode
-          // class; the fake additionally YIELDS to Obsidian's native source-reveal purely in
-          // CSS: when the cursor enters the embed, Obsidian renders the source's syntax tokens
-          // as the line's direct children (`.cm-line:has(> .cm-formatting)`) and the fake hides.
-          // Slaved to that one DOM state, the fake and the native source are never both present
-          // — no transient double, no off-by-one boundary gap — and the fake is always in the
-          // DOM (only CSS-hidden), so there is no widget-creation lag on reveal.
+          // The reveal is DECLARATIVE in CSS: the fake link + {…} ride on the mode class plus
+          // Obsidian's `.cm-active` / cm-line hover; the fake yields to the native source via
+          // `.cm-line:has(> .cm-formatting)`. A `<>`-dismissed line additionally gets a
+          // `.lie-dismissed` LINE class that overrides (hides) the source until it auto-resets
+          // (auto: on leave — neither hovered nor active; always: until `<>` again / reload).
+          // (0) The dismiss flag on the line.
+          if (isDismissed) builder.add(d.from, d.from, DISMISSED_LINE);
           // (1) The fake link (the swallowed embed source).
-          builder.add(d.from, d.from, Decoration.widget({ widget: new FakeLinkWidget(d.embed, mode), side: -1 }));
+          builder.add(d.from, d.from, Decoration.widget({ widget: new FakeLinkWidget(d.embed, revealMode), side: -1 }));
           // (2) The {…} block — NATIVE editable text, marked; CSS shows it per mode (F3).
           if (m && m[3]) {
-            builder.add(embedEnd, embedEnd + m[3].length, Decoration.mark({ class: `lie-attr lie-rev-${mode}` }));
+            builder.add(embedEnd, embedEnd + m[3].length, Decoration.mark({ class: `lie-attr lie-rev-${revealMode}` }));
           }
           // (3) The transformed image — UNIFORM: the plugin always draws it, and the native
           // image is always CSS-suppressed. A `{…}` embed keeps Obsidian's cm-line, so it is an
@@ -287,11 +302,11 @@ export function createLivePreviewExtension(
             d.to, d.to,
             isBare
               ? Decoration.widget({
-                  widget: new EmbedWidget(app, d.embed, d.params, sourcePath, getActions, "block", mode, showCaptions),
+                  widget: new EmbedWidget(app, d.embed, d.params, sourcePath, getActions, "block", revealMode, showCaptions, isDismissed),
                   block: true, side: 1,
                 })
               : Decoration.widget({
-                  widget: new EmbedWidget(app, d.embed, d.params, sourcePath, getActions, "standalone", mode, showCaptions),
+                  widget: new EmbedWidget(app, d.embed, d.params, sourcePath, getActions, "standalone", revealMode, showCaptions, isDismissed),
                   side: 1,
                 })
           );
@@ -305,7 +320,7 @@ export function createLivePreviewExtension(
           builder.add(
             ie.from, ie.to,
             Decoration.replace({
-              widget: new EmbedWidget(app, ie.embed, ie.params, sourcePath, getActions, "inline", "auto", false),
+              widget: new EmbedWidget(app, ie.embed, ie.params, sourcePath, getActions, "inline", "auto", false, false),
             })
           );
         }
@@ -314,36 +329,57 @@ export function createLivePreviewExtension(
     return builder.finish();
   };
 
-  const nextHidden = (
-    cur: Set<number>,
+  // Compute the next dismissed/hovered state. `<>` toggles `dismissed`; mouse enter/leave tracks
+  // the hovered line. AUTO-CLEAR (auto mode only): a dismissed line whose source is now
+  // NaturalReveal:false — neither the cursor's active line NOR hovered — resets, so the next
+  // hover/edit reveals it again (not sticky across visits). In always mode NaturalReveal is never
+  // false, so a dismiss persists until toggled again (or reload).
+  const nextState = (
+    value: LivePreviewState,
     tr: import("@codemirror/state").Transaction
-  ): Set<number> => {
-    let next = cur;
+  ): { dismissed: Set<number>; hoveredLine: number | null } => {
+    let dismissed = value.dismissed;
+    let hoveredLine = value.hoveredLine;
+    const mutate = (): void => { if (dismissed === value.dismissed) dismissed = new Set(dismissed); };
     if (tr.docChanged) {
-      next = new Set();
-      for (const pos of cur) next.add(tr.changes.mapPos(pos, 1));
+      dismissed = new Set<number>();
+      for (const pos of value.dismissed) dismissed.add(tr.changes.mapPos(pos, 1));
+      if (hoveredLine !== null) hoveredLine = tr.changes.mapPos(hoveredLine, 1);
     }
     for (const e of tr.effects) {
       if (e.is(toggleReveal)) {
-        if (next === cur) next = new Set(next);
-        if (next.has(e.value)) next.delete(e.value); else next.add(e.value);
+        mutate();
+        if (dismissed.has(e.value)) dismissed.delete(e.value); else dismissed.add(e.value);
+      } else if (e.is(setHover)) {
+        hoveredLine = e.value.on ? e.value.line : (hoveredLine === e.value.line ? null : hoveredLine);
       }
     }
-    return next;
+    if (!getAlwaysShow() && dismissed.size) {
+      const active = tr.state.doc.lineAt(tr.state.selection.main.head).from;
+      for (const lineFrom of [...dismissed]) {
+        if (lineFrom !== active && lineFrom !== hoveredLine) { mutate(); dismissed.delete(lineFrom); }
+      }
+    }
+    return { dismissed, hoveredLine };
   };
 
   return StateField.define<LivePreviewState>({
     create(state) {
-      const hidden = new Set<number>();
-      return { hidden, decorations: build(state, hidden) };
+      const dismissed = new Set<number>();
+      return { dismissed, hoveredLine: null, decorations: build(state, dismissed) };
     },
     update(value, tr) {
-      const hidden = nextHidden(value.hidden, tr);
+      const { dismissed, hoveredLine } = nextState(value, tr);
+      const dismissedChanged = dismissed !== value.dismissed;
       const modeChanged =
         tr.startState.field(editorLivePreviewField) !== tr.state.field(editorLivePreviewField);
       const refresh = tr.effects.some((e) => e.is(refreshDecorations));
-      if (tr.docChanged || tr.selection || modeChanged || hidden !== value.hidden || refresh) {
-        return { hidden, decorations: build(tr.state, hidden) };
+      if (tr.docChanged || tr.selection || modeChanged || dismissedChanged || refresh) {
+        return { dismissed, hoveredLine, decorations: build(tr.state, dismissed) };
+      }
+      // Hover-only change: keep the decorations, just remember the hovered line.
+      if (hoveredLine !== value.hoveredLine) {
+        return { dismissed, hoveredLine, decorations: value.decorations };
       }
       return value;
     },

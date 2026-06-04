@@ -244,7 +244,7 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
    `![[…]]`/`![](…)` source — uneditable, syntax-highlighted) and the NATIVE `{…}` text (a
    mark — editable). Visibility is DECLARATIVE in CSS (AD5/R0): it rides on Obsidian's own
    active-line class `.cm-active`, on HOVER of the host cm-line, plus the mode class build()
-   stamps on each (`lie-rev-auto|always|hidden`) — NO JS re-derivation of the cursor line.
+   stamps on each (`lie-rev-auto|always`) — NO JS re-derivation of the cursor line.
    Both are always in the DOM (hidden by default), so revealing is an instant, synchronous
    class flip with no widget-creation lag. When the cursor enters the embed, Obsidian reveals
    the native source itself (its syntax tokens become the line's direct children); the fake
@@ -258,13 +258,17 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
    `.cm-active`, auto mode). On the active line Obsidian keeps the image EMBED and renders NO
    separate native source for the `![…]` part, so the painted fake is the ONLY thing showing the
    link: it MUST stay visible so the source is readable while you edit the {…} (else the link
-   vanishes the moment the cursor enters the line — the bug this fixes). "hidden" (`<>`): no
-   `lie-rev-auto`/`-always` rule matches → the reveal-for-looking stays off. */
+   vanishes the moment the cursor enters the line — the bug this fixes). */
 .cm-line:hover .lie-fake-link.lie-rev-auto,
 .cm-active .lie-fake-link.lie-rev-auto,
 .cm-line:hover .lie-attr.lie-rev-auto,
 .lie-fake-link.lie-rev-always,
 .lie-attr.lie-rev-always { display: inline; }
+/* The eye `<>` toggle DISMISSED this line's source (build() stamps `.lie-dismissed` on it):
+   override the reveal above and keep it hidden until the dismiss auto-resets (auto: on leave;
+   always: until toggled again). Beats the `display:inline` reveal via `!important`. */
+.lie-dismissed .lie-fake-link,
+.lie-dismissed .lie-attr { display: none !important; }
 /* The {…} attr text shows whenever the line is active or its native source is revealed. The
    ONLY thing that HIDES the fake is Obsidian GENUINELY revealing the real source as the line's
    DIRECT children (e.g. a cmd+A selection that overlaps the line — our fake's own tokens are
@@ -274,7 +278,7 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
 .cm-line:has(> .cm-formatting) .lie-attr { display: inline; }
 .cm-line:has(> .cm-formatting) .lie-fake-link { display: none !important; }
 
-/* The `<>` reveal control reflects the temporary-hide state (D5). */
+/* The eye toggle shows faint while the line's source is dismissed (D5). */
 .lie-toolbar-reveal.is-off { color: var(--text-faint); }
 
 /* The chrome container: an inline-block that shrink-wraps to the image, so the toolbar,
