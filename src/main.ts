@@ -6,7 +6,7 @@ import {
 } from "./transforms";
 import { buildLayers as applyTransformToImage, applyFilterPreview, unwrapBox } from "./render-core";
 import { ImageToolbar, ToolbarItem, ToolbarButton, ToolbarGroup } from "./toolbar";
-import { findImageInSource, findImageInText, getImageFilename, ImageLocation } from "./image-resolver";
+import { findImageInSource, findImageInText, findImageInLine, getImageFilename, ImageLocation } from "./image-resolver";
 import { CropEditor } from "./crop-editor";
 import { FilterPanel } from "./filter-panel";
 import { AnchoredSubmenu } from "./anchored-submenu";
@@ -81,9 +81,12 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   onunload(): void {
-    this.closeFilterPanel("cancel");
-    this.closeSubmenu("cancel");
-    this.closeCrop();
+    // Plugin unload: tear the panels down WITHOUT persisting (no source write while the plugin
+    // is going away). Every USER-facing leave persists (auto-persist, AD8); unload is the one
+    // silent teardown.
+    this.closeFilterPanel(false);
+    this.closeSubmenu(false);
+    this.closeCrop(false);
     this.toolbar.hide();
     this.stylesInjector.remove();
     document.body.classList.remove("lie-safe-tall-float");
@@ -297,8 +300,10 @@ export default class LiveImageEditorPlugin extends Plugin {
       for (const el of Array.from(container.querySelectorAll("img"))) {
         const img = el as HTMLImageElement;
         // The LP overlay owns its own images; the editor's native embed images are
-        // CSS-suppressed and must be left untouched (AD5 — no double render).
-        if (img.closest(".lie-wrapper, .cm-editor")) continue;
+        // CSS-suppressed and must be left untouched (AD5 — no double render). An image being
+        // CROPPED in place (`.lie-cropping` on its area/host) must also be skipped — a re-render
+        // (buildLayers → resetLieState) mid-session would wipe the editor's transient geometry.
+        if (img.closest(".lie-wrapper, .cm-editor, .lie-cropping")) continue;
         const file = getImageFilename(img);
         if (!file) continue;
         const loc = findImageInText(source, file);
@@ -346,7 +351,7 @@ export default class LiveImageEditorPlugin extends Plugin {
         !target.closest(".lie-filter-panel") &&
         !target.closest(".lie-submenu") &&
         !target.closest(".lie-group-popup") &&
-        !target.closest(".lie-crop-overlay") &&
+        !target.closest(".lie-cropping") &&
         !target.closest(".lie-wrapper")
       ) {
         this.dismissToolbar();
@@ -361,7 +366,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.registerDomEvent(document, "mouseover", (evt: MouseEvent) => {
       const target = evt.target;
       if (!(target instanceof HTMLElement)) return;
-      if (target.closest(".lie-toolbar, .lie-group-popup, .lie-submenu, .lie-filter-panel, .lie-crop-overlay")) return;
+      if (target.closest(".lie-toolbar, .lie-group-popup, .lie-submenu, .lie-filter-panel, .lie-cropping")) return;
       const floatWrap = target.closest<HTMLElement>(".markdown-source-view .lie-wrapper.lie-float");
       if (floatWrap) {
         const img = floatWrap.querySelector("img");
@@ -417,8 +422,8 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   private dismissToolbar(): void {
-    this.closeFilterPanel("commit");
-    this.closeSubmenu("commit");
+    this.closeFilterPanel();
+    this.closeSubmenu();
     this.closeCrop();
     this.toolbar.hide();
     this.activeImage = null;
@@ -428,8 +433,8 @@ export default class LiveImageEditorPlugin extends Plugin {
   private onImageSelected(img: HTMLImageElement): void {
     if (!this.settings.showToolbar) return;
     if (img !== this.activeImage) {
-      this.closeFilterPanel("commit");
-      this.closeSubmenu("commit");
+      this.closeFilterPanel();
+      this.closeSubmenu();
       this.closeCrop();
     }
     this.activeImage = img;
@@ -509,6 +514,25 @@ export default class LiveImageEditorPlugin extends Plugin {
     registerCommands(this, handler);
   }
 
+  // Resolve the active image's source location (Bug 33). Prefer the rendered image's ACTUAL
+  // line, read from its DOM position via CM6 `posAtDOM` (the same line-accurate path the resize
+  // handle uses) — so a file embedded more than once resolves to the RIGHT occurrence, not the
+  // first basename match. Falls back to the basename scan only when there is no live editor
+  // view (e.g. reading view, where `cm` is absent).
+  private locateImage(editor: Editor, img: HTMLImageElement): ImageLocation | null {
+    const src = getImageFilename(img);
+    const cm = (editor as unknown as { cm?: EditorView }).cm;
+    const wrapper = img.closest<HTMLElement>(".lie-wrapper") ?? img;
+    if (src && cm && wrapper.isConnected) {
+      try {
+        const lineNo = editor.offsetToPos(cm.posAtDOM(wrapper)).line;
+        const loc = findImageInLine(editor.getLine(lineNo), lineNo, src);
+        if (loc) return loc;
+      } catch { /* fall back to the basename scan */ }
+    }
+    return findImageInSource(editor, img);
+  }
+
   private resolveLocation(): { editor: Editor; location: ImageLocation } | null {
     if (!this.activeImage) return null;
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -517,7 +541,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       return null;
     }
     const editor = view.editor;
-    const location = findImageInSource(editor, this.activeImage);
+    const location = this.locateImage(editor, this.activeImage);
     if (!location) {
       new Notice("Live Image Editor: couldn't locate this image in the note source.");
       return null;
@@ -620,16 +644,16 @@ export default class LiveImageEditorPlugin extends Plugin {
     return this.activeImage?.closest(".lie-wrapper")?.querySelector<HTMLElement>(".lie-toolbar-in-image") ?? null;
   }
 
-  private closeSubmenu(action: "commit" | "cancel"): void {
-    this.submenu?.close(action);
+  private closeSubmenu(persist = true): void {
+    this.submenu?.close(persist);
   }
 
   private customSize(): void {
-    if (this.submenu) { this.closeSubmenu("commit"); return; }
+    if (this.submenu) { this.closeSubmenu(); return; }
     if (!this.activeImage) return;
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) return;
-    const location = findImageInSource(view.editor, this.activeImage);
+    const location = this.locateImage(view.editor, this.activeImage);
     if (!location) return;
 
     const current = parseAltText(location.params);
@@ -656,50 +680,56 @@ export default class LiveImageEditorPlugin extends Plugin {
       hoverRegion: img.closest<HTMLElement>(".lie-wrapper") ?? undefined,
       onReset: () => sizeBody.reset(),
       onCommit: () => this.modifyTransform((tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; }),
-      onCancel: () => applyTransformToImage(this.liveTarget(img), parseAltText(location.params)),
       onClose: () => { this.submenu = null; },
     });
     this.submenu = submenu;
   }
 
   private crop(): void {
-    if (this.cropEditor) { this.cropEditor.close(); this.cropEditor = null; return; }
+    if (this.cropEditor) { this.cropEditor.close(); return; }  // toggle off → persist; onClose clears the ref
     if (!this.activeImage) return;
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) return;
-    const location = findImageInSource(view.editor, this.activeImage);
+    const location = this.locateImage(view.editor, this.activeImage);
     if (!location) return;
 
     const current = parseAltText(location.params);
     const cropEditor = new CropEditor(
       this.activeImage,
       current,
-      (result) => {
-        this.cropEditor = null;
-        this.modifyTransform((tr) => {
+      // Auto-persist on leave (AD8): a real crop writes its placement; a no-op / Reset leave passes
+      // null → un-crop (clear the placement) while keeping the box width set elsewhere.
+      (result) => this.modifyTransform((tr) => {
+        if (result) {
           tr.transform = result.transform;
           tr.width = result.width;
           tr.aspectRatio = result.aspectRatio; // the cut-frame shape (only when ≠ original)
           tr.height = undefined;               // crop never stores a fixed px height (AD6)
-        });
-      },
+        } else {
+          tr.transform = undefined;
+          tr.aspectRatio = undefined;
+          tr.height = undefined;
+        }
+      }),
       () => { this.cropEditor = null; }
     );
-    cropEditor.open(this.activeToolbarEl());
+    // Set the ref BEFORE open(): if open() can't find the 3-layer structure it self-closes
+    // synchronously (calling onClosed → nulls the ref), and a post-open assignment would otherwise
+    // restore a dead editor and jam the crop toggle + the dismiss guards.
     this.cropEditor = cropEditor;
+    cropEditor.open(this.activeToolbarEl(), this.activeImage);
   }
 
-  private closeCrop(): void {
-    this.cropEditor?.close();
-    this.cropEditor = null;
+  private closeCrop(persist = true): void {
+    this.cropEditor?.close(persist);
   }
 
   private toggleFilters(): void {
-    if (this.filterPanel) { this.closeFilterPanel("commit"); return; }
+    if (this.filterPanel) { this.closeFilterPanel(); return; }
     if (!this.activeImage) return;
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) return;
-    const location = findImageInSource(view.editor, this.activeImage);
+    const location = this.locateImage(view.editor, this.activeImage);
     if (!location) return;
 
     const current = parseAltText(location.params);
@@ -709,7 +739,6 @@ export default class LiveImageEditorPlugin extends Plugin {
     const panel = new FilterPanel(img, originalFilter, {
       onPreview: (filter: FilterData) => applyFilterPreview(this.liveTarget(img), filter),
       onCommit: (filter: FilterData) => this.modifyTransform((tr) => setFilter(tr, Object.keys(filter).length ? filter : undefined)),
-      onCancel: () => applyFilterPreview(this.liveTarget(img), originalFilter),
       onClose: () => { this.filterPanel = null; },
     });
     panel.open(img, this.activeToolbarEl());
@@ -723,8 +752,8 @@ export default class LiveImageEditorPlugin extends Plugin {
     return opened;
   }
 
-  private closeFilterPanel(action: "commit" | "cancel"): void {
-    this.filterPanel?.close(action);
+  private closeFilterPanel(persist = true): void {
+    this.filterPanel?.close(persist);
   }
 
   private addClass(): void {
@@ -738,7 +767,7 @@ export default class LiveImageEditorPlugin extends Plugin {
 
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) return;
-    const location = findImageInSource(view.editor, this.activeImage);
+    const location = this.locateImage(view.editor, this.activeImage);
     if (!location) return;
     const current = parseAltText(location.params);
 
@@ -774,7 +803,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     if (!this.activeImage) return;
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) return;
-    const location = findImageInSource(view.editor, this.activeImage);
+    const location = this.locateImage(view.editor, this.activeImage);
     if (!location) return;
 
     const transform = parseAltText(location.params);

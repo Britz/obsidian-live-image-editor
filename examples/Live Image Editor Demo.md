@@ -12,13 +12,13 @@ render must show. Transforms are stored as **native CSS** in the trailing `{…}
 
 **Image 1 — Original (landscape, unchanged).** *Should:* A top-left, B top-right, C/D bottom, **TOP** at the top, sun top-right. Full column width, no overflow.
 
-![](images/sample-landscape.png)
+![](images/sample-landscape.png){rotate=180 flip=horizontal transform="translate(-20.1%, -22.1%) rotate(0deg) scale(1)" filter="brightness(1.8)" width=200}
 
 ## Spacing (two images, no heading between)
 
 **Images 1a & 1b — back-to-back images.** *Should:* exactly **6px** vertical gap between them (native parity), no extra space, no overlap.
 
-![](images/sample-landscape.png){.lie-img style="width:400px"}
+![](images/sample-landscape.png){width=481}
 ![](images/sample-portrait.png){.lie-img style="width: 150px"}
 
 ## Rotate (quarter turns)
@@ -98,3 +98,17 @@ render must show. Transforms are stored as **native CSS** in the trailing `{…}
 ## Inline (mid-text icon)
 
 An inline icon ![](images/sample-square.png){.lie-img .lie-inline style="height: 1.2em"} sits in the text line and flows with it.
+
+## Edge: tiny toolbar cases
+
+**Edge cases for the toolbar on a TINY image (24×24) — too short to hold the ~28px bar inside the image height.** *Should:* the toolbar appears on hover, fully visible and correctly positioned **above** the image, never clipped or sitting on/under it. These three cases decide whether the toolbar can be positioned purely in CSS (absolute overflow above) or still needs the JS body-float — the question is whether any wrapper is paint-contained so an above-overflow would be clipped.
+
+**Case A — BARE tiny embed (no `{…}`, no surrounding text).** Bare-link path: Obsidian block-promotes the line, so the plugin draws its `block:true` overlay (a direct `.cm-content` child → `contain: paint`). *Should:* an above-overflow toolbar must not be clipped by `contain: paint`.
+
+![](images/tiny-24.png)
+
+**Case B — tiny embed WITH `{…}`.** The trailing `{…}` keeps the line a real `.cm-line`, so the plugin renders an inline widget (NOT paint-contained). *Should:* the toolbar can overflow visibly above the image — no body-float needed.
+
+![](images/tiny-24.png){style="width: 24px"}
+
+**Case C — inline icon mid-text (`.lie-inline`).** An inline tiny icon ![](images/tiny-24.png){.lie-inline style="width: 22px"} sits within this sentence and flows with the text; its wrapper is an inline replace-widget inside the `.cm-line`. *Should:* the same above-overflow toolbar must not be clipped.

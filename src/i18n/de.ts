@@ -54,7 +54,7 @@ export default {
   settingsCaptions: "Bildunterschriften anzeigen",
   settingsCaptionsDesc: "Den Alt-Text des Bildes als Bildunterschrift unter dem Bild rendern (unterstützt Markdown).",
   settingsRevealDefault: "Linkquelle immer anzeigen",
-  settingsRevealDefaultDesc: "Aus = Auto-Reveal (Linkquelle erscheint beim Hovern oder beim Bearbeiten der Zeile). An = immer sichtbar. Die Augen-Schaltfläche blendet die Quelle pro Bild aus — im Auto-Modus erscheint sie beim nächsten Hovern/Bearbeiten wieder, im Immer-Modus bleibt sie ausgeblendet, bis du erneut klickst.",
+  settingsRevealDefaultDesc: "Aus = Auto-Reveal (Linkquelle erscheint beim Hovern oder beim Bearbeiten der Zeile). An = immer sichtbar. Die <>-Schaltfläche blendet die Quelle pro Bild aus — im Auto-Modus erscheint sie beim nächsten Hovern/Bearbeiten wieder, im Immer-Modus bleibt sie ausgeblendet, bis du erneut klickst.",
   settingsTallFloat: "Hohe umflossene Bilder als Block",
   settingsTallFloatDesc: "Die Live-Vorschau kann ein links/rechts umflossenes Bild über ~250px Höhe beim Vorbeiscrollen nicht am Bildschirm halten, daher wird ein solches Bild standardmäßig nicht mehr umflossen, sondern als Block gestapelt — auch in der Leseansicht, damit es in beiden gleich aussieht. Aus = immer umfließen, wobei ein hohes Bild in der Live-Vorschau beim Vorbeiscrollen kurz verschwinden kann.",
   settingsPresetWidths: "Größen-Vorlagen",

@@ -1,6 +1,6 @@
 md standalone
 
-![](images/sample-landscape.png){.lie-img style="transform: rotate(90deg); width: 199px"}
+![](images/sample-landscape.png){rotate=90 width=575}
 
 wiki standalone
 

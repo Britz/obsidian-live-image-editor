@@ -2,8 +2,6 @@ import { setIcon } from "obsidian";
 import { t } from "./i18n";
 import { placeSubmenu, SubmenuPlacement, Rect } from "./anchored-submenu-logic";
 
-export type SubmenuClose = "commit" | "cancel";
-
 export interface SubmenuOptions {
   // Caller-built content (sliders, presets, size inputs, …) shown in the body.
   body: HTMLElement;
@@ -17,10 +15,11 @@ export interface SubmenuOptions {
   toolbar?: HTMLElement | null;
   // Header label (defaults to none → no title text, just the icon actions).
   title?: string;
-  // Persist the working state. Called on confirm or close-to-keep.
+  // Persist the working state. Auto-persist (AD8/D6): there is NO accept/cancel — while the
+  // panel is open the working state is a LIVE DOM preview only; LEAVING the panel (close / Esc /
+  // click-away / dismiss / context loss) persists it ONCE, as a single undo step. The only
+  // in-session revert is the per-panel Reset (or Ctrl/Cmd-Z after leaving).
   onCommit: () => void;
-  // Discard the working state (revert any live preview). Called on cancel / Esc.
-  onCancel: () => void;
   // Optional per-panel reset: resets ONLY this panel's working state (e.g. just the
   // size, or just the crop) and updates the live preview — NOT the whole transform
   // like the toolbar's reset-all. The panel stays open. Shown as a header icon.
@@ -47,11 +46,14 @@ export interface SubmenuOptions {
 }
 
 /**
- * The one shared anchored sub-menu (T9/D10): greyed-out toolbar, icon confirm /
- * cancel, anchored placement, Esc = cancel, fully visible (never clipped/scrolled,
- * D9). Reused by the size, crop and filter panels — placement is the only thing
- * that differs (D8). Toggle behaviour (click trigger again to close) is the
- * owner's job: it checks `isOpen()` and calls `close()`.
+ * The one shared anchored sub-menu (T9/D10): greyed-out toolbar, anchored placement,
+ * fully visible (never clipped/scrolled, D9). Reused by the size, crop and filter
+ * panels — placement is the only thing that differs (D8). AUTO-PERSIST (AD8/D6): no
+ * accept/cancel actions; the header carries only the optional per-panel Reset. While
+ * open the working state is a live preview; EVERY leave path — Esc, click-away, the
+ * trigger toggle, selecting another image, the anchor scrolling out of the DOM —
+ * persists it ONCE via `onCommit` (one undo step). Toggle behaviour (click trigger
+ * again to close) is the owner's job: it checks `isOpen()` and calls `close()`.
  */
 export class AnchoredSubmenu {
   private el: HTMLElement | null = null;
@@ -144,7 +146,7 @@ export class AnchoredSubmenu {
     // was destroyed when its image scrolled out of the CM6 viewport). Self-close so
     // the panel doesn't linger orphaned against a detached anchor, leaking its hover
     // and window scroll/resize listeners — the owner's onClose clears its reference.
-    if (!this.opts.anchor.isConnected) { this.close("commit"); return; }
+    if (!this.opts.anchor.isConnected) { this.close(); return; }
     const a = this.opts.anchor.getBoundingClientRect();
     this.offscreen = !!this.opts.hideWhenAnchorOffscreen && (a.bottom <= 0 || a.top >= window.innerHeight);
 
@@ -172,8 +174,11 @@ export class AnchoredSubmenu {
     this.el.style.left = `${left}px`;
   }
 
-  // Idempotent: a context-loss dismiss and an icon click can't double-fire.
-  close(action: SubmenuClose = "commit"): void {
+  // Leave the panel. AUTO-PERSIST: `persist` (the default) runs `onCommit` once — the single
+  // undo step for the whole editing session; every user-facing leave path uses it. `persist=false`
+  // is the silent teardown for plugin unload (no source write while the plugin is going away).
+  // Idempotent: a context-loss dismiss and the trigger toggle can't double-fire.
+  close(persist = true): void {
     if (this.closed) return;
     this.closed = true;
     window.clearTimeout(this.hoverTimer);
@@ -189,16 +194,17 @@ export class AnchoredSubmenu {
     this.el = null;
     this.opts = null;
 
-    if (action === "commit") opts?.onCommit();
-    else opts?.onCancel();
+    if (persist) opts?.onCommit();
     opts?.onClose?.();
   }
 
+  // Esc LEAVES the panel — which, under auto-persist, persists the work (it is not a discard;
+  // the only revert is Reset or Ctrl/Cmd-Z afterwards).
   private handleKeyDown = (e: KeyboardEvent): void => {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      this.close("cancel");
+      this.close();
     }
   };
 
@@ -214,7 +220,9 @@ export class AnchoredSubmenu {
     const actions = document.createElement("div");
     actions.classList.add("lie-submenu-actions");
 
-    // Optional per-panel reset (resets only this panel's working state, keeps open).
+    // Auto-persist (AD8/D6): NO accept/cancel buttons — leaving the panel persists the work and
+    // Reset is the only in-session revert. The header carries just the optional per-panel Reset
+    // (resets only this panel's working state, keeps the panel open).
     if (this.opts?.onReset) {
       const reset = document.createElement("button");
       reset.classList.add("lie-submenu-icon-btn", "lie-submenu-reset");
@@ -225,22 +233,6 @@ export class AnchoredSubmenu {
       actions.appendChild(reset);
     }
 
-    const cancel = document.createElement("button");
-    cancel.classList.add("lie-submenu-icon-btn", "lie-submenu-cancel");
-    cancel.setAttribute("aria-label", t("cancel"));
-    cancel.title = t("cancel");
-    setIcon(cancel, "x");
-    cancel.addEventListener("click", () => this.close("cancel"));
-
-    const confirm = document.createElement("button");
-    confirm.classList.add("lie-submenu-icon-btn", "lie-submenu-confirm");
-    confirm.setAttribute("aria-label", t("apply"));
-    confirm.title = t("apply");
-    setIcon(confirm, "check");
-    confirm.addEventListener("click", () => this.close("commit"));
-
-    actions.appendChild(cancel);
-    actions.appendChild(confirm);
     header.appendChild(actions);
     return header;
   }

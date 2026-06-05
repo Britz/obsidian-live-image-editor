@@ -54,9 +54,11 @@ function renderContent(img: HTMLImageElement, transform: ImageTransform): HTMLCa
 
   if (isCrop(transform)) {
     // Crop: the cut frame is fw × fh display px (width + the cut-frame aspect); the original is
-    // shown at width:100% of the frame (= fw), height auto, with the placement transform
-    // `translate(%) [rotate] scale` (top-left origin, content-rotate included). Replay it at a
-    // factor E that brings the natural image to 1:1 → the cut region at original resolution (F13).
+    // shown at width:100% of the frame (= fw), height auto, CENTRED in the frame, with the
+    // placement transform `translate(%) [rotate] scale` about its CENTRE (transform-origin:center
+    // — mirrors render-core). Replay it at a factor E that brings the natural image to 1:1 → the
+    // cut region at original resolution (F13). The canvas origin is moved to the frame centre,
+    // the placement applied about it, and the img drawn centred — the canvas analogue of the CSS.
     const fw = getWidthPx(transform) ?? nw;
     const cutAspect = cropAspect(transform, r);
     const fh = Math.max(1, Math.round(fw / cutAspect));
@@ -71,6 +73,7 @@ function renderContent(img: HTMLImageElement, transform: ImageTransform): HTMLCa
     canvas.height = Math.max(1, Math.round(fh * E));
     if (transform.filter) ctx.filter = transform.filter;
     ctx.scale(E, E);
+    ctx.translate(fw / 2, fh / 2); // origin → the frame centre (where the centred img's centre sits)
     for (const fn of fns) {
       if (fn.name === "translate") {
         ctx.translate(pctOrPx(fn.args[0], wCss), pctOrPx(fn.args[1], hCss));
@@ -84,7 +87,7 @@ function renderContent(img: HTMLImageElement, transform: ImageTransform): HTMLCa
         ctx.scale(1, numOf(fn.args[0]));
       }
     }
-    ctx.drawImage(img, 0, 0, wCss, hCss);
+    ctx.drawImage(img, -wCss / 2, -hCss / 2, wCss, hCss); // centred on the (transformed) origin
     return canvas;
   }
 

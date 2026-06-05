@@ -33,7 +33,7 @@ export function findImageInSource(editor: Editor, img: HTMLImageElement): ImageL
   if (!src) return null;
 
   for (let i = 0; i < editor.lineCount(); i++) {
-    const loc = matchInLine(editor.getLine(i), i, src);
+    const loc = findImageInLine(editor.getLine(i), i, src);
     if (loc) return loc;
   }
   return null;
@@ -43,13 +43,16 @@ export function findImageInSource(editor: Editor, img: HTMLImageElement): ImageL
 export function findImageInText(text: string, src: string): ImageLocation | null {
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
-    const loc = matchInLine(lines[i] ?? "", i, src);
+    const loc = findImageInLine(lines[i] ?? "", i, src);
     if (loc) return loc;
   }
   return null;
 }
 
-function matchInLine(line: string, lineNo: number, src: string): ImageLocation | null {
+// Match the embed for `src` on ONE specific line — the disambiguating resolver (Bug 33): the
+// caller knows the exact line (from the rendered image's DOM position), so a file embedded more
+// than once resolves to the RIGHT occurrence, not merely the first basename match in the note.
+export function findImageInLine(line: string, lineNo: number, src: string): ImageLocation | null {
   for (const { regex, isWiki } of [
     { regex: WIKI_EMBED, isWiki: true },
     { regex: MD_EMBED, isWiki: false },

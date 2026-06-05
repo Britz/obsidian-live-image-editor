@@ -47,7 +47,26 @@ above it:
 
 The pure units live under `tests/*.test.ts`; the CDP checks run via the dev-bridge
 (`AB23` / CLAUDE.md *Live debugging*) against the example vault pages (`examples/`), which are
-fixtures exercising each requirement area.
+fixtures exercising each requirement area. The two runnable read-back CDP checks are
+`scripts/verify-write-path.mjs` (the §3 AD1 write-path matrix, the Bug 33 guard) and
+`scripts/verify-crop.mjs` (the Bug 32 crop editor — 20 structural facts read back from the live
+DOM/source in Live Preview **and** reading view: no `document.body` clone, centre origin, handles
+on the inner image, 4 corner + 4 edge + rotate, native handle hidden, no reflow, one undo step per
+session, a width edit preserves the crop) plus `scripts/verify-crop-teardown.mjs` (the crop editor
+fully restores every transient override — esp. the lifted host `contain:paint` — on EVERY exit path,
+read back from the live computed style). Fixture: `examples/Crop editor (Bug 32).md`.
+
+> **The load-bearing rule (the Bug 33 lesson).** A green suite must mean an **edit actually
+> reaches the source and re-renders** — not merely that an isolated pure function is correct.
+> The bare-key write path shipped "green" while almost nothing persisted to `{…}`, because of two
+> gaps: (a) `serializeTransform` was unit-tested **in isolation**, but no test drove a toolbar
+> **operation** (flip, rotate, a preset) through `modify → serialize` to assert its key lands in the
+> block — so "serialize emits only `width`" went unseen; (b) the CDP checks **assumed** the render
+> instead of reading the written source back. The plan therefore mandates two things that close that
+> hole: **every model-mutating operation has a persistence unit test** (op → serialize → the
+> key/value is present — §2.8), and **every behaviour check that performs an edit reads the actual
+> source `{…}` back and asserts it** (§3 `AD1` write-path matrix), never assuming the render. A test
+> that cannot fail when the write path is dead is not a verification.
 
 ---
 
@@ -163,6 +182,25 @@ Pure box / inner-image geometry; the single source shared by the renderer and th
   `T-L5` pitfall is guarded; falls back to leaving the link as-is on any failure
   (`implementation-plan.md` §3.1).
 
+### 2.8 Per-operation persistence (`transforms.ts` + the op layer) — the Bug 33 guard
+
+Beyond the isolated round-trip (§2.6): **each** model-mutating operation, applied to a base
+transform, must serialize to a `{…}` that **contains its key/value** — the unit that would have
+caught Bug 33 (only `width` ever emitted). One assertion per op (and each also **round-trips**:
+serialize → parse → the op's field is back):
+
+- **`setRotation` (90 / 180 / 270 / free)** → `rotate=` present with the angle; back to 0 → absent.
+- **`toggleFlipH` / `toggleFlipV`** → `flip=horizontal` / `vertical`; toggled off → absent.
+- **`setFilter(...)`** → `filter="…"` with the non-default values; all-default → absent.
+- **alignment (left / right / center)** → `align=` with the value; reset → absent.
+- **`setPresetWidth` (small / medium / large) + `setWidthPx`** → `width=N` (the resolved px);
+  **`original`** → absent. *(Pins the "small preset does nothing" symptom.)*
+- **inline toggle** → the inline marker; **`addClass`** → the class in `.class`.
+- **crop `toCropResult`** → `transform=` placement (+ `aspect-ratio=` only when shape ≠ original).
+
+Verifies that **every** op persists, not just `width` (`AD1`, `T2.3`; pins **Bug 33**, supports
+**Bug 32**).
+
 ---
 
 ## 3. Integration tests (Mid) — one per load-bearing decision
@@ -176,6 +214,14 @@ run via CDP eval against the example vault (`T-L6`, `AD7`).
   and confirm the render reflects the **source**, not a cached state; confirm no second store
   exists (the only mutation path is the source). *Verifies: no stale render survives a mode
   switch or reused embed (`F2`).*
+  - **Write-path persistence matrix (MUST actually run — read the source, never assume; Bug 33).**
+    In the running vault, perform **each** op and **read the real source line `{…}` back**,
+    asserting its key landed — then confirm the re-render reflects it: rotate cw / ccw, flip h / v,
+    each filter, align left / center / right, each size preset (icon/small/medium/large/original),
+    inline toggle, add-class, crop accept, reset. The native resize handle's `width` **and** every
+    toolbar/menu op must persist. *This is exactly the check Bug 33 slipped through (only `width`,
+    via the handle's separate path, persisted) — the CDP step must read the written source, not
+    assume the DOM changed. Pins **Bug 33**.*
 - **AD2 — Declarative per-layer routing, verbatim.** Confirm each datum lands on its layer
   (target, §2.3): `align` / `width` / `aspect-ratio` / `style` / `.class` on the **outer**,
   `rotate` + `flip` on the **inner-frame**, the crop `transform` + `filter` on the **`<img>`** — by
@@ -210,7 +256,7 @@ run via CDP eval against the example vault (`T-L6`, `AD7`).
   Confirm the `{…}` is real document text CSS-**hidden** when rendered and shown when the line is active
   (`.cm-active` / `.cm-line:has(> .cm-formatting)`); confirm the reveal-for-looking is a display-only
   "fake" raw link painted by the plugin, shown by CSS in **auto** mode (cm-line hover / active line) or
-  **always** mode (the `alwaysShowLink` setting), and **dismissed** per image by the `<>` (eye) toggle
+  **always** mode (the `alwaysShowLink` setting), and **dismissed** per image by the `<>` toggle
   (a `.lie-dismissed` line class that auto-clears in auto mode) — **no reactive JS**, no third "hidden"
   mode. *Verifies one owning path per mode, no double render, the native embed embraced and
   CSS-hidden (`F3`, `F8`, `F17`, `F18`, `T6`).* *To verify (`DEC-6`): that `.cm-active` flips in
@@ -346,6 +392,12 @@ lessons). Pure-logic regressions become **unit** tests (§2); the rest are **CDP
 | Bare embed | a bare `![](…)` line renders the plugin's `block:true` widget (a real height, not a blank line), native image CSS-suppressed | CDP (`AD5`, `T-L13`) |
 | Inline-icon / tiny toolbar | the floating bar sits truly ABOVE a too-small image (`rect.top − h − gap`, below-fallback near the viewport top); float-out fires by coverage | CDP (`D1.1`) |
 | Bug 25 | rotate/flip of a cropped image rides the inner-frame (centre pivot) and never touches the `<img>` crop placement — no drift; export composes content → orient the same way | **unit** (`transforms` setRotation-on-crop, `crop-editor-logic`) + CDP (`AD3`, the 3-layer geometry) |
+| Bug 33 *(SOLVED — basename-collision in the source resolver; fixed via DOM-position resolution)* | **every** toolbar/menu op persists to `{…}`, not only `width` — the per-op persistence matrix + the read-source-back behaviour check | **unit** (§2.8) + CDP (§3 `AD1` write-path matrix) |
+| Bug 32 *(open)* | crop editor on the **live 3-layer** structure: centre origin, handles on the inner `<img>`, the frame/box stays fixed, the overlay image rotates, a `width` resize **preserves** the crop, and the crop/rotate edits **persist** to `{…}` | **unit** (`toCropResult` / §2.8) + CDP (`AD3`, `D8`) |
+| Crop pan hit-area *(SOLVED)* | the pan grip is the **whole visible image** — the dim ghost img is the pan hit-surface (`pointer-events:auto`), so a drag started **outside** the cut frame pans too, while the handles still win their own hits | CDP (`D8`; `scripts/verify-crop-pan.mjs` — real `elementFromPoint` hit-test) |
+| Bug 29 *(SOLVED)* | the reveal toggle shows the **`<>` (code)** icon, not an eye | CDP (`F8`); `scripts/verify-reveal.mjs` |
+| Bug 30 *(SOLVED)* | a `<>` dismiss hides the **whole** raw embed (fake `![](…)` + `{…}`), not just `{…}`; the dismiss/auto-clear state machine resets only on *leave* (a fresh dismiss survives its own tx) | **unit** (`reduceReveal`, `tests/regressions.test.ts`) + CDP (`F8`, `F3`; `scripts/verify-reveal.mjs`) |
+| Bug 31 *(SOLVED)* | the revealed `{…}` attribute list keeps its **CM syntax highlighting** (URL tokens), via a single `URL_CLASS` mark that carries **no** `cm-formatting` | **unit** (`URL_CLASS` invariant, `tests/regressions.test.ts`) + CDP (`scripts/verify-reveal.mjs`) |
 
 ### 5.2 Per learned lesson (`T-Ln`)
 

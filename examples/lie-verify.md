@@ -1,4 +1,4 @@
-![](images/sample-landscape.png){.lie-img style="width: 312px"}
+![](images/sample-landscape.png)
 
 ![](images/sample-landscape.png){.lie-img style="transform: rotate(90deg); width: 200px"}
 

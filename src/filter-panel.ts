@@ -2,16 +2,12 @@ import { FilterData, getFilterDefaults } from "./transforms";
 import { t, TranslationKey } from "./i18n";
 import { AnchoredSubmenu } from "./anchored-submenu";
 
-// How the panel was dismissed: keep the change, or throw it away.
-export type FilterPanelClose = "commit" | "cancel";
-
 export interface FilterPanelCallbacks {
   // Apply the working filter to the live image WITHOUT persisting (live preview).
   onPreview: (filter: FilterData) => void;
-  // Persist the working filter into the document (confirm / close-to-keep).
+  // Persist the working filter into the document. Auto-persist (AD8): fired once when the panel
+  // is LEFT (close / Esc / click-away / dismiss), not via an accept button.
   onCommit: (filter: FilterData) => void;
-  // Restore the image to the filter it had when the panel opened (cancel / Esc).
-  onCancel: () => void;
   // The panel element was removed — clear any reference the owner holds.
   onClose: () => void;
 }
@@ -100,7 +96,6 @@ export class FilterPanel {
       // clear all filters to default and preview; the panel stays open.
       onReset: () => this.resetFilters(),
       onCommit: () => this.callbacks.onCommit(this.currentFilter()),
-      onCancel: () => this.callbacks.onCancel(),
       onClose: () => { this.submenu = null; this.body = null; this.callbacks.onClose(); },
     });
     this.submenu = submenu;
@@ -108,11 +103,11 @@ export class FilterPanel {
     this.updateHistogram();
   }
 
-  // Dismiss the panel. "commit" persists the working filter; "cancel" reverts the
-  // live preview to the filter the image had on open. Idempotent (AnchoredSubmenu
-  // guards against double-fire).
-  close(action: FilterPanelClose = "commit"): void {
-    this.submenu?.close(action);
+  // Leave the panel. Auto-persist: the working filter is persisted once (`persist`, the default);
+  // `persist=false` is the silent teardown for plugin unload. Idempotent (AnchoredSubmenu guards
+  // against double-fire).
+  close(persist = true): void {
+    this.submenu?.close(persist);
   }
 
   // The non-default working values, ready to persist.

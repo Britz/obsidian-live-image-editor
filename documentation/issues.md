@@ -44,6 +44,26 @@
 
 ### Known open bugs
 
+*(Bug 33 — the bare-key WRITE PATH — is **SOLVED**; the real root cause was a basename collision in
+the source resolver, NOT the hypothesized "serialize emits only width". See **Resolved by the
+write-path matrix + Bug 33 fix** under SOLVED / DONE.)*
+*(Bug 32 — the crop editor not migrated to the 3-layer model (cluster) — is **SOLVED** (incl. the
+true in-place conversion that closed the DEFER "Crop-in-place" item, and the host-wide auto-persist);
+see **Resolved by the crop-editor in-place rework** under SOLVED / DONE. The drag haptics +
+pinch-sensitivity feel remain the one MANUAL check.)*
+- [ ] **Auto-persist on anchor-disconnect can hit the wrong occurrence of a DUPLICATED image.** Any
+      panel (crop/filter/size) that auto-persists when its anchor leaves the DOM (scrolled out of the
+      CM6 viewport mid-edit) re-resolves the source line from a now-DETACHED `activeImage`, so
+      `locateImage` can't use the line-accurate `posAtDOM` path and falls back to the basename scan
+      (`findImageInSource` → first occurrence — the Bug-33 failure mode). So editing the *2nd* embed of
+      a repeated file and then scrolling it out of view can write to the *1st*. Pre-existing for
+      filter/size (they already committed on disconnect); newly reachable for crop (the old crop
+      *cancelled* on disconnect). *Fix (a focused follow-up):* capture the resolved `ImageLocation` at
+      panel-open and reuse it on commit instead of re-resolving from the detached image; add a row to
+      the `verify-write-path.mjs` matrix. Narrow trigger (duplicated image + scroll-out mid-edit).
+*(Bugs 29–31 — the LP reveal / source-rendering cluster — are **SOLVED**; see **Resolved by the
+LP reveal cluster fix** under SOLVED / DONE.)*
+
 *(Bug 25 — rotate/flip drifting an already-cropped image — is **SOLVED** by the crop-geometry rework;
 see **Resolved by the crop-geometry & representation rework** under SOLVED / DONE.)*
 
@@ -53,16 +73,13 @@ cluster, the inline-icon/tiny toolbar position, and the `<>` reveal toggle — h
 
 ### Deferred design / elegance (DEFER)
 
-- [ ] **Crop-in-place** vs the mirroring overlay (the overlay duplicates the box+img geometry).
-      **The structural prerequisite has landed** (the 3-layer model — the display *is already*
-      frame+img). What remains is reworking the crop EDITOR to operate on the live structure and drop
-      the clone overlay. *Deliberately not done in the crop-geometry rework pass:* the overlay is
-      `position:fixed` on `document.body` specifically to ESCAPE ancestor clipping (`.lie-frame` /
-      `.lie-image-area` `overflow:hidden`, and `contain:paint` on block widgets) — true in-place
-      editing must solve that — and the interactive pan/zoom/rotate is not autonomously verifiable
-      (it needs manual drag testing). The editor still uses the overlay; it already sits exactly over
-      the image and now serializes the new crop format correctly. A focused follow-up (with manual
-      crop testing) closes this.
+- [x] **Crop-in-place** vs the mirroring overlay — **SOLVED** (folded into the Bug 32 rework; see
+      **Resolved by the crop-editor in-place rework** under SOLVED / DONE). The clone overlay is gone:
+      the editor edits the LIVE 3-layer DOM, lifting `overflow:hidden` (frame/area) and the host
+      `contain:paint` (`!important`, beaten with `!important`) for the crop duration so the image
+      overflows the cut with the outside dimmed and the inside full — no `document.body` clone, no
+      reflow (the footprint stays reserved). The interactive pan/zoom/rotate feel is the one MANUAL
+      check that remains.
 - [ ] Smaller chrome unification: resize handle, anchored sub-menu, filter-panel docking — all anchor
       to the uniform box.
 - [x] **Portable render runtime + `{…}` format — FINAL model — SOLVED.** The bare-key format, the
@@ -83,8 +100,13 @@ cluster, the inline-icon/tiny toolbar position, and the `<>` reveal toggle — h
 
 ### Housekeeping (CHORE)
 
-- [ ] **Test Plan** (`documentation/test-plan.md`): a **draft** only — review/validate together; the
-      actual tests aren't written.
+- [x] **Test Plan** (`documentation/test-plan.md`): **spec stands; suite implemented.** The §2 pure
+      units (incl. §2.8 per-op persistence — the Bug 33 guard) are written and green (121 passing),
+      and the §3 AD1 write-path matrix is a runnable read-source-back CDP check
+      (`scripts/verify-write-path.mjs`, 14/14 incl. the duplicate-image case). The Bug 32 and Bug
+      29–31 regressions are `it.todo` placeholders (`tests/regressions.test.ts`) pending their own
+      diagnose-first passes; the focused/manual checks (§6: native save dialog, reading-view window,
+      drag haptics) remain manual by design.
 
 ### DRY/KISS audit — fresh against HEAD (2026-06-04)
 
@@ -181,7 +203,7 @@ Behaviour-near — verify carefully (L8 / L10 / Bug-2 territory):
 > - The crop overlay's mirroring image vs the rendered box is tracked as a **design** item
 >   (Deferred → "Crop-in-place"), not a pure refactor.
 > - `RevealMode = "auto" | "always"` (`live-preview.ts:29`) is **not** a retired mode cycle — the two
->   values are derived from the global default-state setting (`alwaysShowLink`); the `<>` (eye) dismiss
+>   values are derived from the global default-state setting (`alwaysShowLink`); the `<>` dismiss
 >   is a SEPARATE per-line override (a `lie-dismissed` line decoration, auto-clearing in auto mode),
 >   not a third reveal mode. `cycleRevealMode` is gone. Leave it.
 
@@ -252,7 +274,7 @@ parallel to the real APIs — exactly the cost AD7 pays the `-logic` split to av
       - **Pure-CSS caption** — `width:0; min-width:100%` inside the shrink-wrapping host; the JS
         width-sync/poll/`ResizeObserver` is gone.
       - **LP overlay + native edit** — see L11/L11b; reveal-for-looking is a display-only fake link
-        keyed by static CSS (auto/always modes + the eye `<>` dismiss), with a global default-state
+        keyed by static CSS (auto/always modes + the `<>` dismiss), with a global default-state
         setting.
       - **Export** reuses `renderer-logic` + the native `filter` string, renders at the original
         resolution; the duplicate crop/rotate math is gone.
@@ -331,10 +353,10 @@ and `lp-rendering-rework-decisions` carry the CDP proof and the per-slice outcom
       "Toolbar unification" deferred idea. CDP-verified across the A bare / B `{…}` / C inline-icon
       fixtures at sizes 24/100/240/782px. *(This also subsumes the earlier "toolbar missing on ≤311px
       images" note — the reflow now keeps the wrapped bar in-chrome while it fits, else floats it.)*
-- [x] **`<>` reveal toggle — RESOLVED into an eye "dismiss" (landed at HEAD).** The rework collapsed
+- [x] **`<>` reveal toggle — RESOLVED into a transient "dismiss" (landed at HEAD).** The rework collapsed
       the reveal to **two natural modes** — `auto` (reveal on cm-line hover or the active line) and
       `always` (reveal everywhere) — driven by the global *Always show the link source* setting
-      (`alwaysShowLink`). The toolbar's `<>` icon is now an **eye toggle** that transiently
+      (`alwaysShowLink`). The toolbar's `<>` icon is now a transient **dismiss toggle** that
       **dismisses** this image's source (fake link + `{…}`): a `lie-dismissed` LINE decoration that
       overrides the natural reveal. In **auto** mode it AUTO-CLEARS once the line is neither hovered
       nor the active line (so the next hover/edit reveals it again); in **always** mode it persists
@@ -379,9 +401,147 @@ the example vault (the new-format probe note + back-compat on the legacy Demo im
       stays whole). The writer emits the new format. *Deferred (a later slice — out of this pass):*
       `width`/`height` still rode `style=` and `align` was still a `.lie-left/right/center` class — both
       since migrated to bare keys (see the portable-runtime rework below).
-- [ ] **Crop-in-place editor — still open** (the overlay-vs-live-structure rework). See the DEFER item
-      at the top; the structural prerequisite (3-layer) is in place, the editor rework is a focused
-      follow-up that needs manual interactive crop testing.
+- [x] **Crop-in-place editor — DONE** (see **Resolved by the crop-editor in-place rework** below).
+
+### Resolved by the crop-editor in-place rework (2026-06-04)
+
+Bug 32 (the editor cluster) + the DEFER "Crop-in-place" + a host-wide **auto-persist** change. The
+crop editor was re-derived from AD3 to edit the LIVE 3-layer DOM (no clone), mirroring the render
+core's geometry so **preview == committed by construction**. Unit-tested (128 passing) + a 20/20
+read-DOM-back CDP check (`scripts/verify-crop.mjs`, Live Preview **and** reading view, no console
+errors). The drag haptics + pinch sensitivity feel are the one MANUAL check (a focused-window test).
+
+- [x] **Bug 32 — crop editor migrated to the live 3-layer model — SOLVED✓CDP.** *Cause:* the editor
+      ran on the OLD pre-rework assumptions — a `position:fixed` **clone** on `document.body` with a
+      **top-left** transform-origin and absolute-px translate — while the renderer had moved to the
+      3-layer DOM with a **centre** origin and `%`-translate placement. So (A) rotate pivoted the
+      image corner and the framed content swung out of view (B/C the rotate "looked dead" / the
+      overlay "didn't rotate" were the same top-left artifact); (D) the white handles sat on a clone
+      frame, not the inner image; (E) no edge handles were ever emitted; (F) the native-handle hide
+      was scoped to `.lie-wrapper` only, so it leaked in reading view; (G) a width edit desynced the
+      crop; (H) the gestures were undamped. *Fix (from AD3):* the editor now edits the live
+      `.lie-image-area → .lie-frame → <img>` in place and drives the SAME `toCropResult` placement the
+      renderer commits (centre origin, `translate(%)` / `rotate` / per-axis `scale`), so the live
+      preview IS the committed render — A/B/C closed. Handles attach to a `.lie-crop-handles` box that
+      tracks the inner image (4 corner aspect-locked + 4 edge single-axis + a rotate knob); the cut
+      window + footprint box stay fixed during the session (presets reshape only the cut, gestures
+      move/scale/rotate the image) — D/E. True **in-place**: `.lie-cropping` lifts `overflow:hidden`
+      on the frame/area and the host `contain:paint` (app.css `!important`, beaten with `!important`)
+      for the crop duration; a dim ghost copy shows the croppable surround (outside dimmed, inside
+      full) with no `document.body` clone and no reflow — closing the DEFER "Crop-in-place". The
+      native handle is hidden host-agnostically (`.lie-cropping .image-resize-corner`) in BOTH views —
+      F. The `width` write paths (toolbar custom-size + the LP resize handle `rewriteWidth`) are
+      field-additive and the placement is column-invariant, so a width edit PRESERVES `transform=` /
+      `aspect-ratio=` — G. Wheel + trackpad-pinch zoom are damped by one named constant each (pan
+      stays 1:1) — H. (Code: `crop-editor.ts` rewritten; `crop-editor-logic.ts` `toCropResult`
+      per-axis scale + the pure `parsePlacement` round-trip; `styles.css` crop chrome; `main.ts`
+      `crop()` persist-or-clear; `anchored-submenu.ts`/`filter-panel.ts` auto-persist. Regressions:
+      `tests/crop-editor-logic.test.ts` (round-trip == no drift, edge-handle `scale(sx,sy)`),
+      `tests/regressions.test.ts` (width-edit keeps the crop, both paths). Structural CDP:
+      `scripts/verify-crop.mjs` 20/20. Fixture: `examples/Crop editor (Bug 32).md`.) *Post-review
+      hardening:* assign `this.cropEditor` BEFORE `open()` so a synchronous self-close (image not in
+      the 3-layer DOM) can't restore a dead ref and jam the trigger; skip `.lie-cropping` images in
+      `reconcileFromSource` so a layout-change re-render can't clobber a live reading-view session;
+      `unrotate` now mirrors the pan delta on a flipped frame too (`S·R(-θ)`, not just `R(-θ)`).
+- [x] **Crop teardown restores ALL transient overrides on EVERY exit — VERIFIED✓CDP.** *Concern:* the
+      old editor had two teardown paths (confirm vs cancel — the DRY audit's "double teardown"); if
+      only one restored the lifted host `contain`, a confirmed crop would leave `contain:none` stuck
+      and permanently break the LP block-widget paint-containment. *Verified:* the auto-persist rework
+      collapsed teardown into a SINGLE `exitCropMode` run from the one `onClose` that
+      `AnchoredSubmenu.close()` fires on every exit (commit / Esc / click-away / dismiss / unload), so
+      there is no second path. `scripts/verify-crop-teardown.mjs` proves it structurally per exit path
+      on a real `.lie-wrapper-block` host (pre-crop `contain:paint`): lifted to `none` during crop,
+      and after EVERY exit the host `contain` reads back `paint` (the no-op path proves the
+      paint→none→paint round-trip on the same un-rebuilt element), no `.lie-cropping`/inline `contain`
+      leak, no orphan `.lie-crop-*` nodes, the image renders, no console error.
+- [x] **Auto-persist for the shared sub-menu host (crop / filter / size) — DONE.** The host no longer
+      has accept / cancel buttons (F14/D6/AD8 re-grounded): while a panel is open the working state is
+      a LIVE DOM preview only (no source write); LEAVING it (close / Esc / click-away / dismiss /
+      context loss) persists ONCE through the shared `isolateHistory.of("full")` writer = **one undo
+      step** for the whole editing session. The only in-session revert is the per-panel **Reset**
+      (Ctrl/Cmd-Z afterwards undoes the session). Esc now LEAVES-and-persists (it no longer discards);
+      plugin unload is the one silent teardown (`close(false)`). (Code: `anchored-submenu.ts`
+      `close(persist)` + no X/check in `buildHeader`; `filter-panel.ts`, `size`/`main.ts` openers
+      drop `onCancel`; `crop-editor.ts` persists-or-clears on leave.)
+- [x] **Crop pan must grab the WHOLE image (inside AND outside the cut frame) — SOLVED✓CDP.**
+      *Cause (a pointer-events/hit-area bug, not optics):* in-place crop overflows the full image past
+      the cut window; that overflow is the dim ghost (`.lie-crop-ghost-img`). `.lie-crop-ghost` is
+      `pointer-events:none` and the img INHERITED it, so the whole region OUTSIDE the cut frame was a
+      non-target — the pan listener (on `.lie-image-area`) only ever fired from INSIDE the cut (where
+      the bright live `.lie-frame` at z:2 catches and bubbles to the area); outside there was no
+      catching layer (ghost = none, chrome z:6 = none), so the drag fell through to the document and no
+      pan started. *Fix (structural, at the hit layer):* make the ghost IMG the pan hit-surface —
+      `pointer-events:auto` on `.lie-crop-ghost-img` (the frame BOX stays `none`, click-through). The
+      grip is now the whole visible image: INSIDE the bright `.lie-frame` (z:2) catches, OUTSIDE the dim
+      ghost img (z:1) catches — both bubble to the area's pan listener; the dimming is the img's own
+      opacity (no separate blocking overlay), and the chrome/handles (z:6, box `none`; only the
+      handle/rotate children `auto`) still win their own hits, so pan never collides with resize/rotate.
+      *Guard:* `scripts/verify-crop-pan.mjs` — a read-DOM-back CDP check that proves via real
+      `elementFromPoint` hit-testing that the pan layer is hit-testable (frame box + chrome are `none`),
+      a drag STARTED OUTSIDE the cut frame translates the live img, an inside drag does too, and a
+      handle still wins its own hit. (Code: `styles.css` `.lie-crop-ghost-img { pointer-events:auto }`.)
+
+### Resolved by the LP reveal cluster fix (2026-06-04)
+
+The Bug 29–31 cluster (LP reveal / source-rendering), diagnose-first via CDP. Plus the F8/F20 doc
+alignment to the **auto** default.
+
+- [x] **Bug 29 — reveal toggle showed an eye icon — SOLVED✓CDP.** *Cause:* `makeRevealButton`
+      rendered `eye`/`eye-off`. *Fix:* it now renders the Lucide **`code`** glyph (`<>`) in both
+      states; the dismissed state shows faint (`.is-off`) + a flipped tooltip/aria, so the
+      affordance stays honest without an eye. CDP: the toolbar reveal SVG is `lucide-code`.
+- [x] **Bug 30 — `<>` dismiss must hide the WHOLE raw embed — already covered; re-verified.**
+      *Diagnosis:* the suspected cause (`.lie-dismissed` not covering `.lie-fake-link`) was **already
+      fixed** by the earlier reveal-toggle rework — `styles.css` has
+      `.lie-dismissed .lie-fake-link, .lie-dismissed .lie-attr { display:none !important }`, covering
+      BOTH the fake `![](…)` link and the `{…}` (and `!important` beats the non-important
+      `.cm-active`/hover reveal rules). CDP confirmed: on dismiss, `.lie-fake-link` AND `.lie-attr` both
+      compute to `display:none`, and the active line carries no leaked native source tokens (Obsidian
+      keeps `![…]` an embed, L11b — only `{…}`/alt become editable text, which the dismiss hides). The
+      dismiss-hide itself needed no CSS/markup change; the diagnose-first pass additionally **extracted
+      the dismiss/auto-clear state machine to a pure `reduceReveal`** (`live-preview-logic`) — making the
+      subtlest part executable-testable — and **hardened the auto-clear** so a fresh `<>` dismiss always
+      takes effect in its OWN transaction (resetting only on a LATER leave / cursor-move). That closes a
+      latent edge where the `:focus-within` / keyboard reveal path could reach the `<>` control with no
+      prior `mouseenter` (so `hoveredLine` is unset), instantly clearing the dismiss; it also aligns the
+      auto-clear with its stated "clear on leave, not within a visit" intent. Pinned by
+      `tests/regressions.test.ts` (the `reduceReveal` state-machine units) + `scripts/verify-reveal.mjs`
+      (the live-DOM `display:none` check, always mode).
+- [x] **Bug 31 — the `{…}` lost its syntax highlighting — SOLVED✓CDP.** *Cause:* in LP the `{…}`
+      block was one plain `lie-attr lie-rev-<mode>` mark with no CM tokens (the inline-widget/bare-key
+      migration dropped the highlight — CDP: 0 cm-token children, plain text colour). *Fix:* the build
+      now marks the whole `{…}` with a SINGLE `Decoration.mark` carrying `lie-attr lie-rev-<mode>` PLUS
+      `URL_CLASS` (`cm-string cm-url`, from `live-preview-logic`), so the revealed block is highlighted
+      like a `(url)` string while the reveal/dismiss visibility rules still key on `.lie-attr`.
+      **Deliberately NOT `cm-formatting`/`URL_BRACE_CLASS`:** a direct cm-line child carrying
+      `cm-formatting` would match `.cm-line:has(> .cm-formatting)` — the heuristic that detects
+      Obsidian's OWN native source reveal — and wrongly hide the fake link (so the `{…}` braces are
+      coloured as plain url-string, not brace-formatting; regression guarded by
+      `scripts/verify-reveal.mjs`). CDP: the `{…}` now carries `cm-url` tokens + a themed colour.
+- [x] **F8 / F20 default = auto (docs).** The requirement said the reveal defaults to *shown*; the
+      code (and the model) default `alwaysShowLink` OFF = **auto** (reveal on hover / active line).
+      requirements.md F8 + F20 aligned; the per-line `<>` dismiss is unchanged.
+
+### Resolved by the write-path matrix + Bug 33 fix (2026-06-04)
+
+- [x] **Bug 33 — toolbar/menu edits wrote to the WRONG image; almost nothing appeared to persist —
+      SOLVED✓CDP.** *Symptom:* the resize handle's `width` persisted, but presets / rotate / flip /
+      filter / align / crop seemed to do nothing. *Diagnosis (the hypothesis was wrong — diagnose-first
+      paid off):* `serializeTransform` and the whole `modifyTransform → serialize → writeSource` path
+      were **fine** (CDP: driving any op on a SINGLE image persisted every key). The real root was the
+      **source resolver**: `findImageInSource` matched by **basename and returned the FIRST
+      occurrence**, so any op on a non-first embed of a **repeated file** wrote to the first image's
+      line — and the demo reuses `sample-*.png` many times, so most ops "did nothing" (a far-away image
+      changed instead). The resize handle escaped this because it resolves the line from the rendered
+      image's **DOM position** (`view.posAtDOM(wrapper)`), not basename. *Fix (at the root):* a new
+      `locateImage` resolves the active image's line from its DOM position via CM6 `posAtDOM` (the same
+      line-accurate path the handle uses), with the basename scan only as a fallback (reading view /
+      no live editor); a new `findImageInLine` matches the embed on that exact line. Every toolbar/menu
+      resolution (`resolveLocation` + the crop / size / filter / add-class / export openers) now routes
+      through it. *Guards:* the §2.8 per-op persistence units (pure — every op serializes its key) and
+      the runnable §3 AD1 write-path matrix `scripts/verify-write-path.mjs` (reads the real source
+      back; includes the duplicate-image case that pins the basename collision). CDP-verified: rotating
+      the SECOND of two same-file embeds writes the second line, the first stays untouched.
 
 ### Resolved by the portable-runtime + format-migration rework (2026-06-04)
 
@@ -433,12 +593,12 @@ the portable runtime is built.
       cursor-reveal; the plugin overlays its own image. Reveal-for-looking (F8) is a display-only fake
       raw link + the `{…}`, with **two natural modes** — `auto` (reveal on cm-line hover or the active
       line) and `always` (reveal everywhere) — from the global default-state setting `alwaysShowLink`
-      (AB19/F20), plus an **eye `<>` toggle that transiently DISMISSES** this image's source
+      (AB19/F20), plus a **`<>` toggle that transiently DISMISSES** this image's source
       (`lie-dismissed`, not persisted per image; auto-clears in auto mode). There is no third "hidden"
       reveal mode and no `cycleRevealMode` cycling (code: `src/live-preview.ts`). Editing (F9) is
       Obsidian's native cursor-reveal of the source as real document text (works standalone + inline).
       `{…}` (F3) is hidden by CSS when rendered, shown on the active line. *(Fully declarative in CSS —
-      the fake link yields to the native source via `.cm-line:has(> .cm-formatting)`; the dismiss/eye
+      the fake link yields to the native source via `.cm-line:has(> .cm-formatting)`; the dismiss
       refinement is recorded under "Resolved by the LP rendering rework + follow-ups" above.)*
 
 - [x] **Temperature — virtual-control LOGIC kept; the SLIDER is currently absent (F11, re-verified

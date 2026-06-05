@@ -1,0 +1,184 @@
+#!/usr/bin/env node
+// Bug-32 CROP TEARDOWN CHECK — structural proof that the in-place crop editor fully restores EVERY
+// transient override on EVERY exit path (test-plan §3). The load-bearing one is the host `contain`:
+// crop lifts the LP block-widget `contain:paint` (app.css `!important`, beaten with `!important`)
+// for the crop duration; if any exit failed to restore it, `contain:none` would stick and the
+// widget's paint-containment would be permanently broken. There is ONE teardown (`exitCropMode`)
+// run from the single `onClose` that `AnchoredSubmenu.close()` calls on EVERY exit — this check
+// proves it empirically per path by reading the live computed style back (never assuming).
+//
+// For each exit path it asserts: (active) `.lie-cropping` on area+host, `getComputedStyle(host)
+// .contain === "none"`, area overflow visible, ghost+8 handles present; (restored) `.lie-cropping`
+// gone everywhere, host `contain` back to its PRE-CROP baseline (and != "none"), inline `contain`
+// removed, area overflow back, NO orphan `.lie-crop-*` nodes, the img back in a clean 3-layer box,
+// and no console exception. Run from the repo root:  node scripts/verify-crop-teardown.mjs
+import { execFileSync } from "node:child_process";
+
+const env = {
+  ...process.env,
+  CDP_PORT: process.env.CDP_PORT ?? "9223",
+  CDP_TARGET: process.env.CDP_TARGET ?? "examples",
+};
+
+const EVAL_RUN = `(async () => {
+  window.__TD = "";
+  const out = { paths: {}, fatal: null };
+  const errs = [];
+  const oe = console.error; console.error = (...a) => { errs.push(a.map(String).join(" ")); oe.apply(console, a); };
+  const onErr = (e) => errs.push("UNCAUGHT " + (e.error && e.error.stack || e.message));
+  window.addEventListener("error", onErr);
+  try {
+    const plugin = app.plugins.plugins["live-image-editor"];
+    if (!plugin) { out.fatal = "plugin not loaded"; window.__TD = JSON.stringify(out); return; }
+    const vault = app.vault;
+    const PATH = "_td-fixture.md";
+    // A BARE embed (no brace block) renders as a .lie-wrapper-block widget — the one host that
+    // carries app.css contain:paint (!important). The load-bearing case: crop lifts it to none, and
+    // every exit MUST restore it to paint or the widget's paint-containment stays broken.
+    const BARE = "![](images/sample-landscape.png)";
+    const content = ["# Crop teardown fixture", "", "crop", BARE, ""].join("\\n");
+    let f = vault.getAbstractFileByPath(PATH);
+    if (f) await vault.modify(f, content); else f = await vault.create(PATH, content);
+    await app.workspace.getLeaf(false).openFile(f);
+    await new Promise((r) => setTimeout(r, 1200));
+    const ed = app.workspace.activeEditor && app.workspace.activeEditor.editor;
+    const cm = ed && ed.cm;
+    if (!ed || !cm) { out.fatal = "no editor/cm (open in LP)"; await vault.delete(f); window.__TD = JSON.stringify(out); return; }
+    ed.setCursor({ line: 0, ch: 0 });
+    const LINE = 4;
+    const findImg = () => {
+      const w = Array.from(document.querySelectorAll(".lie-wrapper-block,.lie-wrapper-standalone"))
+        .find((w) => { try { return cm.state.doc.lineAt(cm.posAtDOM(w)).number === LINE; } catch (e) { return false; } });
+      return w && w.querySelector("img");
+    };
+    const block = () => (ed.getLine(LINE - 1).match(/\\{([^}]*)\\}/) || [, ""])[1];
+
+    const orphans = () => document.querySelectorAll(".lie-crop-ghost,.lie-crop-chrome,.lie-crop-handles,.lie-crop-ghost-img").length;
+    const anyCropping = () => document.querySelectorAll(".lie-cropping").length;
+    const inlineContainLeak = () => Array.from(document.querySelectorAll(".lie-wrapper,.image-embed"))
+      .some((h) => h.style.contain && h.style.contain !== "");
+
+    // Drive one exit path; returns its active+restored assertion bag.
+    const runPath = async (name, dirty, exit) => {
+      await vault.modify(f, content);             // reset to the bare (block-widget) image
+      await new Promise((r) => setTimeout(r, 1200));
+      const img = findImg();
+      if (!img) { out.paths[name] = { fatal: "no img" }; return; }
+      plugin.activeImage = img;
+      const area0 = img.closest(".lie-image-area");
+      const host0 = img.closest(".lie-wrapper, .image-embed");
+      const preContain = getComputedStyle(host0).contain;
+      const preOverflow = getComputedStyle(area0).overflow;
+      const before = errs.length;
+
+      plugin.crop();
+      await new Promise((r) => setTimeout(r, 220));
+      const area = img.closest(".lie-image-area");
+      const host = img.closest(".lie-wrapper, .image-embed");
+      const active = {
+        areaCropping: !!area && area.classList.contains("lie-cropping"),
+        hostCropping: !!host && host.classList.contains("lie-cropping"),
+        hostContainNone: !!host && getComputedStyle(host).contain === "none",
+        overflowVisible: !!area && getComputedStyle(area).overflow === "visible",
+        ghost: !!(area && area.querySelector(".lie-crop-ghost-img")),
+        handles8: area ? area.querySelectorAll(".lie-crop-handle").length === 8 : false,
+      };
+
+      if (dirty) {
+        const r = area.getBoundingClientRect();
+        area.dispatchEvent(new PointerEvent("pointerdown", { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true }));
+        document.dispatchEvent(new PointerEvent("pointermove", { clientX: r.left + r.width / 2 + 30, clientY: r.top + r.height / 2 + 18, bubbles: true }));
+        document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+      }
+      await exit();
+      await new Promise((r) => setTimeout(r, 250));
+
+      const img2 = findImg() || img;
+      const area2 = img2.closest(".lie-image-area");
+      // The load-bearing leak check: NO live block widget may be left with contain:none. Covers
+      // both cases — the same host (no rebuild) and a rebuilt-as-different host on commit.
+      const blockHosts = Array.from(cm.dom.querySelectorAll(".lie-wrapper-block"));
+      const restored = {
+        noCroppingAnywhere: anyCropping() === 0,
+        // app.css default re-applies on every live block widget → nothing stuck at "none" (an empty
+        // set passes: a committed crop legitimately turns the bare image into a standalone widget).
+        noStuckContainment: blockHosts.every((h) => getComputedStyle(h).contain === "paint"),
+        // the SAME host that was lifted (when it survives — the no-op path keeps it a block widget):
+        // contain round-trips paint → none → paint on the very element, directly proving removeProperty.
+        sameHostRestored: !host0.isConnected || getComputedStyle(host0).contain === preContain,
+        inlineContainRemoved: !inlineContainLeak(),
+        overflowRestored: !!area2 && getComputedStyle(area2).overflow === preOverflow,
+        noOrphanChrome: orphans() === 0,
+        cleanThreeLayer: !!(area2 && img2.closest(".lie-frame") && img2.closest(".lie-image-area")),
+        imageRenders: !!img2 && img2.offsetWidth > 0,
+        noNewConsoleError: errs.length === before,
+        persisted: dirty ? /transform=/.test(block()) : true,
+      };
+      out.paths[name] = { preContain, preOverflow, hostClass: host0.className, active, restored,
+        blockHostContains: blockHosts.map((h) => getComputedStyle(h).contain) };
+    };
+
+    // 1) no-op leave (clean) FIRST — keeps the bare image a BLOCK widget (no commit, no rebuild), so
+    // it directly proves the contain round-trip paint → none → paint on the SAME element.
+    await runPath("noop_closeCrop", false, async () => plugin.closeCrop());
+    // 2) confirm/auto-persist on menu-leave (dirty) — represents close()/toggle/dismiss/select-other
+    await runPath("confirm_closeCrop", true, async () => plugin.closeCrop());
+    // 3) Esc (dirty) — the host's own capture-phase keydown path
+    await runPath("esc", true, async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    // 4) click-away — the document click handler → dismissToolbar → closeCrop
+    await runPath("clickaway", true, async () => {
+      const h = document.querySelector(".markdown-source-view .cm-content") || document.body;
+      h.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    await vault.delete(f);
+    out.consoleErrors = errs;
+    window.__TD = JSON.stringify(out);
+  } catch (e) {
+    out.fatal = String(e && e.stack || e); window.__TD = JSON.stringify(out);
+  } finally { console.error = oe; window.removeEventListener("error", onErr); }
+})()`;
+
+const EVAL_READ = `window.__TD || ""`;
+
+function parseResult(out) {
+  for (const raw of out.trim().split("\n").reverse()) {
+    const line = raw.trim();
+    if (!line.startsWith('"') && !line.startsWith("{")) continue;
+    try {
+      const once = JSON.parse(line);
+      const obj = typeof once === "string" ? (once ? JSON.parse(once) : null) : once;
+      if (obj) return obj;
+    } catch { /* keep scanning */ }
+  }
+  return null;
+}
+function sleep(ms) { execFileSync("node", ["-e", `setTimeout(()=>{}, ${ms})`]); }
+function runEval() {
+  execFileSync("node", ["scripts/obsidian-debug.mjs", "--eval", EVAL_RUN], { env, encoding: "utf8" });
+  for (let i = 0; i < 30; i++) {
+    sleep(1000);
+    const out = execFileSync("node", ["scripts/obsidian-debug.mjs", "--eval", EVAL_READ], { env, encoding: "utf8" });
+    const res = parseResult(out);
+    if (res) return res;
+  }
+  throw new Error("timed out waiting for window.__TD");
+}
+
+const res = runEval();
+if (res.fatal) { console.error("FATAL:", res.fatal); process.exit(2); }
+
+let failed = 0;
+const ACTIVE = ["areaCropping", "hostCropping", "hostContainNone", "overflowVisible", "ghost", "handles8"];
+const RESTORED = ["noCroppingAnywhere", "noStuckContainment", "sameHostRestored", "inlineContainRemoved",
+  "overflowRestored", "noOrphanChrome", "cleanThreeLayer", "imageRenders", "noNewConsoleError", "persisted"];
+for (const [name, p] of Object.entries(res.paths)) {
+  if (p.fatal) { console.log(`FAIL  [${name}] ${p.fatal}`); failed++; continue; }
+  console.log(`\n[${name}]  host="${p.hostClass}"  pre-crop contain="${p.preContain}"`);
+  for (const k of ACTIVE) { const ok = p.active[k]; console.log(`  ${ok ? "PASS" : "FAIL"}  active:${k}`); if (!ok) failed++; }
+  for (const k of RESTORED) { const ok = p.restored[k]; console.log(`  ${ok ? "PASS" : "FAIL"}  restored:${k}`); if (!ok) failed++; }
+}
+console.log(`\n${failed === 0 ? "ALL PATHS RESTORE — no leak" : failed + " assertion(s) FAILED"}`);
+if (res.consoleErrors && res.consoleErrors.length) console.log("console errors:", JSON.stringify(res.consoleErrors));
+if (failed) { console.error("\nTeardown check FAILED — raw:", JSON.stringify(res.paths, null, 2)); process.exit(1); }
+console.log("crop teardown check OK");

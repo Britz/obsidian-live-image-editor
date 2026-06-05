@@ -175,10 +175,14 @@ current code and are restated here as architecture, not invented anew.
   verified in the running app.
 
 - **AD8 — One shared sub-menu host for all editing panels.** *(F14, D6)* Crop, Filters, Export
-  and Resize open through a single host that provides the greyed-toolbar state, the
-  icon-based reset/accept/dismiss actions, Esc-to-dismiss and the open/close toggle. Placement
-  is the only thing that varies by size (compact menus hang under the toolbar; the large
-  filter panel docks beside the image). The behaviour is implemented once, not per feature.
+  and Resize open through a single host that provides the greyed-toolbar state, the per-panel
+  **reset** icon, Esc/dismiss and the open/close toggle. It is **auto-persist**: no accept/cancel
+  — while open the working state is a live DOM preview only; **leaving** the host (close / Esc /
+  click-away / dismiss / context loss) persists it **once** through the shared
+  `isolateHistory.of("full")` writer = one undo step for the session (Reset is the only in-session
+  revert; plugin unload is the one silent teardown). Placement is the only thing that varies by
+  size (compact menus hang under the toolbar; the large filter panel docks beside the image). The
+  behaviour is implemented once, not per feature.
 
 - **AD9 — Reuse the platform (DRY).** *(F5, F6, F21, F22, D4, F13)* Where Obsidian already
   provides the capability, the platform's own code is the building block: `MarkdownRenderer`
@@ -308,11 +312,18 @@ display state — each produces an edit that round-trips through the model layer
   divider-wrapping (D1, D2, F7); the entry point to every editing action. Sits inset at the
   image top, or **above** the image when it is too small to hold the bar (D1.1). That too-small
   placement is **declarative — a CSS container query on the box — with no JS measurement**.
-- **AB11 — Shared sub-menu host** — the one component realizing AD8 (greyed toolbar, icon
-  actions, Esc, open/close toggle, per-panel reset); its placement logic is pure and tested.
-- **AB12 — Crop editor** — the in-place crop overlay with movable/rotatable/scalable original and
-  resizable frame; quantization to whole pixels and fixed angle steps **during** the interaction
-  is pure and tested (F12, D8).
+- **AB11 — Shared sub-menu host** — the one component realizing AD8 (greyed toolbar, per-panel
+  reset icon, Esc/dismiss, open/close toggle, **auto-persist on leave**); its placement logic is
+  pure and tested.
+- **AB12 — Crop editor** — edits the **LIVE 3-layer DOM in place** (no clone): the user
+  moves/scales/rotates the original under a fixed cut window, the editor driving the SAME
+  `toCropResult` placement the render core commits (centre origin) so **preview == committed**.
+  Handles (corner aspect-locked + edge single-axis + rotate) sit on the inner `<img>`; the cut
+  window + footprint box stay fixed (presets reshape the cut). For the crop duration it lifts the
+  frame/area `overflow:hidden` + the host `contain:paint` and dims the overflow (a ghost copy) — no
+  reflow. Quantization to whole pixels / fixed angle steps **during** the interaction is pure and
+  tested; the structural facts are CDP-verified (`scripts/verify-crop.mjs`), the drag feel manual
+  (F12, D8).
 - **AB13 — Filter panel** — the docked panel with histogram and grouped sliders, including the
   temperature approximation; reads/writes the declarative contract (F11, D7).
 - **AB14 — Size sub-menu** — the size presets (icon/small/medium/large/original) plus manual

@@ -43,9 +43,12 @@ no language or link-format setting of its own.
   environment supports hovering (a desktop pointer, or a pen that reports hover). There is no
   explicit platform-specific trigger.
 - **F8 — Raw-link reveal.** A control **shows / hides** the raw link of the image. The reveal
-  is triggered **either from the toolbar** (its reveal control) **or by the editor cursor**
-  moving onto the image's line. The reveal is **not persisted** per image; which state is the
-  default (shown or hidden) is a general setting, defaulting to **shown**.
+  is triggered **either from the toolbar** (its `<>` reveal control) **or by the editor cursor**
+  moving onto the image's line. The reveal is **not persisted** per image; the general
+  *default reveal state* setting picks the natural mode, defaulting to **auto** — the source is
+  revealed only on **hover or the active (cursor) line**, not always shown. (The alternative,
+  *always*, reveals it everywhere.) The per-image `<>` toggle is a transient **dismiss** on top of
+  the natural mode (auto-clears in auto mode).
 - **F9 — Raw-link edit.** While revealed, the raw link is **editable text that writes edits
   back to the document** (the image updates live). It behaves like inline document text: the
   editor cursor can move **into** the field and edit it as if it were normal text.
@@ -66,9 +69,11 @@ no language or link-format setting of its own.
   overwrite, or relocate. It never overwrites silently, and falls back to an in-app dialog where no
   native one is reachable (mobile).
 - **F14 — Shared editing sub-menu.** Crop, Filters, Export and Resize all open through **one
-  shared host element** — a modular component, not reimplemented per feature. The host
-  provides **reset**, **accept** and **close / dismiss** actions and can be closed with
-  **Esc**.
+  shared host element** — a modular component, not reimplemented per feature. It is
+  **auto-persist**: while a panel is open the working state is a **live preview** only (no
+  source write); **leaving** the panel (close / Esc / click-away / dismiss) persists it **once**
+  as a single undo step. The host provides a per-panel **reset** (the only in-session revert) and
+  **close / dismiss** — there is **no separate accept or cancel**; **Esc** leaves-and-persists.
 - **F15 — Built-in alignment & inline.** Built-in, toggleable **alignment** (left / right /
   center) and **inline** styling, plus a reset that restores defaults. Alignment exists as a
   functional capability; whether it is carried as an attribute key or a CSS class is an
@@ -90,7 +95,7 @@ no language or link-format setting of its own.
 - **F19 — Commands.** Image-context commands for the transforms, sizing, alignment,
   add-class, reset, inline toggle and export (active only when an image is in context).
 - **F20 — Settings.** General toggles — hover toolbar, captions, and the **default raw-link
-  reveal state** (shown / hidden, F8); the **preset widths** for small / medium / large (F24);
+  reveal state** (auto / always, F8; default **auto**); the **preset widths** for small / medium / large (F24);
   the detected-snippet list with per-class toggles plus **install / reset of the bundled example
   snippets** (F16.1); and the optional editing-toolbar integration.
 - **F21 — Localization.** Follows Obsidian's language automatically, reusing the platform's
@@ -142,10 +147,11 @@ no language or link-format setting of its own.
   line above the image: borderless, full content width, auto-height (wraps fully, never
   clipped), never a boxed or resizable text field.
 - **D6 — Sub-menu appearance.** While the shared sub-menu (F14) is open, the toolbar is
-  **greyed out and inactive**, and its reset / accept / dismiss actions are shown as
-  **icons**. Placement is the only thing that varies by size — compact menus hang under the
-  toolbar, the large filter panel sits beside the image — and the menu is never clipped or
-  internally scrolled. Image + toolbar + open panel form one continuous active region.
+  **greyed out and inactive**, and its **reset** + **dismiss** actions are shown as **icons**
+  (auto-persist — no accept/cancel; leaving persists, F14). Placement is the only thing that
+  varies by size — compact menus hang under the toolbar, the large filter panel sits beside the
+  image — and the menu is never clipped or internally scrolled. Image + toolbar + open panel form
+  one continuous active region.
   - **D6.1 — Resize panel contents:** the resize sub-menu shows the size presets (F24) and
     **manual width and height entry fields placed side by side**. (Its reset is the shared
     host's per-panel reset, part of F14.)
@@ -156,7 +162,12 @@ no language or link-format setting of its own.
 - **D8 — In-place crop.** Activating crop keeps the image's exact size and position — **no
   jump or reflow** — and overlays the current state. Outside the frame is dimmed, inside is
   full opacity. The original has corner (aspect-locked), edge (single-axis) and rotate
-  handles, plus scroll / pinch to scale.
+  handles, plus scroll / pinch to scale. The cut window and the footprint **box stay fixed**
+  during the session — the cut **shape** changes only via the aspect presets, and the box
+  **size** is changed *outside* crop (the native resize handle D4 / the resize menu F24).
+  *(Realized in place on the live 3-layer DOM — no clone; the frame/area `overflow:hidden` and
+  the host `contain:paint` are lifted for the crop duration. See issues.md → Resolved by the
+  crop-editor in-place rework.)*
 - **D9 — Caption appearance.** A borderless, muted, slightly smaller line centred below the
   image and **never wider than the image** (a long caption wraps within the image width); it
   tracks the image through resize and column changes.

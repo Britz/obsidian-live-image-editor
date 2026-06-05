@@ -2,7 +2,7 @@ import { App, TFile, editorLivePreviewField, setIcon } from "obsidian";
 import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { parseAltText, getWidthPx, getHeightPx } from "./transforms";
-import { lineDecorations, inlineEmbeds, rewriteWidth, EMBED_LINE } from "./live-preview-logic";
+import { lineDecorations, inlineEmbeds, rewriteWidth, reduceReveal, EMBED_LINE, URL_CLASS } from "./live-preview-logic";
 import { estimatedBlockHeight } from "./renderer-logic";
 import { captionMarkdown, createCaption, CaptionHandle } from "./caption";
 import { buildLayers as applyTransformToImage } from "./render-core";
@@ -192,8 +192,10 @@ class EmbedWidget extends WidgetType {
     return toolbar;
   }
 
-  // The eye toggle (F8): click the link source AWAY (dismiss), click again to bring it back.
-  // Transient per-line override; shown faint (`is-off`) + offering "show" while dismissed.
+  // The `<>` toggle (F8/Bug 29): click the link source AWAY (dismiss), click again to bring it
+  // back. The icon is the Lucide "code" glyph (`<>`) in BOTH states — the dismissed state shows
+  // faint (`is-off`) and the tooltip/aria flips, so the affordance stays honest without changing
+  // the icon to an eye.
   private makeRevealButton(view: EditorView, wrapper: HTMLElement): HTMLElement {
     const button = document.createElement("button");
     button.className = "lie-toolbar-btn lie-toolbar-reveal";
@@ -201,7 +203,7 @@ class EmbedWidget extends WidgetType {
     const label = this.dismissed ? t("revealLink") : t("hideLinkSource");
     button.setAttribute("aria-label", label);
     button.title = label;
-    setIcon(button, this.dismissed ? "eye" : "eye-off");
+    setIcon(button, "code");
     button.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
     button.addEventListener("click", (e) => {
       e.preventDefault();
@@ -285,9 +287,15 @@ export function createLivePreviewExtension(
           if (isDismissed) builder.add(d.from, d.from, DISMISSED_LINE);
           // (1) The fake link (the swallowed embed source).
           builder.add(d.from, d.from, Decoration.widget({ widget: new FakeLinkWidget(d.embed, revealMode), side: -1 }));
-          // (2) The {…} block — NATIVE editable text, marked; CSS shows it per mode (F3).
+          // (2) The {…} block — NATIVE editable text, marked. It rides `lie-attr lie-rev-<mode>`
+          // (so CSS shows/hides it per mode + the dismiss, F3) AND carries the CM url-string token
+          // classes (`cm-string cm-url`, = URL_CLASS) so the revealed block is SYNTAX-HIGHLIGHTED
+          // like a (url) string (Bug 31: the bare-key/inline-widget migration had dropped the
+          // highlight). Crucially NOT `cm-formatting` — that would make the cm-line match
+          // `:has(> .cm-formatting)`, the heuristic that detects Obsidian's OWN native source
+          // reveal, and wrongly hide the fake link (regression caught by scripts/verify-reveal.mjs).
           if (m && m[3]) {
-            builder.add(embedEnd, embedEnd + m[3].length, Decoration.mark({ class: `lie-attr lie-rev-${revealMode}` }));
+            builder.add(embedEnd, embedEnd + m[3].length, Decoration.mark({ class: `lie-attr lie-rev-${revealMode} ${URL_CLASS}` }));
           }
           // (3) The transformed image — UNIFORM: the plugin always draws it, and the native
           // image is always CSS-suppressed. A `{…}` embed keeps Obsidian's cm-line, so it is an
@@ -329,38 +337,28 @@ export function createLivePreviewExtension(
     return builder.finish();
   };
 
-  // Compute the next dismissed/hovered state. `<>` toggles `dismissed`; mouse enter/leave tracks
-  // the hovered line. AUTO-CLEAR (auto mode only): a dismissed line whose source is now
-  // NaturalReveal:false — neither the cursor's active line NOR hovered — resets, so the next
-  // hover/edit reveals it again (not sticky across visits). In always mode NaturalReveal is never
-  // false, so a dismiss persists until toggled again (or reload).
+  // Compute the next dismissed/hovered state by lifting this transaction's reveal events out of the
+  // CM `Transaction` and delegating the DECISION to the pure `reduceReveal` (unit-tested in
+  // live-preview-logic). `<>` toggles `dismissed`; mouse enter/leave tracks the hovered line; the
+  // auto-clear (auto mode) resets a dismiss once you LEAVE the image — see `reduceReveal` for the
+  // full state-machine contract (incl. the fresh-dismiss-survives-its-own-transaction guard).
   const nextState = (
     value: LivePreviewState,
     tr: import("@codemirror/state").Transaction
   ): { dismissed: Set<number>; hoveredLine: number | null } => {
-    let dismissed = value.dismissed;
-    let hoveredLine = value.hoveredLine;
-    const mutate = (): void => { if (dismissed === value.dismissed) dismissed = new Set(dismissed); };
-    if (tr.docChanged) {
-      dismissed = new Set<number>();
-      for (const pos of value.dismissed) dismissed.add(tr.changes.mapPos(pos, 1));
-      if (hoveredLine !== null) hoveredLine = tr.changes.mapPos(hoveredLine, 1);
-    }
+    const toggles: number[] = [];
+    const hovers: { line: number; on: boolean }[] = [];
     for (const e of tr.effects) {
-      if (e.is(toggleReveal)) {
-        mutate();
-        if (dismissed.has(e.value)) dismissed.delete(e.value); else dismissed.add(e.value);
-      } else if (e.is(setHover)) {
-        hoveredLine = e.value.on ? e.value.line : (hoveredLine === e.value.line ? null : hoveredLine);
-      }
+      if (e.is(toggleReveal)) toggles.push(e.value);
+      else if (e.is(setHover)) hovers.push(e.value);
     }
-    if (!getAlwaysShow() && dismissed.size) {
-      const active = tr.state.doc.lineAt(tr.state.selection.main.head).from;
-      for (const lineFrom of [...dismissed]) {
-        if (lineFrom !== active && lineFrom !== hoveredLine) { mutate(); dismissed.delete(lineFrom); }
-      }
-    }
-    return { dismissed, hoveredLine };
+    return reduceReveal(value, {
+      remap: tr.docChanged ? (pos) => tr.changes.mapPos(pos, 1) : null,
+      toggles,
+      hovers,
+      activeLineFrom: tr.state.doc.lineAt(tr.state.selection.main.head).from,
+      alwaysShow: getAlwaysShow(),
+    });
   };
 
   return StateField.define<LivePreviewState>({

@@ -103,11 +103,16 @@ function sizeLayers(img: HTMLImageElement, outer: HTMLElement, frame: HTMLElemen
 
   if (isCrop(t)) {
     // The source fills the frame's width (the cut-frame baseline), keeps its aspect, and is
-    // positioned by the crop placement (top-left within the frame — a layout position, NOT
-    // mixed into the transform string). The frame (and its orientation) does the rest.
+    // CENTRED in the frame statically (inset:0 + margin:auto — never mixed into the transform
+    // string, AD2); the crop placement then pans/zooms/ROTATES it about its CENTRE
+    // (transform-origin:center) — the same origin the in-place editor uses, so a rotate pivots
+    // intuitively and editor == render (Bug 32 A). The frame (+ its orientation) does the rest.
     img.style.top = "0";
     img.style.left = "0";
-    img.style.transformOrigin = "top left";
+    img.style.right = "0";
+    img.style.bottom = "0";
+    img.style.margin = "auto";
+    img.style.transformOrigin = "center";
     img.style.transform = t.transform ?? "";
     img.style.width = "100%";
     img.style.height = "auto";
@@ -123,8 +128,13 @@ function sizeLayers(img: HTMLImageElement, outer: HTMLElement, frame: HTMLElemen
   }
 
   // Non-crop: the img fills the frame (the orientation lives on the frame, about its centre).
+  // Centred statically (inset:0 + margin:auto) — same as the crop case, so a power-user content
+  // transform also pivots about the centre and the placement string stays free of centering.
   img.style.top = "0";
   img.style.left = "0";
+  img.style.right = "0";
+  img.style.bottom = "0";
+  img.style.margin = "auto";
   img.style.transformOrigin = "center";
   img.style.transform = t.transform ?? ""; // usually empty; a power-user content transform passes through
   img.style.width = "100%";
@@ -207,6 +217,9 @@ function resetLieState(img: HTMLImageElement): void {
   img.style.height = "";
   img.style.top = "";
   img.style.left = "";
+  img.style.right = "";
+  img.style.bottom = "";
+  img.style.margin = "";
   // Clear the inline styles on the wrapping frame + outer (reused DOM), so a transform dropped
   // from the block doesn't linger.
   let el = img.parentElement;

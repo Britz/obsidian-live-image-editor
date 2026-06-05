@@ -75,33 +75,13 @@
 /* The toolbar greyed out + inert while a sub-menu is open (D6). */
 .lie-toolbar-inactive { opacity: 0.4; pointer-events: none; }
 
-/* ---- The uniform image box (R0 / AD3) --------------------------------- *
-   EVERY image (normal, rotated, flipped, cropped, filtered, sized) lives in the
-   SAME `.lie-image-area` box: axis-aligned, overflow:hidden, an aspect-ratio (derived
-   at render from the intrinsic ratio + angle, as --lie-auto-aspect — overridable by
-   an inline aspect-ratio / explicit width+height), column-capped. The img is the
-   only transformed element, absolute-centred (top/left:50% + a translate(-50%,-50%)
-   prepended to its transform) so a rotation pivots about its centre and box-relative %%
-   sizing fills the box. "Normal" is the degenerate case. (The surrounding chrome
-   container is `.lie-box`; column cap: Obsidian's own --file-line-width, AD9.) */
-.lie-image-area {
-  display: inline-block;
-  position: relative;
-  overflow: hidden;
-  max-width: 100%;
-  aspect-ratio: var(--lie-auto-aspect, auto);
-  line-height: 0;
-  vertical-align: bottom;
-}
-.lie-image-area > img {
-  position: absolute;
-  /* The renderer sets top/left (50%/50% centered, or 0/0 for crop), the width/height
-     (%% for non-crop; 100%/auto for crop), transform-origin and the transform (with a
-     centering `translate(-50%,-50%)` prepended for non-crop). Obsidian's
-     `.internal-embed img:not([width]) { max-width: 100% }` would otherwise clamp the
-     image to the box width — !important wins so a rotated image keeps its size. */
-  max-width: none !important;
-}
+/* ---- The uniform 3-layer image structure (R0 / AD3) ------------------- *
+   The LAYER rules (`.lie-image-area` outer / `.lie-frame` inner-frame / `.lie-frame > img` /
+   `img.lie-inline`) live in ONE source — `RENDER_CSS` in `src/render-core.ts` — injected at
+   runtime by BOTH the plugin (`styles-injector`) and the standalone runtime (AB7a), so the
+   image renders identically in Obsidian and on a foreign page (R0). They are NOT in this
+   stylesheet. What stays here is the Obsidian embed INTEGRATION (below) + native-suppression +
+   reveal + tall-float cap + chrome. */
 
 /* Obsidian's embed containers are inline and won't take the height of the box —
    shrink-wrap the ones holding one. `max-width:100%` caps them against their BLOCK containing
@@ -116,10 +96,6 @@
   display: inline-block;
   max-width: 100%;
 }
-
-/* Inline (mid-text) image: flows in the surrounding text. */
-img.lie-inline { vertical-align: middle; }
-.lie-image-area:has(> img.lie-inline) { vertical-align: middle; }
 
 /* ---- Caption (F22 / D9) — pure CSS sizing ----------------------------- *
    The alt text rendered as Markdown below the image, centred, muted, NEVER wider
@@ -244,7 +220,7 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
    `![[…]]`/`![](…)` source — uneditable, syntax-highlighted) and the NATIVE `{…}` text (a
    mark — editable). Visibility is DECLARATIVE in CSS (AD5/R0): it rides on Obsidian's own
    active-line class `.cm-active`, on HOVER of the host cm-line, plus the mode class build()
-   stamps on each (`lie-rev-auto|always|hidden`) — NO JS re-derivation of the cursor line.
+   stamps on each (`lie-rev-auto|always`) — NO JS re-derivation of the cursor line.
    Both are always in the DOM (hidden by default), so revealing is an instant, synchronous
    class flip with no widget-creation lag. When the cursor enters the embed, Obsidian reveals
    the native source itself (its syntax tokens become the line's direct children); the fake
@@ -258,13 +234,17 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
    `.cm-active`, auto mode). On the active line Obsidian keeps the image EMBED and renders NO
    separate native source for the `![…]` part, so the painted fake is the ONLY thing showing the
    link: it MUST stay visible so the source is readable while you edit the {…} (else the link
-   vanishes the moment the cursor enters the line — the bug this fixes). "hidden" (`<>`): no
-   `lie-rev-auto`/`-always` rule matches → the reveal-for-looking stays off. */
+   vanishes the moment the cursor enters the line — the bug this fixes). */
 .cm-line:hover .lie-fake-link.lie-rev-auto,
 .cm-active .lie-fake-link.lie-rev-auto,
 .cm-line:hover .lie-attr.lie-rev-auto,
 .lie-fake-link.lie-rev-always,
 .lie-attr.lie-rev-always { display: inline; }
+/* The `<>` toggle DISMISSED this line's source (build() stamps `.lie-dismissed` on it):
+   override the reveal above and keep it hidden until the dismiss auto-resets (auto: on leave;
+   always: until toggled again). Beats the `display:inline` reveal via `!important`. */
+.lie-dismissed .lie-fake-link,
+.lie-dismissed .lie-attr { display: none !important; }
 /* The {…} attr text shows whenever the line is active or its native source is revealed. The
    ONLY thing that HIDES the fake is Obsidian GENUINELY revealing the real source as the line's
    DIRECT children (e.g. a cmd+A selection that overlaps the line — our fake's own tokens are
@@ -274,7 +254,7 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
 .cm-line:has(> .cm-formatting) .lie-attr { display: inline; }
 .cm-line:has(> .cm-formatting) .lie-fake-link { display: none !important; }
 
-/* The `<>` reveal control reflects the temporary-hide state (D5). */
+/* The `<>` toggle shows faint while the line's source is dismissed (D5). */
 .lie-toolbar-reveal.is-off { color: var(--text-faint); }
 
 /* The chrome container: an inline-block that shrink-wraps to the image, so the toolbar,
@@ -300,7 +280,7 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
   pointer-events: none;
   box-shadow: inset 0 0 0 2px var(--color-accent);
 }
-.lie-wrapper.lie-cropping .lie-image-area::after { content: none; }
+.lie-image-area.lie-cropping::after { content: none !important; }
 
 /* The resize handle — the plugin's own (it draws its own image, not Obsidian's native
    embed), but styled to LOOK like Obsidian's native image handle: a small rounded accent
@@ -335,7 +315,11 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
   transition: opacity 0.1s ease;
 }
 .lie-box:hover .image-resize-corner::after { opacity: 1; }
-.lie-wrapper.lie-cropping .image-resize-corner { display: none; }
+/* Hidden while cropping (D4). Host-agnostic: the crop-active class lands on whichever host the
+   editor finds (`.lie-wrapper` in live preview, `.image-embed` in reading view), so scope by the
+   class alone, not a single host, to cover BOTH views (Bug-32 G — the native handle must never
+   leak into the crop). */
+.lie-cropping .image-resize-corner { display: none !important; }
 
 /* The in-image editing toolbar, inset at the image top, hover-revealed. */
 .lie-toolbar-in-image {
@@ -360,51 +344,60 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
 
 .lie-toolbar-floating { max-width: 92vw; }
 
-/* ---- In-place crop overlay (D8) --------------------------------------- */
-.lie-crop-overlay { z-index: 1000; }
-.lie-crop-image-layer {
+/* ---- In-place crop (D8/AD3) -------------------------------------------
+   The editor edits the LIVE 3-layer DOM in place — NO clone. For the crop duration the editor adds
+   `.lie-cropping` to the outer `.lie-image-area` (and the host) and lifts the host `contain:paint`
+   inline, so the image overflows the cut window: the OUTSIDE is dimmed (a dim ghost copy of the
+   image, un-clipped, behind) and the INSIDE is full (the real `.lie-frame`, still `overflow:hidden`,
+   the bright cut). The footprint box keeps its reserved size → no reflow. The white handle frame +
+   rotate knob sit on the ORIGINAL image (the `.lie-crop-handles` box tracks it via the SAME
+   placement transform); the cut window and the box stay fixed (presets reshape the cut, gestures
+   move/scale/rotate the image). */
+.lie-image-area.lie-cropping { overflow: visible; cursor: grab; }
+.lie-image-area.lie-cropping:active { cursor: grabbing; }
+
+/* The dim ghost: the full image, un-clipped, behind the bright cut — AND the OUTSIDE pan hit-surface.
+   The pan grip must be the WHOLE visible image, inside AND outside the cut. `pointer-events:auto` on
+   the IMG (the frame BOX stays click-through, `none`) makes the dim overflow catch a pan drag:
+   INSIDE the cut the bright `.lie-frame` (z:2) catches, OUTSIDE the dim ghost img (z:1) catches —
+   both bubble to the area's pan listener. The dimming is the img's own opacity (no separate blocking
+   overlay), and the chrome/handles sit above (z:6, box `pointer-events:none`; only the handle/rotate
+   children catch), so pan never collides with resize/rotate. */
+.lie-crop-ghost { z-index: 1; pointer-events: none; }
+.lie-crop-ghost-img { opacity: 0.4; user-select: none; pointer-events: auto; }
+
+/* The bright cut window sits ABOVE the dim ghost (z:1) and below the chrome (z:6); a subtle
+   outline so the cut edge reads against the dim surround. */
+.lie-image-area.lie-cropping > .lie-frame {
+  z-index: 2;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+/* The chrome (handles) on top; the frame box is pointer-transparent so a drag on the image pans,
+   only the handle children catch. */
+.lie-crop-chrome { z-index: 6; pointer-events: none; }
+.lie-crop-handles {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: visible;
+  margin: auto;
+  transform-origin: center;
+  border: 2px solid #fff;     /* the white resize frame ON the original image */
+  box-sizing: border-box;
 }
-.lie-crop-source-img {
-  position: absolute;
-  top: 0;
-  left: 0;
-  max-width: none;
-  max-height: none;
-  transform-origin: top left;
-  opacity: 0.5;
-  cursor: grab;
-  user-select: none;
-}
-.lie-crop-source-img:active { cursor: grabbing; }
-.lie-crop-frame {
-  position: absolute;
-  top: 0;
-  left: 0;
-  border: 2px solid #fff;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
-  z-index: 2;
-  pointer-events: none;
-}
-.lie-crop-handle,
-.lie-crop-rotation-handle { pointer-events: auto; }
 .lie-crop-handle {
   position: absolute;
   width: 12px;
   height: 12px;
   background: #fff;
   border-radius: 2px;
-  z-index: 3;
+  pointer-events: auto;
 }
+/* corner handles — aspect-locked scale */
 .lie-crop-handle-nw { top: -6px; left: -6px; cursor: nw-resize; }
 .lie-crop-handle-ne { top: -6px; right: -6px; cursor: ne-resize; }
 .lie-crop-handle-sw { bottom: -6px; left: -6px; cursor: sw-resize; }
 .lie-crop-handle-se { bottom: -6px; right: -6px; cursor: se-resize; }
+/* edge handles — single-axis scale (D8) */
 .lie-crop-handle-n { top: -6px; left: 50%; transform: translateX(-50%); cursor: n-resize; }
 .lie-crop-handle-s { bottom: -6px; left: 50%; transform: translateX(-50%); cursor: s-resize; }
 .lie-crop-handle-e { top: 50%; right: -6px; transform: translateY(-50%); cursor: e-resize; }
@@ -419,7 +412,7 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
   border: 2px solid #fff;
   border-radius: 50%;
   cursor: crosshair;
-  z-index: 3;
+  pointer-events: auto;
 }
 .lie-crop-rotation-handle::before {
   content: "";

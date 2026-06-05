@@ -6,6 +6,7 @@ import {
   getWidthPx, getPreset, setPresetWidth, setWidthPx,
   temperatureAdjust,
 } from "../src/transforms";
+import { toCropResult } from "../src/crop-editor-logic";
 
 describe("temperatureAdjust (F11 — virtual control nudging other sliders)", () => {
   const base = { hueRotate: 0, saturate: 1, brightness: 1 };
@@ -291,5 +292,84 @@ describe("round-trips (the canonical block is the lossless single encoding)", ()
   it("empty round-trips to empty; a legacy .lie-img note re-serializes without the marker", () => {
     expect(serializeTransform(parseAltText(""))).toBe("");
     expect(serializeTransform(parseAltText(".lie-img"))).toBe(""); // parse-skip keeps back-compat
+  });
+});
+
+// §2.8 — Per-operation persistence (the Bug 33 guard). Every model-mutating op, applied to a
+// base transform, must SERIALIZE to a {…} that contains its key/value (not just `width`), and
+// round-trip (serialize -> parse -> the field is back). These are the pure half of the guard;
+// the wiring (the op's edit actually reaching the source line) is the §3 AD1 CDP write-path
+// matrix (scripts/verify-write-path.mjs), which is where Bug 33's basename-collision lived.
+describe("per-operation persistence (§2.8 — Bug 33 guard)", () => {
+  const base = (): ImageTransform => ({ classes: [] });
+  const block = (t: ImageTransform): string => serializeTransform(t);
+
+  it("setRotation persists rotate= and clears it at 0", () => {
+    const t = base(); setRotation(t, 90);
+    expect(block(t)).toContain("rotate=90");
+    expect(parseAltText(block(t)).rotate).toBe(90);
+    setRotation(t, 270); expect(block(t)).toContain("rotate=270");
+    setRotation(t, 0); expect(block(t)).not.toContain("rotate=");
+  });
+
+  it("toggleFlipH / toggleFlipV persist flip= and clear when toggled off", () => {
+    const t = base(); toggleFlipH(t);
+    expect(block(t)).toContain("flip=horizontal");
+    expect(parseAltText(block(t)).flipH).toBe(true);
+    toggleFlipV(t); expect(block(t)).toContain("flip=vertical");
+    toggleFlipH(t); expect(block(t)).not.toContain("flip=horizontal");
+    expect(block(t)).toContain("flip=vertical"); // V survives H toggle-off
+  });
+
+  it("setFilter persists filter= with the non-default values; all-default clears it", () => {
+    const t = base(); setFilter(t, { brightness: 1.2, grayscale: 1 });
+    expect(block(t)).toContain('filter="brightness(1.2) grayscale(1)"');
+    expect(getFilter(parseAltText(block(t)))).toEqual({ brightness: 1.2, grayscale: 1 });
+    setFilter(t, undefined); expect(block(t)).not.toContain("filter=");
+  });
+
+  it("alignment persists align= and clears on reset", () => {
+    const t = base(); t.align = "left";
+    expect(block(t)).toContain("align=left");
+    expect(parseAltText(block(t)).align).toBe("left");
+    t.align = "center"; expect(block(t)).toContain("align=center");
+    t.align = undefined; expect(block(t)).not.toContain("align=");
+  });
+
+  it("size persists width=N (presets bake to px via setWidthPx); original clears it", () => {
+    const t = base(); setWidthPx(t, 400); // applyPreset('medium') is setWidthPx(presetWidths.medium)
+    expect(block(t)).toContain("width=400");
+    expect(getWidthPx(parseAltText(block(t)))).toBe(400);
+    setWidthPx(t, null); expect(block(t)).not.toContain("width="); // 'original'
+  });
+
+  it("inline toggle persists the inline marker; addClass persists the class", () => {
+    const t = base(); t.inline = true;
+    expect(block(t)).toContain(".lie-inline");
+    expect(parseAltText(block(t)).inline).toBe(true);
+    const t2 = base(); t2.classes.push("rounded");
+    expect(block(t2)).toContain(".rounded");
+    expect(parseAltText(block(t2)).classes).toContain("rounded");
+  });
+
+  it("crop toCropResult persists transform= (+ aspect-ratio= only when shape != original)", () => {
+    // cut 200x150 (4:3) over a 2:1 original -> shape differs -> aspect-ratio stored.
+    const r = toCropResult({ x: 0, y: 0 }, { w: 200, h: 150 }, 0, 1, 200, 2);
+    const t: ImageTransform = { classes: [], transform: r.transform, width: r.width, aspectRatio: r.aspectRatio };
+    const b = block(t);
+    expect(b).toContain("transform=");
+    expect(b).toContain("aspect-ratio=200/150");
+    const re = parseAltText(b);
+    expect(re.transform).toBe(r.transform);
+    expect(isCrop(re)).toBe(true);
+    // a cut that keeps the original ratio stores NO aspect-ratio (derived).
+    const square = toCropResult({ x: 0, y: 0 }, { w: 200, h: 200 }, 0, 1, 200, 1);
+    expect(square.aspectRatio).toBeUndefined();
+  });
+
+  it("setPresetWidth (legacy var path) stays a non-px width in style=", () => {
+    const t = base(); setPresetWidth(t, "large");
+    expect(getPreset(t)).toBe("large");
+    expect(block(t)).toContain("style=\"width: var(--lie-size-large)\"");
   });
 });

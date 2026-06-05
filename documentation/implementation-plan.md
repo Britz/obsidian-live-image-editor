@@ -453,8 +453,12 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
 - **`anchored-submenu.ts` (+ `-logic`)** — `AnchoredSubmenu` is the single host (AD8);
   `placeSubmenu` computes placement (compact under the toolbar; clamped into the viewport,
   never flipped past the explorer).
-- **`crop-editor.ts` (+ `-logic`)** — `CropEditor` overlay; `snapTranslate` / `snapAngle` /
-  `snapScale` quantize live during the drag (F12), `toCropResult` emits the result.
+- **`crop-editor.ts` (+ `-logic`)** — `CropEditor` edits the LIVE 3-layer DOM **in place** (no
+  clone), driving the SAME `toCropResult` placement the render core commits (centre origin →
+  preview == committed); handles on the inner `<img>` (corner aspect-locked + edge single-axis +
+  rotate), the cut window + box fixed, the overflow un-clipped + dimmed for the crop duration.
+  `snapTranslate` / `snapAngle` / `snapScale` quantize live (F12); `parsePlacement` is the pure
+  round-trip inverse; auto-persist on leave.
 - **`filter-panel.ts`** — `FilterPanel`: histogram + grouped sliders + temperature; reads/writes
   the native `filter` value; docked beside the image on the roomier side (D7).
 - **`size-submenu.ts`** — `buildSizeBody`: the presets (icon/small/medium/large/original) and the
