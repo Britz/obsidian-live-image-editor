@@ -5,11 +5,11 @@
 > 1. **OPEN — checklist at the top.** Everything still to do, as `- [ ]` items grouped by kind
 >    (open decisions, verifications, deferred ideas, DRY/KISS, known open bugs, housekeeping). Tick
 >    them off as they land. Items marked **(verify)** could not be confirmed from code/commits and
->    need a check. The **[Release-Requirement]**-tagged items are the community-directory submission
->    gate (the former standalone `RC1–RC11`), each **sorted into its task-type section** with its
->    `RC#` kept inline. The full pass/fail audit record (rules `R1–R30`, with sources) and the manual
->    submission checklist live in the top-level [README → Release compliance](https://github.com/Britz/obsidian-live-image-editor/blob/main/README.md#release-compliance);
->    the open `R…` rules there link back to these sections.
+>    need a check. The **[Release-Requirement]**-tagged items were the community-directory submission
+>    gate (the former standalone `RC1–RC11`); **all of them are now CLOSED in v0.4.2** (Bugs 60–64 +
+>    Feature 22 in the registry below), so the only remaining release work is the manual packaging
+>    checklist. The full pass/fail audit record (rules `R1–R30`, with sources — now all ✅) and the
+>    manual submission checklist live in the top-level [README → Release compliance](https://github.com/Britz/obsidian-live-image-editor/blob/main/README.md#release-compliance).
 > 2. **SOLVED / DONE — registry at the bottom.** Everything already resolved, kept on purpose with
 >    its **cause + fix** so the same mistake is not made twice. The hard-won lessons (**Lesson 1–16**),
 >    decisions (**Decision 1–10**), features (**Feature 1–21**) and the bugs (**one flat global
@@ -73,19 +73,6 @@
       uniform R0 box with no transform). Almost certainly intended (R0 renders every image through the
       box), but unlike `clearStaleTransform` ([main.ts:335](src/main.ts#L335)) it leaves the chrome in
       place — confirm or unwrap. (Clean-room analysis reconcile, 2026-06-05.)
-- [ ] **[Release-Requirement]** **Reconcile `isDesktopOnly: false` with the Electron/Node usage (RC2;
-      P1 community-directory blocker).** Submission rule: _"If your plugin uses any of these
-      [Node.js/Electron] APIs, you must set `isDesktopOnly` to `true`."_ Manifest says `false`
-      ([manifest.json](manifest.json)), but the code uses Electron/Node:
-      `require("@electron/remote"/"electron")` + `require("fs"/"path")` ([export.ts:172](src/export.ts#L172),
-      [export.ts:204-205](src/export.ts#L204)) and `require("@electron/remote"/"electron")` for the rotate
-      gesture ([crop-editor.ts:539](src/crop-editor.ts#L539)). The access is **dynamic + feature-detected**
-      (`(window as any).require` + try/catch + mobile fallbacks: export → `adapter.writeBinary` + modal;
-      rotate → handle), so the plugin genuinely runs on mobile and the static-analysis bot likely won't
-      flag it (no static node imports outside the tree-shaken `dev-bridge.ts`). A **human reviewer** will
-      still question it. **Fix (decide):** keep `false` (mobile works) **and** document the graceful
-      degradation in the code comment / README; OR if any path actually breaks on mobile, flip to `true`.
-      Do not leave it undocumented.
 
 ### Verifications (need eyes on a real / focused window)
 
@@ -134,13 +121,6 @@
       hydrates `tests/runtime-smoke.html` and asserts the built 3-layer structure + applied transform (CI-able,
       no Obsidian), and an export-render guard that drives `renderTransformedImage` and reads the output
       canvas back (the save DIALOG stays manual, F13).
-- [ ] **[Release-Requirement]** **Verify teardown of direct `document`/`window` listeners — or switch to
-      `registerDomEvent` (RC11; P3 community-directory polish).** Guideline: resources must be released on
-      unload. Several listeners bypass `registerDomEvent`: [main.ts:860](src/main.ts#L860),
-      [crop-editor.ts:348-351](src/crop-editor.ts#L348), [live-preview.ts:243-244](src/live-preview.ts#L243),
-      [region-hover.ts:37-38](src/region-hover.ts#L37). Each has its own teardown (`removeListener`/`detach`),
-      so these are not confirmed leaks — but they sidestep Obsidian's auto-cleanup. **Fix:** confirm every
-      path detaches, or move plugin-lifetime listeners onto `registerDomEvent`.
 
 ### Known open bugs
 
@@ -156,7 +136,6 @@
       active-line reveal — e.g. on a dismissed line also suppress the native `![](…)` source tokens
       (scoped to that line) — **without** breaking native editing/selection of the source (Lesson 11). Needs
       a CDP diagnose of exactly what renders on the active line first.
-
 - [ ] **Bug 58 — crop resize handles are hardcoded white (`#fff`), invisible in light mode.** The crop
       editor's handle chrome — the frame border (`.lie-crop-handles`, `border: 2px solid #fff`), the
       corner/edge handle squares (`.lie-crop-handle`, `background: #fff`) and the rotate knob
@@ -171,7 +150,6 @@
       shapes already differ, but a different colour makes that unmistakable. _Nice-to-have:_ render the
       **frame border dotted or dashed** (not solid) to signal the meta-resize layer it operates on.
       Reported 2026-06-05 (user; dark-mode masked it the night before).
-
 - [ ] **Bug 59 — toggling Obsidian's line-break mode makes FLOATED images vanish in Live Preview
       (stale in-place decoration); intermittent.** Obsidian's editor **"Strict line breaks"** setting
       switches between _hard_ breaks (a single newline renders as a break — the **default**) and
@@ -191,32 +169,8 @@
       first occurrence — confirm with a CDP/focused repro (toggle Settings → Editor → _Strict line
       breaks_ with a floated `{ .lie-left }` embed on screen) before fixing. Reported 2026-06-05 (user).
 
-- [ ] **[Release-Requirement] Bug 60 — plugin-name top-level heading in settings violates the directory
-      guideline (RC3; P2 community-directory should-fix).** Guideline: _"Avoid adding a top-level heading …
-      such as 'General', 'Settings', or the name of your plugin."_ [settings.ts:51](src/settings.ts#L51)
-      renders `createEl("h2", { text: t("settingsTitle") })` with `settingsTitle: "Live Image Editor"`
-      ([en.ts:52](src/i18n/en.ts#L52)). **Fix:** delete that line (and the now-unused `settingsTitle` key
-      in `en.ts` / `de.ts`).
-- [ ] **[Release-Requirement] Bug 61 — raw HTML headings instead of `setHeading()` (RC4; P2
-      community-directory should-fix).** Guideline: _"Employ `setHeading()` instead of HTML heading
-      elements."_ All section headings use `createEl("h3", …)`: [settings.ts:85](src/settings.ts#L85),
-      [settings.ts:101](src/settings.ts#L101), [settings.ts:161](src/settings.ts#L161) (plus the h2 in
-      Bug 60). **Fix:** replace each with `new Setting(containerEl).setName(...).setHeading()`.
-- [ ] **[Release-Requirement] Bug 62 — command names are Title Case and bypass i18n (RC5; P2
-      community-directory should-fix).** Guideline: _"Sentence case … only the first word and proper nouns
-      capitalized."_ The size/align commands are hardcoded Title Case and bypass i18n: `"Size: Small"` …
-      `"Align: Center"` ([commands.ts:33-38](src/commands.ts#L33-L38)). **Fix:** `"Size: small"`,
-      `"Align: left"`, etc., and move the strings into `en.ts`/`de.ts` like the rest.
-- [ ] **[Release-Requirement] Bug 63 — remaining UI headings are Title Case (RC6; P2 community-directory
-      should-fix).** [en.ts:62](src/i18n/en.ts#L62) `"CSS Snippets"` → `"CSS snippets"`;
-      [en.ts:73](src/i18n/en.ts#L73) `"Editing Toolbar Integration"` → `"Editing toolbar integration"`.
-      Mirror the same change in `de.ts`.
-- [ ] **[Release-Requirement] Bug 64 — user-defined / constructed paths not run through `normalizePath()`
-      (RC7; P2 community-directory should-fix).** Guideline: _"Use `normalizePath()` whenever you accept
-      user-defined paths … or construct your own paths."_ grep `normalizePath` → 0 hits. Affected: the
-      editable vault path in the export fallback modal ([export.ts:221-223](src/export.ts#L221)) and
-      constructed snippet paths in [snippet-scanner.ts:71-89](src/snippet-scanner.ts#L71). **Fix:** wrap
-      those paths in `normalizePath()`.
+_(Bugs 60–64 — the community-directory should-fix items — are RESOLVED in v0.4.2; see the registry
+below and Feature 22. The bugs that remain open: 57, 58, 59.)_
 
 ### Deferred design / elegance (DEFER)
 
@@ -330,31 +284,9 @@ requirement + the storage/permission implications) before any code.
       this pair — both have zero callers in `src/` and `tests/`
       ([styles-injector.ts:86](src/styles-injector.ts#L86)). Clean removal (no behaviour change).
       (Clean-room analysis reconcile, 2026-06-05.)
-- [ ] **[Release-Requirement]** **Disclose out-of-vault file writes in the README (RC1; P1
-      community-directory blocker).** Policy: _"Accessing files outside of Obsidian vaults"_ requires an
-      explicit README explanation. The export's native save dialog writes to **any user-chosen path outside
-      the vault** via Electron `fs.writeFileSync` ([export.ts:213](src/export.ts#L213); dialog
-      [export.ts:172-216](src/export.ts#L172)). `README.md` does not mention file-system / Electron access
-      (grep `electron|outside vault|file system` → 0 hits). **Fix:** add a short "File system access" note
-      to the README — the native save dialog can write the exported image to a location of the user's
-      choice, including outside the vault.
-- [ ] **[Release-Requirement]** **Manifest description — drop the em-dash; consider an action-verb opener
-      (RC8; P3 community-directory polish).** Submission style: _"Avoid using emoji or special characters"_
-      and _"Start with action statements."_ Current ([manifest.json](manifest.json)) is 128/250 chars, ends
-      with a period, no "This is a plugin" — but opens as a noun phrase and contains an em-dash (`—`).
-      **Suggested:** `"Edit images non-destructively: crop, rotate, flip, resize, and apply CSS filters live, without modifying the original file."`
-- [ ] **[Release-Requirement]** **Move static inline styles to CSS classes (RC9; P3 community-directory
-      polish).** Guideline: _"No hardcoded styling."_ Most of the 96 `.style.` writes are **dynamic
-      geometry** (crop maths, menu positioning) and are acceptable. The **static** ones should be
-      classes/variables — e.g. [settings.ts:177](src/settings.ts#L177) `warn.style.color = "var(--text-error)"`.
-      **Fix:** audit the static cases and replace with a class in `styles.css`; leave runtime-computed
-      geometry as-is.
-- [ ] **[Release-Requirement]** **Prefer the Vault API over the Adapter API where a vault `TFile` exists
-      (RC10; P3 community-directory polish).** Guideline prefers `Vault.*` (caching / race-safety).
-      [export.ts:162](src/export.ts#L162) `vault.adapter.exists(candidate)` on a vault path →
-      `vault.getAbstractFileByPath()`. The `configDir/snippets` adapter calls in
-      [snippet-scanner.ts:43-89](src/snippet-scanner.ts#L43) are unavoidable (config-dir files are not vault
-      `TFile`s) — leave those.
+
+_(The release-requirement housekeeping items RC1/R20, RC8/R27, RC9/R28 and RC10/R29 are DONE in
+v0.4.2 — see Feature 22 in the registry below.)_
 
 ---
 
@@ -707,8 +639,24 @@ architecture encodes most in its decisions (`AD…`).
 - **Feature 21 — F8 / F20 default = auto (docs).** The requirement said the reveal defaults to _shown_; the
   code (and the model) default `alwaysShowLink` OFF = **auto** (reveal on hover / active line).
   requirements.md F8 + F20 aligned; the per-line `<>` dismiss is unchanged.
+- **Feature 22 — Community-directory release-compliance pass (v0.4.2).** Closed the remaining
+  review-checklist rules so the plugin is submission-ready (full audit: [README → Release
+  compliance](../../README.md#release-compliance), rules R1–R30). The non-bug items (the bugs are
+  **Bug 60–64**): **RC1/R20** — README now discloses the export save dialog can write outside the
+  vault (new "File system access & platform support" section). **RC2/R21** — `isDesktopOnly` kept
+  **`false`** (mobile genuinely works via feature-detected Electron/Node + fallbacks: export →
+  in-vault `writeBinary` modal, rotate gesture → on-screen handle); documented in an `export.ts`
+  comment + the README. **RC8/R27** — manifest description leads with an action verb, no em-dash.
+  **RC9/R28** — the one static inline style (`warn.style.color`) moved to a `.lie-settings-warning`
+  CSS class; only runtime-computed geometry stays inline. **RC10/R29** — `suggestExportPath` probes
+  free names via `Vault.getAbstractFileByPath()` instead of `adapter.exists` (the unavoidable
+  config-dir adapter calls stay — not vault `TFile`s). **RC11/R30** — verified (no code change): every
+  direct `document`/`window` listener is interaction-scoped with matching teardown (popup close, crop
+  exit, drag end, submenu/toolbar detach, `{ once: true }`); plugin-lifetime listeners already use
+  `registerDomEvent`, which is deliberately NOT used for the per-interaction ones (it holds until
+  unload, so it can't detach a per-drag `pointermove`).
 
-### Solved bugs (Bug 1–56)
+### Solved bugs (Bug 1–56, 60–64)
 
 - **Bug 1 — AUTO link reveal not shown on first render.** `autoGrow` ran while the textarea was
   `display:none` → height pinned to 0 → OBSOLETE — superseded by the overlay reveal model: no
@@ -1043,3 +991,26 @@ architecture encodes most in its decisions (`AD…`).
   bar + palette fade together. `.lie-class-dropdown` is also added to the region selector + the
   floating-bar mouseover guard. Pinned: `tests/cdp/verify-popup-region.mjs` (popup keeps the region,
   bar stays visible+not-greyed, leaving closes both).
+- **Bug 60 — Plugin-name top-level heading in settings (RC3/R22) — SOLVED.** _Cause:_ the settings tab
+  opened with `createEl("h2", { text: t("settingsTitle") })` rendering the plugin name as a top-level
+  heading — the directory guideline forbids a top-level "General"/"Settings"/plugin-name heading.
+  _Fix:_ removed that line ([settings.ts](../../src/settings.ts)) and the now-unused `settingsTitle`
+  key from `en.ts`/`de.ts`. (SOLVED — build + lint + 162 unit tests green; v0.4.2.)
+- **Bug 61 — Raw HTML headings instead of `setHeading()` (RC4/R23) — SOLVED.** _Cause:_ the three
+  section headings used `createEl("h3", …)`. _Fix:_ each is now
+  `new Setting(containerEl).setName(…).setHeading()` (preset widths, CSS snippets, editing-toolbar
+  integration); the descriptive `<p>` blurbs (a `setting-item-description` class, not a heading) stay.
+  (SOLVED; v0.4.2.)
+- **Bug 62 — Command names Title Case + bypass i18n (RC5/R24) — SOLVED.** _Cause:_ the size/align
+  commands were hardcoded `"Size: Small"` … `"Align: Center"` (Title Case, not localized). _Fix:_ new
+  `cmdSizeSmall`/`cmdAlignLeft`/… keys in `en.ts`/`de.ts` (sentence case: "Size: small", "Align:
+  left", …) consumed by [commands.ts](../../src/commands.ts). (SOLVED; v0.4.2.)
+- **Bug 63 — Remaining UI headings Title Case (RC6/R25) — SOLVED.** _Cause:_ `settingsSnippets` =
+  "CSS Snippets" and `settingsEditingToolbar` = "Editing Toolbar Integration". _Fix:_ en → "CSS
+  snippets" / "Editing toolbar integration"; de → "Editing-Toolbar-Integration" (de "CSS-Snippets" is
+  already a German compound noun). (SOLVED; v0.4.2.)
+- **Bug 64 — User/constructed paths not run through `normalizePath()` (RC7/R26) — SOLVED.** _Cause:_
+  `normalizePath` had 0 hits; the export fallback's user-entered vault path
+  ([export.ts](../../src/export.ts)) and the constructed `configDir/snippets` paths
+  ([snippet-scanner.ts](../../src/snippet-scanner.ts)) went unnormalized. _Fix:_ both wrapped in
+  `normalizePath()`. (SOLVED; v0.4.2.)

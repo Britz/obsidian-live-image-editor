@@ -90,11 +90,12 @@ rule sources** — every rule below is drawn from one of them:
   naming, `version`/`minAppVersion`, `isDesktopOnly`, the release artifacts, and so on.
 
 Last audited **2026-06-05**. There is **no hard-policy violation** — no ads, telemetry, obfuscation,
-or self-update; an MIT [`LICENSE`](LICENSE) is present; no trademark clash. The open items are
-review-checklist conformance and are tracked in the development
-[issues registry](docs/development/issues.md) (each open rule below links to its entry).
+or self-update; an MIT [`LICENSE`](LICENSE) is present; no trademark clash. **All review-checklist
+rules (R1–R30) are now met** — the former open items (R20–R30) were closed in the v0.4.2
+release-compliance pass. The only remaining steps are the manual packaging actions in the
+[Submission checklist](#submission-checklist-manual-at-release-time) below.
 
-**Status:** ✅ fulfilled · 🚧 open (follow the link)
+**Status:** ✅ fulfilled
 
 | Rule | Requirement | Source | Status |
 | --- | --- | --- | --- |
@@ -117,17 +118,17 @@ review-checklist conformance and are tracked in the development
 | R17 | `version` is `x.y.z`; `minAppVersion` set | SR | ✅ |
 | R18 | Template sample code removed | PG | ✅ |
 | R19 | Toolbar / UI strings sentence case | PG | ✅ |
-| R20 | Disclose out-of-vault file writes in this README | DP | [🚧](docs/development/issues.md#housekeeping-chore) |
-| R21 | Reconcile `isDesktopOnly: false` with the Electron/Node usage | SR | [🚧](docs/development/issues.md#open-decisions) |
-| R22 | Remove the plugin-name top-level heading in settings | PG | [🚧](docs/development/issues.md#known-open-bugs) |
-| R23 | Use `setHeading()` instead of raw HTML headings | PG | [🚧](docs/development/issues.md#known-open-bugs) |
-| R24 | Sentence-case the command names (and route via i18n) | PG | [🚧](docs/development/issues.md#known-open-bugs) |
-| R25 | Sentence-case the remaining UI headings | PG | [🚧](docs/development/issues.md#known-open-bugs) |
-| R26 | Run user / constructed paths through `normalizePath()` | PG | [🚧](docs/development/issues.md#known-open-bugs) |
-| R27 | Polish the manifest description (no em-dash; action verb) | SR | [🚧](docs/development/issues.md#housekeeping-chore) |
-| R28 | Move static inline styles to CSS classes | PG | [🚧](docs/development/issues.md#housekeeping-chore) |
-| R29 | Prefer the Vault API over the Adapter API where a `TFile` exists | PG | [🚧](docs/development/issues.md#housekeeping-chore) |
-| R30 | Verify listener teardown (or switch to `registerDomEvent`) | PG | [🚧](docs/development/issues.md#verifications-need-eyes-on-a-real--focused-window) |
+| R20 | Disclose out-of-vault file writes in this README | DP | ✅ |
+| R21 | Reconcile `isDesktopOnly: false` with the Electron/Node usage | SR | ✅ |
+| R22 | Remove the plugin-name top-level heading in settings | PG | ✅ |
+| R23 | Use `setHeading()` instead of raw HTML headings | PG | ✅ |
+| R24 | Sentence-case the command names (and route via i18n) | PG | ✅ |
+| R25 | Sentence-case the remaining UI headings | PG | ✅ |
+| R26 | Run user / constructed paths through `normalizePath()` | PG | ✅ |
+| R27 | Polish the manifest description (no em-dash; action verb) | SR | ✅ |
+| R28 | Move static inline styles to CSS classes | PG | ✅ |
+| R29 | Prefer the Vault API over the Adapter API where a `TFile` exists | PG | ✅ |
+| R30 | Verify listener teardown (or switch to `registerDomEvent`) | PG | ✅ |
 
 ### Fulfilled rules in detail
 
@@ -150,22 +151,34 @@ review-checklist conformance and are tracked in the development
 - **R17 — Versioning** (SR). `version` is semver `x.y.z` and `minAppVersion` is set in the manifest.
 - **R18 — No sample code** (PG). The template scaffolding (`MyPlugin`/`SampleSettingTab`/`SampleModal`) is removed.
 - **R19 — Sentence case** (PG). Toolbar and panel strings are already sentence case.
+- **R20 — Out-of-vault file writes disclosed** (DP). See [File system access & platform support](#file-system-access--platform-support) below — the export save dialog can write the rendered image anywhere the user chooses, including outside the vault.
+- **R21 — `isDesktopOnly: false` reconciled** (SR). The Electron/Node access (export save dialog, macOS rotate gesture) is dynamic + feature-detected with mobile fallbacks, so the plugin genuinely runs on mobile; `false` is kept and the degradation is documented (code comment in `export.ts` + the platform note below).
+- **R22 — No plugin-name heading** (PG; *Bug 60*). The top-level `<h2>` plugin-name heading in the settings tab was removed.
+- **R23 — `setHeading()`** (PG; *Bug 61*). Section headings use `new Setting(...).setHeading()` instead of raw `<h3>` elements.
+- **R24 — Sentence-case commands** (PG; *Bug 62*). The size/align command names are sentence case (`Size: small`, `Align: left`, …) and routed through i18n.
+- **R25 — Sentence-case headings** (PG; *Bug 63*). The remaining UI headings (`CSS snippets`, `Editing toolbar integration`) are sentence case.
+- **R26 — `normalizePath()`** (PG; *Bug 64*). User-entered (export fallback) and constructed (snippet) paths pass through `normalizePath()`.
+- **R27 — Manifest description** (SR). Leads with an action verb and contains no em-dash or special characters.
+- **R28 — No hardcoded styling** (PG). The one static inline style (the version-warning colour) moved to a `.lie-settings-warning` CSS class; only runtime-computed geometry remains inline.
+- **R29 — Vault API** (PG). `suggestExportPath` uses `Vault.getAbstractFileByPath()` rather than the adapter; the unavoidable `configDir/snippets` adapter calls (config-dir files are not vault `TFile`s) are left as-is.
+- **R30 — Listener teardown** (PG). Every direct `document`/`window` listener is interaction-scoped with matching teardown (popup close, crop exit, drag end, submenu/toolbar detach, `{ once: true }`); plugin-lifetime listeners already use `registerDomEvent`. `registerDomEvent` is intentionally **not** used for the per-interaction listeners (it holds until unload, so it cannot detach a per-drag `pointermove`).
 
-### Open rules (in progress)
+### File system access & platform support
 
-Each links to its entry in the development [issues registry](docs/development/issues.md), grouped by task type.
+**File system access.** Almost everything the plugin does stays inside your vault and is fully
+non-destructive — the original image file is never modified. The **one** exception is the **Export
+as image** action: on desktop it opens your operating system's native *Save* dialog, so you can
+write the rendered (transformed/filtered) copy to **any location you choose, including outside the
+vault**. Nothing is written outside the vault without you picking that location in the dialog. On
+mobile (no native dialog) export falls back to an in-app prompt that writes a copy **inside** the
+vault.
 
-- **R20 — Disclose out-of-vault file writes in this README** (DP). The export save dialog can write the rendered image to any path the user chooses, including outside the vault; the policy requires this README to say so. → [Housekeeping](docs/development/issues.md#housekeeping-chore)
-- **R21 — Reconcile `isDesktopOnly: false` with the Electron/Node usage** (SR). Export and the rotate gesture use feature-detected Electron/Node APIs with mobile fallbacks; decide whether to keep `false` (and document the degradation) or set `true`. → [Open decisions](docs/development/issues.md#open-decisions)
-- **R22 — Remove the plugin-name top-level heading in settings** (PG; *Bug 60*). → [Known open bugs](docs/development/issues.md#known-open-bugs)
-- **R23 — Use `setHeading()` instead of raw HTML headings** (PG; *Bug 61*). → [Known open bugs](docs/development/issues.md#known-open-bugs)
-- **R24 — Sentence-case the command names and route them through i18n** (PG; *Bug 62*). → [Known open bugs](docs/development/issues.md#known-open-bugs)
-- **R25 — Sentence-case the remaining UI headings** (PG; *Bug 63*). → [Known open bugs](docs/development/issues.md#known-open-bugs)
-- **R26 — Run user-defined / constructed paths through `normalizePath()`** (PG; *Bug 64*). → [Known open bugs](docs/development/issues.md#known-open-bugs)
-- **R27 — Polish the manifest description** (SR) — drop the em-dash, lead with an action verb. → [Housekeeping](docs/development/issues.md#housekeeping-chore)
-- **R28 — Move static inline styles to CSS classes** (PG) — the "no hardcoded styling" guideline; keep runtime-computed geometry as-is. → [Housekeeping](docs/development/issues.md#housekeeping-chore)
-- **R29 — Prefer the Vault API over the Adapter API where a vault `TFile` exists** (PG). → [Housekeeping](docs/development/issues.md#housekeeping-chore)
-- **R30 — Verify teardown of direct `document`/`window` listeners, or switch to `registerDomEvent`** (PG). → [Verifications](docs/development/issues.md#verifications-need-eyes-on-a-real--focused-window)
+**Platform support (`isDesktopOnly: false`).** The plugin runs on both desktop and mobile. Two
+features use Electron/Node APIs that only exist on desktop, and both degrade gracefully on mobile:
+the **export save dialog** (mobile writes into the vault instead) and the **macOS two-finger
+trackpad rotate gesture** in the crop editor (the on-screen rotate handle is always available as the
+fallback). The access is dynamic and feature-detected, so core editing — rotate, flip, crop, resize,
+filters, classes — works on mobile too.
 
 ### Submission checklist (manual, at release time)
 

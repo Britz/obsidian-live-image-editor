@@ -1,4 +1,4 @@
-import { Vault } from "obsidian";
+import { Vault, normalizePath } from "obsidian";
 // The shipped default snippet now lives in the Obsidian-free `bundled-snippet` module so the
 // standalone runtime can inject the SAME CSS (DRY); re-exported here for existing call sites.
 import { BUNDLED_SNIPPET_FILE, BUNDLED_SNIPPET_CSS } from "./bundled-snippet";
@@ -26,7 +26,7 @@ const IMG_SELECTOR_PATTERNS = [
  * filtered out.
  */
 export async function scanSnippets(vault: Vault, enabled?: Set<string>): Promise<SnippetClass[]> {
-  const snippetsPath = `${vault.configDir}/snippets`;
+  const snippetsPath = normalizePath(`${vault.configDir}/snippets`);
   const results: SnippetClass[] = [];
 
   let files: string[];
@@ -58,7 +58,7 @@ export async function scanSnippets(vault: Vault, enabled?: Set<string>): Promise
 /** Install the bundled example snippet WITHOUT overwriting an existing same-named file
  * (effectively a restore of a deleted file, Decision 6). Returns true if it wrote the file. */
 export async function installBundledSnippet(vault: Vault): Promise<boolean> {
-  const path = `${vault.configDir}/snippets/${BUNDLED_SNIPPET_FILE}`;
+  const path = normalizePath(`${vault.configDir}/snippets/${BUNDLED_SNIPPET_FILE}`);
   if (await vault.adapter.exists(path)) return false;
   await ensureSnippetsDir(vault);
   await vault.adapter.write(path, BUNDLED_SNIPPET_CSS);
@@ -68,15 +68,16 @@ export async function installBundledSnippet(vault: Vault): Promise<boolean> {
 /** Reset the bundled example snippet to the shipped version (overwrites, Decision 6). */
 export async function resetBundledSnippet(vault: Vault): Promise<void> {
   await ensureSnippetsDir(vault);
-  await vault.adapter.write(`${vault.configDir}/snippets/${BUNDLED_SNIPPET_FILE}`, BUNDLED_SNIPPET_CSS);
+  const path = normalizePath(`${vault.configDir}/snippets/${BUNDLED_SNIPPET_FILE}`);
+  await vault.adapter.write(path, BUNDLED_SNIPPET_CSS);
 }
 
 export async function isBundledSnippetInstalled(vault: Vault): Promise<boolean> {
-  return vault.adapter.exists(`${vault.configDir}/snippets/${BUNDLED_SNIPPET_FILE}`);
+  return vault.adapter.exists(normalizePath(`${vault.configDir}/snippets/${BUNDLED_SNIPPET_FILE}`));
 }
 
 async function ensureSnippetsDir(vault: Vault): Promise<void> {
-  const dir = `${vault.configDir}/snippets`;
+  const dir = normalizePath(`${vault.configDir}/snippets`);
   if (!(await vault.adapter.exists(dir))) await vault.adapter.mkdir(dir);
 }
 

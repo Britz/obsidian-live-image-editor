@@ -2,9 +2,9 @@
 	"id": "live-image-editor",
 	"name": "Live Image Editor",
 	"minAppVersion": "1.12.7",
-	"description": "Non-destructive image editing — crop, rotate, flip, resize, and apply CSS filters, all live without modifying the original file.",
+	"description": "Edit images non-destructively: crop, rotate, flip, resize, and apply CSS filters live, without modifying the original file.",
 	"author": "britz",
 	"authorUrl": "https://github.com/Britz",
 	"isDesktopOnly": false,
-	"version": "0.4.1"
+	"version": "0.4.2"
 }

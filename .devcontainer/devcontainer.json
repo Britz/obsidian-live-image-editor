@@ -4,6 +4,9 @@
   "mounts": [
 		"source=${devcontainerId}-claude,target=/home/${localEnv:USER}/.claude,type=volume"
 	],
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
   "initializeCommand": "./scripts/prebuild.sh",
   "containerUser": "${localEnv:USER}",
   "remoteUser": "${localEnv:USER}",

@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Vault } from "obsidian";
+import { App, Modal, Setting, Vault, normalizePath } from "obsidian";
 import { ImageTransform, getRotation, getFlipH, getFlipV, isCrop, getWidthPx, getHeightPx } from "./transforms";
 import { rotatedAabb } from "./renderer-logic";
 
@@ -158,14 +158,18 @@ export async function suggestExportPath(vault: Vault, originalPath: string): Pro
   // Bounded probe so a pathological folder can't spin forever; after the cap fall
   // back to a clearly-unique suffix rather than hanging on sequential I/O.
   for (let n = 1; n < 10000; n++) {
-    const candidate = `${dir}${base}-${n}.${ext}`;
-    if (!(await vault.adapter.exists(candidate))) return candidate;
+    const candidate = normalizePath(`${dir}${base}-${n}.${ext}`);
+    // Prefer the Vault API over the adapter where a vault TFile would exist (RC10/R29).
+    if (!vault.getAbstractFileByPath(candidate)) return candidate;
   }
   return `${dir}${base}-${Date.now()}.${ext}`;
 }
 
 // Electron's save dialog, if reachable (desktop only) — for the OS-native file-save
-// menu. Returns null on mobile / when unavailable.
+// menu. Returns null on mobile / when unavailable. The Electron/Node access here is
+// dynamic + feature-detected so the plugin still runs on mobile (it falls back to the
+// in-vault `writeBinary` modal below) — which is why `manifest.isDesktopOnly` stays
+// `false`. See README → "File system access & platform support" (RC2/R21).
 function electronDialog(): { showSaveDialog: (o: unknown) => Promise<{ canceled: boolean; filePath?: string }> } | null {
   const req = (window as unknown as { require?: (m: string) => unknown }).require;
   if (!req) return null;
@@ -220,8 +224,9 @@ export async function saveExport(
   return new Promise<string | null>((resolve) => {
     new ExportPathModal(app, suggestedRel, originalPath, async (rel) => {
       if (!rel) return resolve(null);
-      await adapter.writeBinary(rel, buffer); // writeBinary overwrites if it exists
-      resolve(rel);
+      const safeRel = normalizePath(rel); // user-entered vault path (Bug 64/R26)
+      await adapter.writeBinary(safeRel, buffer); // writeBinary overwrites if it exists
+      resolve(safeRel);
     }).open();
   });
 }

@@ -5,6 +5,36 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-06-05
+
+Community-directory release-compliance pass — closes the remaining review-checklist rules
+(R20–R30) so the plugin is ready for submission. No change to image-editing behaviour.
+
+### Changed
+
+- **Settings tab follows Obsidian's UI guidelines.** Removed the plugin-name top-level heading;
+  section headings now use `setHeading()` instead of raw HTML; the version-warning colour moved
+  from an inline style to a `.lie-settings-warning` CSS class (R22 / R23 / R28).
+- **Command names are sentence case and localized.** The size/align commands read `Size: small`,
+  `Align: left`, … and are routed through i18n (en/de) like the rest (R24). The `CSS snippets` and
+  `Editing toolbar integration` headings are sentence case too (R25).
+- **Manifest description** leads with an action verb and drops the em-dash/special characters (R27).
+
+### Fixed
+
+- **Paths run through `normalizePath()`.** The export fallback's user-entered vault path and the
+  constructed snippet paths are normalized before use (R26).
+- **Prefer the Vault API over the adapter.** `suggestExportPath` probes free filenames via
+  `Vault.getAbstractFileByPath()` rather than `adapter.exists` (R29).
+
+### Documentation
+
+- **README now discloses out-of-vault file writes** (the export save dialog) and documents why
+  `isDesktopOnly` stays `false` — the Electron/Node paths (export dialog, macOS trackpad rotate)
+  are feature-detected with mobile fallbacks (R20 / R21). Verified that every direct
+  `document`/`window` listener is interaction-scoped with matching teardown; plugin-lifetime
+  listeners already use `registerDomEvent` (R30).
+
 ## [0.4.1] - 2026-06-05
 
 ### Fixed

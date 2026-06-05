@@ -605,3 +605,6 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
 .lie-size-fields { display: flex; gap: 10px; }
 .lie-size-custom { display: flex; align-items: center; gap: 6px; }
 .lie-size-input { width: 80px; }
+
+/* Settings — version-unsupported warning (RC9/R28: no hardcoded inline styling). */
+.lie-settings-warning { color: var(--text-error); }

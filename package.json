@@ -1,6 +1,6 @@
 {
   "name": "obsidian-live-image-editor",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Non-destructive image editing for Obsidian",
   "main": "main.js",
   "scripts": {

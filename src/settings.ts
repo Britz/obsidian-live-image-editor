@@ -48,8 +48,6 @@ export class LieSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: t("settingsTitle") });
-
     new Setting(containerEl)
       .setName(t("settingsToolbar"))
       .addToggle((toggle) => {
@@ -82,7 +80,7 @@ export class LieSettingTab extends PluginSettingTab {
       });
 
     // Preset widths (F24)
-    containerEl.createEl("h3", { text: t("settingsPresetWidths") });
+    new Setting(containerEl).setName(t("settingsPresetWidths")).setHeading();
     containerEl.createEl("p", { text: t("settingsPresetWidthsDesc"), cls: "setting-item-description" });
     for (const key of ["small", "medium", "large"] as const) {
       new Setting(containerEl)
@@ -98,7 +96,7 @@ export class LieSettingTab extends PluginSettingTab {
     }
 
     // Snippets section
-    containerEl.createEl("h3", { text: t("settingsSnippets") });
+    new Setting(containerEl).setName(t("settingsSnippets")).setHeading();
     containerEl.createEl("p", { text: t("settingsSnippetsDesc"), cls: "setting-item-description" });
 
     // Bundled example snippets — install (opt-in) / reset (F16.1).
@@ -157,8 +155,8 @@ export class LieSettingTab extends PluginSettingTab {
           .onClick(async () => { await this.plugin.refreshSnippets(); this.display(); });
       });
 
-    // Editing Toolbar Integration (F23/T10): optional, off by default, version-gated.
-    containerEl.createEl("h3", { text: t("settingsEditingToolbar") });
+    // Editing-toolbar integration (F23/T10): optional, off by default, version-gated.
+    new Setting(containerEl).setName(t("settingsEditingToolbar")).setHeading();
     const status = getEditingToolbarStatus(this.app);
 
     new Setting(containerEl)
@@ -170,11 +168,10 @@ export class LieSettingTab extends PluginSettingTab {
       );
 
     if (status.installed && !status.tested) {
-      const warn = containerEl.createEl("p", {
+      containerEl.createEl("p", {
         text: t("settingsEditingToolbarVersionWarning"),
-        cls: "setting-item-description",
+        cls: "setting-item-description lie-settings-warning",
       });
-      warn.style.color = "var(--text-error)";
     }
 
     if (status.installed) {
