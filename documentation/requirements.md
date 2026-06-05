@@ -55,8 +55,7 @@ no language or link-format setting of its own.
 - **F10 — Transform set.** Rotate (quarter-turns, both directions), flip (horizontal /
   vertical), free-rotation crop, resize (width, aspect ratio preserved) and image filters.
 - **F11 — Filters.** Brightness, contrast, saturation, hue-rotate, blur, grayscale and sepia,
-  each with a sensible range and default; named presets; and a *temperature* control that
-  approximates warmth by nudging the other values (it is not stored on its own).
+  each with a sensible range and default, plus named presets.
 - **F12 — Crop.** A movable, rotatable and scalable original under a resizable frame, with
   aspect-ratio presets. The cut quantizes to whole pixels and fixed angle steps **live during
   the interaction**, so it can never fall mid-pixel.
@@ -76,6 +75,9 @@ no language or link-format setting of its own.
   working state **once** as a single undo step (**auto-persist**). **Cancel** (✗) and **Esc**
   **discard** the edits (no source write) and restore the pre-open state by re-rendering from the
   unchanged source. Reset and cancel are the in-session reverts; Ctrl/Cmd-Z reverts after a commit.
+  (Click-away counts as a leave for **filter** and **size**; the in-place **crop** session is exempt
+  — it ends only via its own controls, D6.3 — but its persist model is identical: leaving persists
+  once, ✗/Esc discards.)
 - **F15 — Built-in alignment & inline.** Built-in, toggleable **alignment** (left / right /
   center) and **inline** styling, plus a reset that restores defaults. Alignment exists as a
   functional capability; whether it is carried as an attribute key or a CSS class is an
@@ -120,8 +122,9 @@ no language or link-format setting of its own.
   Without the plugin the image may not carry its formatting, but it is **always displayed**;
   the plugin never produces markup that breaks the embed or hides the image. Specifically, the
   native-CSS-faithful keys (`align`, `width`, `style="filter:…"`) survive in any renderer, while
-  the **runtime-only** transforms (`rotate`, `flip`, the inner crop `transform`) **degrade to the
-  original, untransformed image** — inert but still visible. This is the baseline that the storage
+  the **runtime-only** keys (`rotate`, `flip`, the inner crop `transform`, and a bare `filter=`)
+  **degrade to the original, untransformed image** — inert but still visible (the `style="filter:…"`
+  escape is the faithful alternative for a filter). This is the baseline that the storage
   and rendering choices (T2, T3) must satisfy.
 
 ---
@@ -156,6 +159,22 @@ no language or link-format setting of its own.
   form one continuous active region:** the toolbar (greyed) and the panel stay visible while the
   pointer is anywhere in that region — including the gap while moving from the image to the panel —
   and they show and hide **together** when it is entered / left.
+  - **D6.2 — One visibility signal.** The toolbar's visibility, its staying-**greyed**, and the open
+    panel's visibility are all driven by the **same** "is the combined region hovered" signal — never
+    by a second, competing one. While a panel is open the toolbar is greyed for the **whole** open
+    duration (it is never momentarily un-greyed): hover-leave **hides** the toolbar+panel together
+    (the panel stays open), hover-return shows them together, with no flicker or in-between state.
+  - **D6.3 — Click-away closes (crop exempt).** An **active click outside** the region closes the
+    open panel as a normal leave — it **persists** (auto-persist, one source write) — for **filter**
+    and **size**. **Crop is exempt:** a stray click must never end an in-place crop session (clicks
+    and drags on the image, handles and the dimmed pan-ghost are part of editing), so crop ends only
+    via its **own** controls (the crop-button toggle, ✓ accept, ✗ cancel, Esc). Hover-leave is a
+    separate path — it only hides, it never closes.
+  - **D6.4 — Lightweight palettes are coupled, not greyed.** The folded-group popups and the
+    add-class dropdown are **not** modal: they never grey the toolbar (it stays active/clickable).
+    But their **visibility is coupled to the toolbar the same way** — image + toolbar + popup are one
+    region: hovering the popup keeps the toolbar visible, and popup and toolbar fade **together** when
+    the region is left.
   - **D6.1 — Resize panel contents:** the resize sub-menu shows the size presets (F24) and
     **manual width and height entry fields placed side by side**. (Its reset is the shared
     host's per-panel reset, part of F14.)
@@ -220,10 +239,12 @@ no language or link-format setting of its own.
   - **Native-CSS-faithful subset** — `align` (legacy HTML `align` float / center) and `width`
     (a real HTML attribute the browser honours) render correctly with **no plugin and no shipped
     CSS at all**; a `style="filter:…"` escape likewise survives faithfully.
-  - **Runtime-only transforms** — `rotate`, `flip` and the inner `transform` (crop placement)
-    have **no faithful native-CSS path** (a `transform` does not reflow, so a rotated footprint
-    needs an own element); they render only where the runtime bundle is injectable (e.g. MkDocs →
-    full fidelity). Where it is not, they **degrade to the original image** (still visible, F25).
+  - **Runtime-only keys** — `rotate`, `flip`, the inner `transform` (crop placement) and a bare
+    `filter=` have **no faithful native-CSS path** (a `transform` does not reflow, so a rotated
+    footprint needs an own element; a browser ignores a bare `filter` attribute — the faithful
+    filter path is the `style="filter:…"` escape). They render only where the runtime bundle is
+    injectable (e.g. MkDocs → full fidelity). Where it is not, they **degrade to the original
+    image** (still visible, F25).
   Where the bundle can be injected the result is 100% faithful; otherwise the no-JS fallback
   keeps `align`/`width` and shows the original image for the runtime-only transforms. kramdown /
   Jekyll do **not** attach a bare-brace `{…}` block to an image at all — an explicit, documented

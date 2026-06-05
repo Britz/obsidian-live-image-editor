@@ -72,6 +72,10 @@ const EVAL_RUN = `(async () => {
     // (0) On open: both shown, toolbar greyed + part of the region.
     ok("greyedWhileOpen", toolbar.classList.contains("lie-toolbar-inactive"));
     ok("initBothShown", active() && panelShown());
+    // Bug 2 — while shown, the bar is GREYED (opacity 0.4), NEVER un-greyed (opacity 1). The CSS
+    // hover no longer competes with the JS region state, so a stray real pointer over the wrapper
+    // can't flash the bar to full opacity while a panel is open.
+    ok("greyedNotFullWhileShown", getComputedStyle(toolbar).opacity === "0.4");
     // The greyed bar must be a REAL hover surface while active (pointer-events:auto) — else a real
     // pointer moving onto it (esp. the floating bar, outside the image rect) drops the region. The
     // synthetic enter/leave below can't catch a pointer-events:none regression, so assert it here;
@@ -92,6 +96,12 @@ const EVAL_RUN = `(async () => {
     fire(panel, "mouseleave");
     await sleep(260);                                           // grace elapses
     ok("bothHideOnLeave", !active() && !panelShown());
+    // Bug 2 — the bar stays .lie-toolbar-inactive (greyed) for the WHOLE open duration: leaving
+    // HIDES it (opacity 0) but never un-greys it. There is no "visible & not inactive while open"
+    // state — the single region signal drives toolbar visibility AND greyed-bleiben together.
+    // opacity reads the ease tail just before the fade settles (grace + 0.1s transition); a tolerance
+    // keeps this a real check — a Bug-2 regression leaves the bar at 0.4 (un-hidden), far above 0.05.
+    ok("stillInactiveWhileHidden", toolbar.classList.contains("lie-toolbar-inactive") && parseFloat(getComputedStyle(toolbar).opacity) < 0.05);
 
     // (3) Re-enter via the TOOLBAR (the "unterwegs / on the bar" case): both come back together.
     fire(toolbar, "mouseenter");
@@ -147,11 +157,13 @@ const c = res.checks ?? {};
 const order = [
   ["toolbar is greyed while the submenu is open", "greyedWhileOpen"],
   ["on open: toolbar + panel both shown (one region)", "initBothShown"],
+  ["shown bar is GREYED (opacity 0.4), never un-greyed (Bug 2)", "greyedNotFullWhileShown"],
   ["greyed bar is a real hover surface (pointer-events:auto)", "barHoverableWhileActive"],
   ["greyed bar's buttons stay inert (D6 inactive)", "barButtonsInertWhileActive"],
   ["image→panel travel keeps the region (grace bridges the gap)", "graceKeepsDuringTravel"],
   ["arriving on the panel keeps toolbar + panel up", "panelKeepsRegion"],
   ["leaving the whole region hides BOTH together", "bothHideOnLeave"],
+  ["bar stays inactive the whole open duration, hidden=opacity 0 (Bug 2)", "stillInactiveWhileHidden"],
   ["re-entering via the toolbar brings both back", "toolbarReEntersRegion"],
   ["leaving via the toolbar hides both together", "bothHideAfterToolbar"],
   ["re-entering via the image brings both back", "imageReEntersRegion"],

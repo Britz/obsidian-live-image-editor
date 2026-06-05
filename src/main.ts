@@ -4,7 +4,7 @@ import {
   getRotation, setRotation, toggleFlipH, toggleFlipV, getFilter, setFilter,
   setWidthPx, PresetKey,
 } from "./transforms";
-import { buildLayers as applyTransformToImage, applyFilterPreview, unwrapBox } from "./render-core";
+import { buildLayers as applyTransformToImage, applyFilterPreview, unwrapBox, BOX_CLASS } from "./render-core";
 import { ImageToolbar, ToolbarItem, ToolbarButton, ToolbarGroup } from "./toolbar";
 import { findImageInSource, findImageInText, findImageInLine, getImageFilename, ImageLocation } from "./image-resolver";
 import { CropEditor } from "./crop-editor";
@@ -23,6 +23,8 @@ import { EditorView } from "@codemirror/view";
 import { setLocale, detectLocale, t } from "./i18n";
 import { convertEmbedLine, desiredFormat, LinkFormat } from "./link-format";
 import { writeSource } from "./source-writer";
+import { clickDismissesToolbar } from "./toolbar-region-logic";
+import { couplePaletteToRegion } from "./region-hover";
 
 export default class LiveImageEditorPlugin extends Plugin {
   settings: LieSettings = DEFAULT_SETTINGS;
@@ -198,7 +200,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       this.readingCaptionText.delete(img);
     }
 
-    const box = img.closest<HTMLElement>(".lie-image-area");
+    const box = img.closest<HTMLElement>(`.${BOX_CLASS}`);
     const embed = (box ?? img).parentElement;
     embed?.classList.remove("lie-has-caption");
     if (!want || !embed) return;
@@ -297,16 +299,23 @@ export default class LiveImageEditorPlugin extends Plugin {
       if (!source) return;
       const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
 
+      // Track each basename's occurrence in DOM order (= source order in reading view) so a
+      // file embedded more than once resolves POSITION-EXACT (F2/AB3): the n-th rendered embed
+      // maps to the n-th source embed, not merely the first basename match. Skipped images are
+      // still counted so later duplicates stay aligned.
+      const seen = new Map<string, number>();
       for (const el of Array.from(container.querySelectorAll("img"))) {
         const img = el as HTMLImageElement;
+        const file = getImageFilename(img);
+        if (!file) continue;
+        const occurrence = seen.get(file) ?? 0;
+        seen.set(file, occurrence + 1);
         // The LP overlay owns its own images; the editor's native embed images are
         // CSS-suppressed and must be left untouched (AD5 — no double render). An image being
         // CROPPED in place (`.lie-cropping` on its area/host) must also be skipped — a re-render
         // (buildLayers → resetLieState) mid-session would wipe the editor's transient geometry.
         if (img.closest(".lie-wrapper, .cm-editor, .lie-cropping")) continue;
-        const file = getImageFilename(img);
-        if (!file) continue;
-        const loc = findImageInText(source, file);
+        const loc = findImageInText(source, file, occurrence);
         const transform = loc ? parseAltText(loc.params) : null;
         if (transform && this.hasTransforms(transform)) applyTransformToImage(img, transform);
         else this.clearStaleTransform(img);
@@ -320,7 +329,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   private clearStaleTransform(img: HTMLImageElement | null): void {
     if (!img) return;
     const ours = img.classList.contains("lie-inline") ||
-      (img.parentElement?.classList.contains("lie-image-area") ?? false);
+      (img.parentElement?.classList.contains(BOX_CLASS) ?? false);
     if (ours) {
       applyTransformToImage(img, { classes: [] });
       unwrapBox(img);
@@ -340,20 +349,29 @@ export default class LiveImageEditorPlugin extends Plugin {
     return null;
   }
 
+  // Every member of the combined active region (D6): a click on any of these is "inside" and never
+  // dismisses (the image wrapper, the toolbar, an open modal panel, a lightweight palette, the crop
+  // chrome). `.lie-class-dropdown` is a region member too, so picking a class no longer dismisses the
+  // toolbar out from under the user (Bug 3).
+  private static readonly REGION_SELECTOR =
+    ".lie-toolbar, .lie-filter-panel, .lie-submenu, .lie-group-popup, .lie-class-dropdown, .lie-cropping, .lie-wrapper";
+
   private registerImageSelectionHandler(): void {
     this.registerDomEvent(document, "click", (evt: MouseEvent) => {
       const target = evt.target as HTMLElement;
-      if (target.tagName === "IMG" && target.closest(".markdown-source-view")) {
+      // Crop owns its clicks (Bug 1): while it is active, re-selecting the image or dismissing must
+      // not happen — the session ends only via its own controls (toggle / ✓ / ✗ / Esc).
+      if (target.tagName === "IMG" && target.closest(".markdown-source-view") && !this.cropEditor) {
         this.hoverShown = false; // click-shown: stays until click-outside, not hover-out
         this.onImageSelected(target as HTMLImageElement);
-      } else if (
-        !target.closest(".lie-toolbar") &&
-        !target.closest(".lie-filter-panel") &&
-        !target.closest(".lie-submenu") &&
-        !target.closest(".lie-group-popup") &&
-        !target.closest(".lie-cropping") &&
-        !target.closest(".lie-wrapper")
-      ) {
+      } else if (clickDismissesToolbar({
+        insideRegion: !!target.closest(LiveImageEditorPlugin.REGION_SELECTOR),
+        cropActive: !!this.cropEditor,
+      })) {
+        // Active click OUTSIDE the region (Bug 1): dismiss the toolbar and PERSIST any open
+        // filter/size panel (auto-persist, one source write). Crop is EXEMPT — `clickDismissesToolbar`
+        // returns false while cropping — so a stray click can't destroy the in-place session.
+        // Hover-leave only HIDES (the panel stays open, Bug 2); this click path closes.
         this.dismissToolbar();
       }
     });
@@ -366,7 +384,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.registerDomEvent(document, "mouseover", (evt: MouseEvent) => {
       const target = evt.target;
       if (!(target instanceof HTMLElement)) return;
-      if (target.closest(".lie-toolbar, .lie-group-popup, .lie-submenu, .lie-filter-panel, .lie-cropping")) return;
+      if (target.closest(".lie-toolbar, .lie-group-popup, .lie-class-dropdown, .lie-submenu, .lie-filter-panel, .lie-cropping")) return;
       const floatWrap = target.closest<HTMLElement>(".markdown-source-view .lie-wrapper.lie-float");
       if (floatWrap) {
         const img = floatWrap.querySelector("img");
@@ -376,7 +394,11 @@ export default class LiveImageEditorPlugin extends Plugin {
         }
         return;
       }
-      if (this.hoverShown && !this.filterPanel && !this.submenu && !this.cropEditor) {
+      // Hover-out dismiss for the floating bar — but never while a panel OR a lightweight palette is
+      // open (the palette is a hover member of the region, D6/Bug 3; it governs its own close-on-leave
+      // and keeps the bar up until then).
+      if (this.hoverShown && !this.filterPanel && !this.submenu && !this.cropEditor &&
+          !document.querySelector(".lie-group-popup, .lie-class-dropdown")) {
         this.dismissToolbar();
       }
     });
@@ -533,24 +555,38 @@ export default class LiveImageEditorPlugin extends Plugin {
     return findImageInSource(editor, img);
   }
 
-  private resolveLocation(): { editor: Editor; location: ImageLocation } | null {
+  // The single image-location lookup every toolbar/menu action shares (DRY). Prefers the LIVE
+  // image's DOM position (line-accurate even after the doc shifts — Bug 33); when the image is
+  // DETACHED (a panel whose anchor scrolled out of the CM6 viewport mid-edit), it falls back to
+  // the location captured at panel-open — NOT a basename scan, which would hit the wrong
+  // occurrence of a duplicated image. `notify` shows the user-facing Notices (resolveLocation);
+  // the panel openers stay silent.
+  private locateActiveImage(opts: { notify?: boolean; fallback?: ImageLocation } = {}):
+    { editor: Editor; location: ImageLocation } | null {
     if (!this.activeImage) return null;
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) {
-      new Notice("Live Image Editor: open the note in editing mode to edit images.");
+      if (opts.notify) new Notice("Live Image Editor: open the note in editing mode to edit images.");
       return null;
     }
     const editor = view.editor;
-    const location = this.locateImage(editor, this.activeImage);
+    let location: ImageLocation | null = null;
+    if (this.activeImage.isConnected) location = this.locateImage(editor, this.activeImage);
+    else if (opts.fallback) location = opts.fallback;
+    else location = this.locateImage(editor, this.activeImage);
     if (!location) {
-      new Notice("Live Image Editor: couldn't locate this image in the note source.");
+      if (opts.notify) new Notice("Live Image Editor: couldn't locate this image in the note source.");
       return null;
     }
     return { editor, location };
   }
 
-  private modifyTransform(modifier: (t: ImageTransform) => void): void {
-    const resolved = this.resolveLocation();
+  private resolveLocation(): { editor: Editor; location: ImageLocation } | null {
+    return this.locateActiveImage({ notify: true });
+  }
+
+  private modifyTransform(modifier: (t: ImageTransform) => void, fallback?: ImageLocation): void {
+    const resolved = this.locateActiveImage({ notify: true, fallback });
     if (!resolved) return;
     const { editor, location } = resolved;
     const transform = parseAltText(location.params);
@@ -663,15 +699,13 @@ export default class LiveImageEditorPlugin extends Plugin {
 
   private customSize(): void {
     if (this.submenu) { this.closeSubmenu(); return; }
-    if (!this.activeImage) return;
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) return;
-    const location = this.locateImage(view.editor, this.activeImage);
-    if (!location) return;
+    const resolved = this.locateActiveImage();
+    if (!resolved) return;
+    const { location } = resolved;
 
     const current = parseAltText(location.params);
-    const img = this.activeImage;
-    const state: SizeState = { width: current.width ?? null, height: current.height ?? null };
+    const img = this.activeImage!;
+    const state: SizeState = { width: current.width ?? null, height: current.height ?? null, inline: current.inline ?? false };
 
     // Live preview by RE-RENDERING with the new size (so clearing a field / "Original"
     // falls back to the intrinsic default rather than collapsing the box — Bug 20).
@@ -679,9 +713,10 @@ export default class LiveImageEditorPlugin extends Plugin {
       const tr = parseAltText(location.params);
       tr.width = s.width ?? undefined;
       tr.height = s.height ?? undefined;
+      tr.inline = s.inline;
       applyTransformToImage(this.liveTarget(img), tr);
     };
-    const sizeBody = buildSizeBody({ width: current.width, height: current.height }, preview, state, this.settings.presetWidths);
+    const sizeBody = buildSizeBody({ width: current.width, height: current.height, inline: current.inline }, preview, state, this.settings.presetWidths);
 
     const submenu = new AnchoredSubmenu();
     submenu.open({
@@ -692,7 +727,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       title: t("customSize"),
       hoverRegion: img.closest<HTMLElement>(".lie-wrapper") ?? undefined,
       onReset: () => sizeBody.reset(),
-      onCommit: () => this.modifyTransform((tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; }),
+      onCommit: () => this.modifyTransform((tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; tr.inline = state.inline; }, location),
       // ✗ cancel / Esc (F14): discard — no source write. The source was never touched while open,
       // so re-rendering the live image from its original params restores the pre-open size.
       onCancel: () => applyTransformToImage(this.liveTarget(img), parseAltText(location.params)),
@@ -703,18 +738,17 @@ export default class LiveImageEditorPlugin extends Plugin {
 
   private crop(): void {
     if (this.cropEditor) { this.cropEditor.close(); return; }  // toggle off → persist; onClose clears the ref
-    if (!this.activeImage) return;
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) return;
-    const location = this.locateImage(view.editor, this.activeImage);
-    if (!location) return;
+    const resolved = this.locateActiveImage();
+    if (!resolved) return;
+    const { location } = resolved;
 
     const current = parseAltText(location.params);
     const cropEditor = new CropEditor(
-      this.activeImage,
+      this.activeImage!,
       current,
       // Auto-persist on leave (AD8): a real crop writes its placement; a no-op / Reset leave passes
-      // null → un-crop (clear the placement) while keeping the box width set elsewhere.
+      // null → un-crop (clear the placement) while keeping the box width set elsewhere. `location`
+      // is the fallback when the anchor scrolled out mid-edit (so a duplicate writes the right line).
       (result) => this.modifyTransform((tr) => {
         if (result) {
           tr.transform = result.transform;
@@ -726,14 +760,14 @@ export default class LiveImageEditorPlugin extends Plugin {
           tr.aspectRatio = undefined;
           tr.height = undefined;
         }
-      }),
+      }, location),
       () => { this.cropEditor = null; }
     );
     // Set the ref BEFORE open(): if open() can't find the 3-layer structure it self-closes
     // synchronously (calling onClosed → nulls the ref), and a post-open assignment would otherwise
     // restore a dead editor and jam the crop toggle + the dismiss guards.
     this.cropEditor = cropEditor;
-    cropEditor.open(this.activeToolbarEl(), this.activeImage);
+    cropEditor.open(this.activeToolbarEl(), this.activeImage!);
   }
 
   private closeCrop(persist = true): void {
@@ -742,19 +776,17 @@ export default class LiveImageEditorPlugin extends Plugin {
 
   private toggleFilters(): void {
     if (this.filterPanel) { this.closeFilterPanel(); return; }
-    if (!this.activeImage) return;
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) return;
-    const location = this.locateImage(view.editor, this.activeImage);
-    if (!location) return;
+    const resolved = this.locateActiveImage();
+    if (!resolved) return;
+    const { location } = resolved;
 
     const current = parseAltText(location.params);
     const originalFilter = getFilter(current);
-    const img = this.activeImage;
+    const img = this.activeImage!;
 
     const panel = new FilterPanel(img, originalFilter, {
       onPreview: (filter: FilterData) => applyFilterPreview(this.liveTarget(img), filter),
-      onCommit: (filter: FilterData) => this.modifyTransform((tr) => setFilter(tr, Object.keys(filter).length ? filter : undefined)),
+      onCommit: (filter: FilterData) => this.modifyTransform((tr) => setFilter(tr, Object.keys(filter).length ? filter : undefined), location),
       // ✗ cancel / Esc (F14): discard — no source write. Re-render from the untouched source to
       // restore the pre-open filter (and any other transform the live preview painted over).
       onCancel: () => applyTransformToImage(this.liveTarget(img), parseAltText(location.params)),
@@ -784,20 +816,26 @@ export default class LiveImageEditorPlugin extends Plugin {
       return;
     }
 
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) return;
-    const location = this.locateImage(view.editor, this.activeImage);
-    if (!location) return;
-    const current = parseAltText(location.params);
+    const resolved = this.locateActiveImage();
+    if (!resolved) return;
+    const current = parseAltText(resolved.location.params);
 
     const menu = document.createElement("div");
     menu.classList.add("lie-class-dropdown");
+
+    // The class dropdown is a lightweight palette, like the group popups (Bug 3): it is coupled to
+    // the image + toolbar active region (so hovering it keeps the bar visible, and leaving the region
+    // closes it — bar and palette fade together) but it is NOT greyed/modal. `close` is the single
+    // teardown for every path (pick a class / click-away / region-leave).
+    let detach = (): void => {};
+    const close = (): void => { detach(); menu.remove(); };
+
     for (const sc of availableClasses) {
       const item = document.createElement("button");
       item.classList.add("lie-class-dropdown-item");
       if (current.classes.includes(sc.className)) item.classList.add("is-active");
       item.textContent = sc.className;
-      item.addEventListener("click", () => { this.applyClass(sc.className); menu.remove(); });
+      item.addEventListener("click", () => { this.applyClass(sc.className); close(); });
       menu.appendChild(item);
     }
 
@@ -809,25 +847,27 @@ export default class LiveImageEditorPlugin extends Plugin {
     menu.style.zIndex = "1001";
     document.body.appendChild(menu);
 
-    const closeHandler = (e: MouseEvent) => {
-      if (!menu.contains(e.target as Node)) {
-        menu.remove();
-        document.removeEventListener("mousedown", closeHandler);
-      }
+    const unbindRegion = couplePaletteToRegion(menu, {
+      wrapper: this.activeImage.closest<HTMLElement>(".lie-wrapper"),
+      toolbar: this.activeToolbarEl(),
+    }, close);
+
+    const closeHandler = (e: MouseEvent): void => { if (!menu.contains(e.target as Node)) close(); };
+    detach = (): void => {
+      unbindRegion();
+      document.removeEventListener("mousedown", closeHandler);
     };
     setTimeout(() => document.addEventListener("mousedown", closeHandler), 0);
   }
 
   private async exportImage(): Promise<void> {
-    if (!this.activeImage) return;
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) return;
-    const location = this.locateImage(view.editor, this.activeImage);
-    if (!location) return;
+    const resolved = this.locateActiveImage();
+    if (!resolved) return;
+    const { location } = resolved;
 
     const transform = parseAltText(location.params);
     try {
-      const buffer = await renderTransformedImage(this.activeImage, transform);
+      const buffer = await renderTransformedImage(this.activeImage!, transform);
       const rawLink = location.filename.split("|")[0] ?? location.filename;
       let linkpath = rawLink;
       try { linkpath = decodeURIComponent(rawLink); } catch { /* keep the raw link */ }

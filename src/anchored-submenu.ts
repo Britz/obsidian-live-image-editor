@@ -1,6 +1,7 @@
 import { setIcon } from "obsidian";
 import { t } from "./i18n";
 import { placeSubmenu, SubmenuPlacement, Rect, SubmenuExit, submenuExitEffect } from "./anchored-submenu-logic";
+import { bindRegionHover } from "./region-hover";
 
 export interface SubmenuOptions {
   // Caller-built content (sliders, presets, size inputs, …) shown in the body.
@@ -71,7 +72,6 @@ export class AnchoredSubmenu {
   private closed = false;
   private offscreen = false;
   private hoverShown = true; // overridden by hoverRegion binding
-  private hoverTimer = 0;
   private hoverCleanup: (() => void) | null = null;
 
   isOpen(): boolean {
@@ -113,41 +113,22 @@ export class AnchoredSubmenu {
     window.addEventListener("scroll", this.reposition, true);
   }
 
-  // Bind the ONE active region (D6): image + toolbar + the open panel. The toolbar stays visible
-  // (greyed) and the panel stays shown while the pointer is over ANY member; a short grace delay
-  // bridges the gap while travelling image→panel (and toolbar→panel for the floating bar). All
-  // three members share the same enter/leave so the toolbar no longer drops the instant the pointer
-  // leaves the image rect (the flicker bug) — it rides the combined hover, and the two hide
-  // together when the region is left. With no `region` (reading view: no overlay) the panel is
-  // simply always shown until dismissed.
+  // Bind the ONE active region (D6): image + toolbar + the open panel, driven by the shared
+  // `bindRegionHover` so the toolbar (greyed) and the panel ride a SINGLE hover signal — they never
+  // desync from a competing CSS `:hover` (that desync was the flicker / greyed-flap bug). The binder
+  // keeps the region active while the pointer is over ANY member, bridges the image→panel travel
+  // grace, and is robust to the in-chrome toolbar being NESTED inside the image wrapper (moving
+  // toolbar→image stays "inside"). The two hide together when the region is left. With no `region`
+  // (reading view: no overlay) the panel is simply always shown until dismissed.
   private bindHover(panel: HTMLElement, region?: HTMLElement): void {
     if (!region) { this.hoverShown = true; return; }
     this.hoverShown = true; // opened by a click while hovering
-    const enter = (): void => {
-      window.clearTimeout(this.hoverTimer);
-      this.hoverShown = true;
+    // The toolbar (the floating bar especially) lives OUTSIDE the image region, so it is its own
+    // hover member — otherwise moving onto it would read as leaving the region.
+    this.hoverCleanup = bindRegionHover([region, panel, this.toolbar], (active) => {
+      this.hoverShown = active;
       this.updateVisibility();
-    };
-    const leave = (): void => {
-      window.clearTimeout(this.hoverTimer);
-      this.hoverTimer = window.setTimeout(() => {
-        this.hoverShown = false;
-        this.updateVisibility();
-      }, 160);
-    };
-    // The toolbar (the floating bar especially) lives OUTSIDE the image region, so it must be its
-    // own hover member — otherwise moving onto it would read as leaving the region.
-    const members = [region, panel, this.toolbar].filter((m): m is HTMLElement => !!m);
-    for (const m of members) {
-      m.addEventListener("mouseenter", enter);
-      m.addEventListener("mouseleave", leave);
-    }
-    this.hoverCleanup = () => {
-      for (const m of members) {
-        m.removeEventListener("mouseenter", enter);
-        m.removeEventListener("mouseleave", leave);
-      }
-    };
+    });
   }
 
   // Recompute placement against the current anchor/viewport (also on scroll/resize
@@ -204,7 +185,6 @@ export class AnchoredSubmenu {
   close(exit: SubmenuExit = "commit"): void {
     if (this.closed) return;
     this.closed = true;
-    window.clearTimeout(this.hoverTimer);
     this.hoverCleanup?.();
     this.hoverCleanup = null;
     document.removeEventListener("keydown", this.handleKeyDown, true);

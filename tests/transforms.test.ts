@@ -3,36 +3,9 @@ import {
   parseAltText, serializeTransform, ImageTransform,
   getRotation, setRotation, getFlipH, getFlipV, toggleFlipH, toggleFlipV, isCrop,
   getFilter, setFilter, filterToCss, parseFilterCss,
-  getWidthPx, getPreset, setPresetWidth, setWidthPx,
-  temperatureAdjust,
+  getWidthPx, setWidthPx,
 } from "../src/transforms";
 import { toCropResult } from "../src/crop-editor-logic";
-
-describe("temperatureAdjust (F11 — virtual control nudging other sliders)", () => {
-  const base = { hueRotate: 0, saturate: 1, brightness: 1 };
-  it("is a no-op at temperature 0", () => {
-    expect(temperatureAdjust(base, 0)).toEqual({ hueRotate: 0, saturate: 1, brightness: 1 });
-  });
-  it("warms (positive): rotates hue, lifts saturation and brightness", () => {
-    const r = temperatureAdjust(base, 100);
-    expect(r.hueRotate).toBe(30);
-    expect(r.saturate).toBeGreaterThan(1);
-    expect(r.brightness).toBeGreaterThan(1);
-  });
-  it("cools (negative): wraps hue the other way, lowers sat/brightness", () => {
-    const r = temperatureAdjust(base, -100);
-    expect(r.hueRotate).toBe(330);
-    expect(r.saturate).toBeLessThan(1);
-    expect(r.brightness).toBeLessThan(1);
-  });
-  it("clamps to the slider ranges", () => {
-    const hot = temperatureAdjust({ hueRotate: 350, saturate: 3, brightness: 2 }, 100);
-    expect(hot.saturate).toBeLessThanOrEqual(3);
-    expect(hot.brightness).toBeLessThanOrEqual(2);
-    expect(hot.hueRotate).toBeGreaterThanOrEqual(0);
-    expect(hot.hueRotate).toBeLessThan(360);
-  });
-});
 
 describe("parseAltText (bare-key attr_list block, T2.3)", () => {
   it("parses empty string", () => {
@@ -123,8 +96,8 @@ describe("serializeTransform (bare keys, T2.3)", () => {
     expect(serializeTransform({ align: "right", width: "240px", classes: [] })).toBe("align=right width=240");
     expect(serializeTransform({ align: "center", classes: [] })).toBe("align=center");
   });
-  it("keeps a non-px width (preset var / %) in the style= escape", () => {
-    expect(serializeTransform({ width: "var(--lie-size-medium)", classes: [] })).toBe('style="width: var(--lie-size-medium)"');
+  it("keeps a non-px width (%, em, …) in the style= escape", () => {
+    expect(serializeTransform({ width: "2em", classes: [] })).toBe('style="width: 2em"');
     expect(serializeTransform({ width: "50%", classes: [] })).toBe('style="width: 50%"');
   });
   it("serializes orientation as bare rotate=/flip=, not the img transform", () => {
@@ -135,9 +108,9 @@ describe("serializeTransform (bare keys, T2.3)", () => {
     expect(serializeTransform({ transform: "translate(-25%, -10%) scale(1.8)", aspectRatio: "4/3", width: "320px", classes: [] }))
       .toBe('transform="translate(-25%, -10%) scale(1.8)" aspect-ratio=4/3 width=320');
   });
-  it("serializes filter + a non-px preset var size", () => {
-    expect(serializeTransform({ rotate: 90, filter: "sepia(0.8)", width: "var(--lie-size-medium)", classes: [] }))
-      .toBe('rotate=90 filter="sepia(0.8)" style="width: var(--lie-size-medium)"');
+  it("serializes filter + a non-px width via the style= escape", () => {
+    expect(serializeTransform({ rotate: 90, filter: "sepia(0.8)", width: "50%", classes: [] }))
+      .toBe('rotate=90 filter="sepia(0.8)" style="width: 50%"');
   });
   it("serializes snippet classes (no marker)", () => {
     expect(serializeTransform({ classes: ["rounded", "shadow"] })).toBe(".rounded .shadow");
@@ -206,17 +179,9 @@ describe("filter ↔ FilterData", () => {
 });
 
 describe("size helpers", () => {
-  it("reads a literal px width, null for a preset var", () => {
+  it("reads a literal px width, null for a non-px (%, em) width", () => {
     expect(getWidthPx({ classes: [], width: "320px" })).toBe(320);
-    expect(getWidthPx({ classes: [], width: "var(--lie-size-medium)" })).toBeNull();
-  });
-  it("reads / sets a preset width via the re-themeable var", () => {
-    const t: ImageTransform = { classes: [] };
-    setPresetWidth(t, "large");
-    expect(t.width).toBe("var(--lie-size-large)");
-    expect(getPreset(t)).toBe("large");
-    setPresetWidth(t, null);
-    expect(t.width).toBeUndefined();
+    expect(getWidthPx({ classes: [], width: "50%" })).toBeNull();
   });
   it("setWidthPx writes a px length and clears at null", () => {
     const t: ImageTransform = { classes: [] };
@@ -365,11 +330,5 @@ describe("per-operation persistence (§2.8 — Bug 33 guard)", () => {
     // a cut that keeps the original ratio stores NO aspect-ratio (derived).
     const square = toCropResult({ x: 0, y: 0 }, { w: 200, h: 200 }, 0, 1, 200, 1);
     expect(square.aspectRatio).toBeUndefined();
-  });
-
-  it("setPresetWidth (legacy var path) stays a non-px width in style=", () => {
-    const t = base(); setPresetWidth(t, "large");
-    expect(getPreset(t)).toBe("large");
-    expect(block(t)).toContain("style=\"width: var(--lie-size-large)\"");
   });
 });

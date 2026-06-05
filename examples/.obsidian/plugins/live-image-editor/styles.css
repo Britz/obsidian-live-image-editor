@@ -332,8 +332,15 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
   transition: opacity 0.1s ease;
   pointer-events: none;
 }
-.lie-wrapper:hover .lie-toolbar-in-image,
-.lie-wrapper:focus-within .lie-toolbar-in-image {
+/* Normal hover-reveal (D1) — but ONLY while no modal panel is open. The moment a panel opens the bar
+   gets `.lie-toolbar-inactive`, and from then on its visibility rides the host's ONE region-hover
+   signal alone (the `.lie-region-active` rules below) — never the CSS `:hover`, which would desync
+   from the JS state and flap the bar between greyed and un-greyed (Bug 2). `.lie-region-hover` is the
+   SAME single hover signal for the lightweight body-level palettes (group popup / class dropdown):
+   it keeps the in-chrome bar visible while you hover the palette (Bug 3) WITHOUT greying it. */
+.lie-wrapper:hover .lie-toolbar-in-image:not(.lie-toolbar-inactive),
+.lie-wrapper:focus-within .lie-toolbar-in-image:not(.lie-toolbar-inactive),
+.lie-wrapper.lie-region-hover .lie-toolbar-in-image:not(.lie-toolbar-inactive) {
   opacity: 1;
   pointer-events: auto;
 }
@@ -342,7 +349,29 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
    bar; the plugin then shows the SAME toolbar floating on the body (outside the clip). */
 .lie-wrapper.lie-float .lie-toolbar-in-image { display: none !important; }
 
-.lie-toolbar-floating { max-width: 92vw; }
+/* D6 — image + toolbar + open panel are ONE active region. While a submenu is open the host marks
+   the bar `.lie-region-active` whenever the pointer is anywhere in that region (incl. the
+   image→panel travel grace), so the in-chrome bar stays visible (GREYED) instead of dropping the
+   instant the pointer leaves the image rect — the flicker bug — and hides TOGETHER with the panel
+   when the region is left. Ordered AFTER the `:hover` rule so the greyed state wins while a submenu
+   is open (equal specificity → source order). */
+.lie-toolbar-in-image.lie-toolbar-inactive { opacity: 0; pointer-events: none; }
+.lie-toolbar-in-image.lie-toolbar-inactive.lie-region-active { opacity: 0.4; }
+
+.lie-toolbar-floating { max-width: 92vw; transition: opacity 0.1s ease; }
+/* The floating bar carries the same `.lie-region-active`: greyed-visible while the region is active,
+   hidden when it is left — so it tracks the panel exactly like the in-chrome bar. */
+.lie-toolbar-floating.lie-toolbar-inactive:not(.lie-region-active) { opacity: 0; pointer-events: none; }
+
+/* The greyed bar must stay a HOVER member of the active region: the floating bar sits OUTSIDE the
+   image rect (above it), so it needs `pointer-events: auto` to fire mouseenter and keep the region
+   alive when the pointer moves onto it — otherwise the region drops and the panel+bar flicker away
+   (the very bug this rework fixes, for the float case). Its CONTROLS stay inert (D6 inactive):
+   pointer-events on the container, none on the buttons. (The in-chrome bar gets the same — which
+   also stops its buttons being clickable while a submenu is open, the D6 inactive contract.) */
+.lie-toolbar-inactive.lie-region-active { pointer-events: auto; }
+.lie-toolbar-inactive.lie-region-active .lie-toolbar-btn,
+.lie-toolbar-inactive.lie-region-active .lie-toolbar-group-trigger { pointer-events: none; }
 
 /* ---- In-place crop (D8/AD3) -------------------------------------------
    The editor edits the LIVE 3-layer DOM in place — NO clone. For the crop duration the editor adds
@@ -555,7 +584,9 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
   cursor: pointer;
 }
 .lie-submenu-icon-btn:hover { background: var(--background-modifier-hover); }
-.lie-submenu-confirm:hover { color: var(--interactive-accent); }
+.lie-submenu-confirm { color: var(--interactive-accent); }
+.lie-submenu-confirm:hover { color: var(--interactive-accent); background: var(--background-modifier-hover); }
+.lie-submenu-cancel:hover { color: var(--text-error); }
 
 /* ---- Size sub-menu body (D6.1) ---------------------------------------- */
 .lie-size-body { display: flex; flex-direction: column; gap: 8px; }

@@ -41,7 +41,6 @@ export default {
   blur: "Blur",
   grayscale: "Grayscale",
   sepia: "Sepia",
-  temperature: "Temperature",
   groupLight: "Light",
   groupColor: "Color",
   groupEffect: "Effect",

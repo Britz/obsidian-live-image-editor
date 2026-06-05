@@ -35,20 +35,37 @@
       pulling F14 to IST for the accept/cancel rework — decide whether to reword F14 ("…and Export"
       → "Export uses the native dialog") or leave it as the conceptual grouping.
 
+- [ ] **`data-`-prefix the runtime-only keys on WRITE? (cross-renderer HTML5-validity).** The writer
+      emits bare `rotate=` / `flip=` / `transform=` / `filter=`; in foreign output these land verbatim as
+      non-standard `rotate="…"` attributes (python-markdown — browser-inert but not valid HTML5) or as
+      `data-rotate="…"` (Pandoc prepends `data-` → valid HTML5). The runtime already READS both
+      spellings (`runtime.ts` claim selector), so writing the `data-` prefix ourselves would make the
+      no-plugin output valid HTML5 everywhere — at the cost of a longer hand-edited block (T11
+      brevity). Current lean: **keep bare keys** (already browser-inert and shorter); revisit only if
+      HTML5 validity of the *exported* page matters. Surfaced by the cross-renderer fallback research
+      (2026-06-04) — see implementation-plan §2.2b + memory `img-attr-fallback-prior-art`.
+
 ### Verifications (need eyes on a real / focused window)
 
-- [ ] **Reading-view focused-window pass.** Reading view renders only when visible, so it does not
-      render in a backgrounded/headless CDP window. The live reading-view render, captions on a real
-      captioned image, float/inline there, and the interactive panels (crop / filter / size) plus the
-      native save dialog (F13, not CDP-reachable) were verified only via live preview (shared code) —
-      need a focused-window / manual pass. The pure logic each depends on is unit-tested.
+- [ ] **Reading-view-specific render + native save dialog — focused-window pass.** The interactive
+      panels (crop / filter / size) and the **F2 duplicate-resolution render path** are now verified
+      live in a focused window (`verify-render-gaps` 4/4 incl. the occurrence-aware F2 checks;
+      `verify-crop` 20/20; `verify-write-path` 14/14 incl. the Bug-33 dup rows). What still needs a
+      focused **reading-view** pass (it doesn't render in a backgrounded/headless window) is the
+      reading-view-SPECIFIC rendering — captions on a real captioned image and float/inline THERE — and
+      the **native save dialog** (F13, not CDP-reachable). The pure logic each depends on is unit-tested.
 - [ ] **Crop responsive scaling (#7).** Box-relative `translate%` + `width:100%` img should rescale a
       crop as the column narrows; structurally correct but not yet measured under a narrowing column.
-- [ ] **Submodal accept/cancel + active-region — real-pointer pass.** `verify-submodal-icons.mjs` and
-      `verify-submodal-region.mjs` pin the structural facts (read-source-back; synthetic enter/leave),
-      but the real-pointer `:hover` CSS travel image→panel and the visual greyed-while-open state are
-      not CDP-synthesizable — confirm in a focused window that the bar+panel don't flicker on the way
-      across and that ✓/✗ feel right. (Submodal rework, 2026-06-05.)
+- [ ] **Submodal + active-region + Bugs 1–3 — real-`:hover` travel only (structural part DONE).**
+      The structural guards now actually RUN green live (2026-06-05 re-check, fresh build):
+      `verify-submodal-icons` 16/16, `verify-submodal-region` 12/12, `verify-region-clickaway` 12/12,
+      `verify-popup-region` 8/8 (read-source-back + synthetic enter/leave). What's left is the ONE
+      thing CDP can't synthesize — the **real-pointer `:hover` CSS travel** and the visual feel:
+      (a) the **floating** bar (outside the image rect) — hover image→bar→panel/popup and back must
+      stay one region with no flicker; (b) the in-chrome bar stays **greyed the whole time** a panel is
+      open (no one-frame un-greyed flash on re-entry); (c) ✓/✗ feel right. (Click-away leaving crop
+      open, group-popup coupling, and the greyed-hidden states are now structurally proven, not just
+      claimed — L14.)
 - [ ] **Caption pure-CSS sizing** against the implemented new DOM (verified in isolation, not the
       real structure).
 - [ ] **Toolbar container-query** with the box's aspect-ratio height (tested with an explicit px
@@ -57,60 +74,97 @@
       Obsidian's own source-reveal across edge cases (fallback signal: native widget DOM presence via
       `:has()`). Largely addressed by the HEAD pure-CSS model (`.cm-line:has(> .cm-formatting)`), but
       worth a final empirical confirm.
+- [ ] **Detached-anchor commit — add a `verify-write-path.mjs` row.** The fix (commit on a panel whose
+      anchor scrolled out uses the captured `ImageLocation`, not the basename scan) is unit/code-verified;
+      its CONNECTED duplicate case is in the write-path matrix, but the DETACHED branch has no CDP row
+      yet (needs synthesizing a scroll-out of a duplicated embed mid-edit). Add it when next in the
+      crop/write-path code. (Resolved-by-finalization-pass, narrow trigger.)
+- [ ] **Portable runtime (AB7a) + Export (F13) — re-verify + add a guard.** Both are recorded as
+      **SOLVED✓CDP** from earlier sessions but were **NOT re-checked** in the 2026-06-05 finalization,
+      and **neither has an automated guard**: `scripts/` carries no runtime/export/smoke check and
+      `runtime-smoke.html` is a manual fixture. So the two least-covered paths are (a) the **portable
+      runtime** — foreign-page hydration via `buildLayers`/`readTransform`, the runtime-only keys
+      degrading to the original image; and (b) the **export canvas render** (`renderTransformedImage` —
+      replay box geometry + native filter at original resolution). *Add:* a headless-browser check that
+      hydrates `runtime-smoke.html` and asserts the built 3-layer structure + applied transform (CI-able,
+      no Obsidian), and an export-render guard that drives `renderTransformedImage` and reads the output
+      canvas back (the save DIALOG stays manual, F13).
 
 ### Known open bugs
 
-*(Bug 33 — the bare-key WRITE PATH — is **SOLVED**; the real root cause was a basename collision in
-the source resolver, NOT the hypothesized "serialize emits only width". See **Resolved by the
-write-path matrix + Bug 33 fix** under SOLVED / DONE.)*
-*(Bug 32 — the crop editor not migrated to the 3-layer model (cluster) — is **SOLVED** (incl. the
-true in-place conversion that closed the DEFER "Crop-in-place" item, and the host-wide auto-persist);
-see **Resolved by the crop-editor in-place rework** under SOLVED / DONE. The drag haptics +
-pinch-sensitivity feel remain the one MANUAL check.)*
-- [ ] **Auto-persist on anchor-disconnect can hit the wrong occurrence of a DUPLICATED image.** Any
-      panel (crop/filter/size) that auto-persists when its anchor leaves the DOM (scrolled out of the
-      CM6 viewport mid-edit) re-resolves the source line from a now-DETACHED `activeImage`, so
-      `locateImage` can't use the line-accurate `posAtDOM` path and falls back to the basename scan
-      (`findImageInSource` → first occurrence — the Bug-33 failure mode). So editing the *2nd* embed of
-      a repeated file and then scrolling it out of view can write to the *1st*. Pre-existing for
-      filter/size (they already committed on disconnect); newly reachable for crop (the old crop
-      *cancelled* on disconnect). *Fix (a focused follow-up):* capture the resolved `ImageLocation` at
-      panel-open and reuse it on commit instead of re-resolving from the detached image; add a row to
-      the `verify-write-path.mjs` matrix. Narrow trigger (duplicated image + scroll-out mid-edit).
-*(Bugs 29–31 — the LP reveal / source-rendering cluster — are **SOLVED**; see **Resolved by the
-LP reveal cluster fix** under SOLVED / DONE.)*
+- [ ] **`<>` dismiss doesn't hide the FRONT of the link on the cursor line (fights the native
+      widget).** When the editor cursor is on the image's line, the `<>` dismiss fails to hide the
+      **front part** of the raw link (the `![](…)` head) — it stays visible. *Hypothesis (diagnose
+      first):* on the active line Obsidian reveals its **own native source tokens** (the real,
+      editable `![…](…)` document text), and the dismiss only hides the plugin's overlay — the FAKE
+      link (`.lie-fake-link`) + the `{…}` (`.lie-attr`) via `.lie-dismissed`. It cannot (and must not
+      naively) hide Obsidian's native-revealed source, which is the document being edited — so the
+      dismiss "loses the fight" with the native reveal on the cursor line (related to L11/L11b and the
+      `.cm-active` lock-step note above). *Fix (top-down):* reconcile the dismiss with the native
+      active-line reveal — e.g. on a dismissed line also suppress the native `![](…)` source tokens
+      (scoped to that line) — **without** breaking native editing/selection of the source (L11). Needs
+      a CDP diagnose of exactly what renders on the active line first.
 
-*(Bug 25 — rotate/flip drifting an already-cropped image — is **SOLVED** by the crop-geometry rework;
-see **Resolved by the crop-geometry & representation rework** under SOLVED / DONE.)*
-
-*(The LP-rendering-rework cluster — live-preview float, the tall-float cap, the reading-view sizing
-cluster, the inline-icon/tiny toolbar position, and the `<>` reveal toggle — has landed; see
-**Resolved by the LP rendering rework + follow-ups** under SOLVED / DONE.)*
+*The auto-persist-on-anchor-disconnect bug is **SOLVED** (see the finalization-pass registry below);
+the earlier clusters (Bug 25, Bugs 29–31, Bug 32, Bug 33, the LP-rendering-rework cluster) are in the
+registry with their cause + fix. The crop drag haptics / pinch-sensitivity feel remains the one MANUAL
+focused-window check.*
 
 ### Deferred design / elegance (DEFER)
 
-- [x] **Crop-in-place** vs the mirroring overlay — **SOLVED** (folded into the Bug 32 rework; see
-      **Resolved by the crop-editor in-place rework** under SOLVED / DONE). The clone overlay is gone:
-      the editor edits the LIVE 3-layer DOM, lifting `overflow:hidden` (frame/area) and the host
-      `contain:paint` (`!important`, beaten with `!important`) for the crop duration so the image
-      overflows the cut with the outside dimmed and the inside full — no `document.body` clone, no
-      reflow (the footprint stays reserved). The interactive pan/zoom/rotate feel is the one MANUAL
-      check that remains.
-- [ ] Smaller chrome unification: resize handle, anchored sub-menu, filter-panel docking — all anchor
-      to the uniform box.
-- [x] **Portable render runtime + `{…}` format — FINAL model — SOLVED.** The bare-key format, the
-      3-layer DOM, the Obsidian-free render core and the standalone runtime bundle have all landed;
-      see **Resolved by the portable-runtime + format-migration rework** under SOLVED / DONE. The
-      `width`/`align` migration to bare keys and the `lie-runtime.js` bundle (the two remaining
-      strands) closed this pass; the 3-layer DOM + crop tokens + export landed in the prior
-      crop-geometry rework. *(Still open, separate: the crop-in-place editor — see DEFER above.)*
+- [ ] **Smaller chrome unification** — the resize handle, the anchored sub-menu and the filter-panel
+      docking could all anchor to the uniform box through one mechanism. *(Crop-in-place and the
+      portable runtime + bare-key format are DONE — see the registry.)*
+
+### Planned features (need a requirements → architecture pass first)
+
+New capabilities, not yet F-items. Per `methodology.md` each starts at the top (a Functional/Design
+requirement + the storage/permission implications) before any code.
+
+- [ ] **Settings-panel rework.** Restructure / redesign the settings tab (`settings.ts`, AB19) —
+      grouping, clarity, and room for the new toggles below. Surfaced as its own UX pass, not a
+      one-off addition.
+- [ ] **Editing-toolbar integration — adapt & test (F23 / T10).** Revisit the integration with the
+      *editing-toolbar* community plugin: re-check the version gate, the button (un)registration, and
+      actually test it against current versions of that plugin. Off by default; currently the
+      least-exercised path.
+- [ ] **"Flatten & clean" a page / vault — IN PLACE (destructive, on the live vault).** A command
+      that, for the selected note (or the whole vault): **exports every edited image** to a real file
+      with the transforms baked in (F13 export, batched), **renames** so the baked file takes the
+      **original's name** (the untouched original kept/renamed alongside), and **strips the `{…}`
+      blocks** from the Markdown — turning the non-destructive edits into permanent files. *Decisions
+      to make first:* what happens to the original (keep as `…-original`? move to a folder?), conflict
+      / collision handling, undo/confirmation (this rewrites real files), and which transforms bake
+      vs. stay (e.g. `align`/`width` are already faithful — do they bake or remain attributes?).
+- [ ] **"Export" a page / vault — as a DOWNLOAD (non-destructive, off the live vault).** The same
+      flatten-and-clean as above, but it produces a **separate downloadable copy** (a bundle of the
+      baked images + the cleaned Markdown) and leaves the live vault **untouched**. Effectively the
+      publish path: a portable, plugin-free copy of the notes. *Shares* the export + clean machinery
+      with the in-place flatten; the only difference is target (a download bundle vs. the live files).
+- [ ] **Reveal-source setting — ONE combined dropdown (F8 / F20).** Merge the existing *Always show
+      the link source* toggle (auto / always) with the new reveal-line **layout** behaviour and a
+      **hidden** option into a **single dropdown** (not scattered toggles). The four options, in order:
+      1. **Immer** (always shown) ·
+      2. **Auto — Höhe sichtbar** (reveal on hover / cursor line; the line **reserves its height** when
+         hidden → **no jump** on reveal — the current default) ·
+      3. **Auto** (reveal on hover / cursor line; the line **collapses** when hidden → the image
+         **jumps** on reveal — the original Obsidian-like behaviour) ·
+      4. **Ausgeblendet** (never shown / always hidden).
+
+      So the two dimensions (when revealed: always / auto / never; and, in auto, reserve-height vs.
+      collapse) fold into these four labels. This **supersedes** the boolean `alwaysShowLink`. Includes
+      the layout/CSS logic (the reserved-height rule keyed on the choice) + the setting in `settings.ts`
+      (AB19). The per-image `<>` toggle (F8) is a **transient override that flips the natural state**
+      and then **auto-clears back to the default**:
+      - Options 1–3: unchanged — whenever the `<>` control is reachable (hover / the toolbar) the
+        source is already visible, so the toggle **dismisses** it (transiently; clears back to the
+        revealed default as today).
+      - Option 4 (**Ausgeblendet**): the source is hidden even while `<>` is reachable, so a click
+        **reveals** that image's source, then **auto-clears back to hidden** (the default) — the same
+        transient-override mechanism, just inverted.
 
 ### Under-specified details (SPEC)
 
-- [x] Exact **crop serialization** tokens (how the cut-frame aspect + placement sit in the attr block).
-      **SOLVED** by the crop-geometry rework: placement = `transform="<2D-affine>"` on the inner
-      `<img>`; cut-frame aspect = `aspect-ratio=` on the outer, stored only when the crop shape ≠
-      original (else derived — AD6); the crop never stores a fixed px `height`. See the SOLVED entry.
 - [ ] Shared **sub-menu host** component API (D6 / F14).
 - [ ] **Link-form conversion** edge cases (F5 / F6).
 
@@ -123,149 +177,57 @@ cluster, the inline-icon/tiny toolbar position, and the `<>` reveal toggle — h
       29–31 regressions are `it.todo` placeholders (`tests/regressions.test.ts`) pending their own
       diagnose-first passes; the focused/manual checks (§6: native save dialog, reading-view window,
       drag haptics) remain manual by design.
+- [ ] **Harden the CDP guard suite for reliable BATCH runs (L14).** Each `scripts/verify-*.mjs` passes
+      individually on a fresh build, but running the whole set back-to-back degrades the live window
+      (render churn over many fixture create/modify/delete cycles + reloads) → spurious flakes: transient
+      single-image fixtures fail to render their overlay (crop/size steps then `cropOpened:false`), and
+      the 9222 relay buffers the RUN-eval-then-poll → "RUN eval did not finish". *Add:* re-find live
+      elements right before each action (never a stale captured ref), a retry-on-churn wrapper, and a
+      `run-all` harness that reloads to a clean state between guards and prefers `CDP_PORT=9223` direct.
+      The symptom is recorded in L14; this is the fix.
 
-### DRY/KISS audit — fresh against HEAD (2026-06-04)
+### DRY/KISS audit — re-grounded against HEAD (2026-06-05)
 
-Re-grounded on the current `src/` after the **LP rendering rework** (Slice 1's shared
-`source-writer.ts` writer, the A/B'/C uniform-render follow-up, and the `.lie-img`-marker removal)
-on top of the earlier box rename (`lie-rotate-box`→`lie-image-area`/`lie-box` swap) and the
-small/inline toolbar reflow. Supersedes the stale 2026-06-03 audit (its dissolved points are in
-**Solved / Done** below). Every box here is a **pure, functionality-preserving refactor** (each
-says why behaviour is preserved); effort S/M/L. Behaviour-affecting items are split out at the end
-and **not** ticked as pure refactors. Per `methodology.md`, each was checked first against a
-missing requirement/architecture point.
+The 2026-06-04 audit was worked through in the finalization pass. **Done** — each a pure,
+behaviour-preserving refactor (cause/why in **Resolved by the finalization pass** below): the
+panel-opener location LOOKUP funnelled through one shared `locateActiveImage`; a single
+`nonDefaultFilter` as the "≠ default" predicate (was iterated 3×); `BOX_CLASS` used instead of the
+`"lie-image-area"` magic string in `main.ts`; the labelled preset-button build factored into
+`textButton` (`ui.ts`) across the filter / size / crop panels; `parseLocationTransform` and the
+dead `getPreset` / `setPresetWidth` removed. *(The crop-editor double-teardown and the `iconButton`
+3×-repeat were already collapsed by the submodal rework — verified gone, not re-done.)*
 
-DRY — one source of a piece of logic:
+**Still open — deferred with rationale (NOT cleanly behaviour-preserving):**
 
-- [ ] **`main.ts` panel openers re-implement the location LOOKUP.** `customSize`
-      (`src/main.ts:632-635`), `crop` (`:670-673`), `toggleFilters` (`:702-705`), `addClass`
-      (`:742-745`) and `exportImage` (`:778-780`) each repeat
-      `getActiveViewOfType → editor → findImageInSource → parseAltText` and `return` silently on
-      failure — the exact lookup `resolveLocation()` (`:512-526`) already encapsulates *with* its two
-      user-facing Notices. *(The WRITE half is already DRY — every edit funnels through
-      `writeTransform` → `writeToSource` → the shared `writeSource` in `source-writer.ts`; only this
-      lookup half is still duplicated.)* Funnel the openers through the lookup too. **Why
-      behaviour-preserving:** same lookup, same early-out; the only observable change is the *added*
-      Notice on failure — to keep the openers silent, reuse the lookup without the Notice (extract the
-      lookup half). *Effort M.*
-- [ ] **`parseLocationTransform` in `image-resolver.ts` is dead.** `src/image-resolver.ts:79-81` has
-      **zero callers** in `src/` or `tests/` (verified by grep) and is just
-      `parseAltText(location.params)`. Delete it. **Why behaviour-preserving:** an unreferenced export
-      — removal changes no runtime path. *Effort S.* *(The sibling `updateImageSource` named in the old
-      audit is already gone — removed with Slice 1 when the shared `source-writer` writer landed; see
-      Solved.)*
-- [ ] **"filter ≠ default" predicate iterated 3×.** `transforms.ts isDefaultFilter` (`:256-258`) and
-      `filterToCss`'s per-key guard (`:249`) both test `val !== FILTER_DEFAULTS[key]`, and
-      `filter-panel.ts currentFilter` (`:119-127`) re-implements the same "collect non-default keys"
-      loop against its own `getFilterDefaults()`. Add one `nonDefaultFilter(f): FilterData` in
-      `transforms.ts` and have `currentFilter` call it (it already builds exactly that object).
-      **Why behaviour-preserving:** identical comparison and result object, computed in one place.
-      *Effort S.* *(Down from the old "4×": `filterToVars` is gone.)*
-- [ ] **`.lie-image-area` queried as a magic string instead of `BOX_CLASS`.** `main.ts:198` and
-      `:318` hard-code the literal `"lie-image-area"` that `renderer.ts` already exports as
-      `BOX_CLASS` (`src/renderer.ts:10`); `crop-editor.ts` and `live-preview.ts` correctly use the
-      export. Import and use `BOX_CLASS` in `main.ts`. **Why behaviour-preserving:** the literal and
-      the constant are the same string. *Effort S.* *(The related `lie-image-area-rotate` mismatch is
-      already fixed — see Solved.)*
-
-KISS — fewer moving parts / one shared component:
-
-- [ ] **`crop-editor.ts` teardown duplicated.** `close()` (`src/crop-editor.ts:131-138`) and
-      `confirm()` (`:310-325`) both run the same teardown (remove `lie-cropping`, remove + null the
-      overlay, detach the two `pointermove`/`pointerup` listeners). Extract one private `teardown()`
-      both call (confirm runs its `toCropResult` + `onConfirm` first, then tears down; close then
-      closes the controls). **Why behaviour-preserving:** same statements in the same order, only
-      hoisted. *Effort S.*
-- [ ] **Icon-button build repeated 3× in `anchored-submenu.ts buildHeader`** (`:205-246`): reset
-      (`:219-225`) / cancel (`:228-233`) / confirm (`:235-240`) each do `createElement("button")` +
-      classes + `aria-label` + `title` + `setIcon` + click. One `iconBtn(icon, labelKey, onClick,
-      extraClass)` helper. **Why behaviour-preserving:** produces the identical DOM and the same
-      listeners. *Effort S.*
-- [ ] **Text/preset-button build repeated across the three panels.** `filter-panel.ts buildPresets`
-      (`src/filter-panel.ts:139-159`, loop `:150-156`), `size-submenu.ts` quick presets
-      (`src/size-submenu.ts:60-73`, loop `:62-73`) and `crop-editor.ts openControls`
-      (`src/crop-editor.ts:155-179`, loop `:158-163`) each build a labelled `<button>` with a class +
-      `textContent` + click. One small `textBtn(label, cls, onClick)` helper (co-located, e.g. in
-      `toolbar.ts` or a tiny `ui.ts`). **Why behaviour-preserving:** same element/text/handler;
-      classes stay per-panel via the arg. *Effort S.* *(The old "slider row duplicated (temperature +
-      normal)" is DISSOLVED — there is now a single `buildSlider` called in a loop and no separate
-      temperature row in the panel; see Solved.)*
-- [ ] **`styles.css` repeats the button base 5×.** `.lie-crop-preset-btn` (`styles.css:439`),
-      `.lie-filter-preset-btn` (`:479`), `.lie-class-dropdown-item` (`:518`), `.lie-submenu-icon-btn`
-      (`:555`) and `.lie-size-choice` (`:574`) each redeclare `border-radius`, `cursor: pointer`, a
-      background and `:hover { background: var(--background-modifier-hover) }`. Add one base `.lie-btn`
-      (the shared rules) and let each keep only its specifics (two set
-      `background:var(--background-primary)`, three `transparent`). **Why behaviour-preserving:** the
-      computed styles are unchanged if the markup also gets the base class (a docs-only proposal —
-      implementing it touches `.ts` + CSS together; mark the CSS+class pair as one change).
-      *Effort M.*
-
-Behaviour-near — verify carefully (L8 / L10 / Bug-2 territory):
-
-- [ ] **Embed-matching regexes are spread across six modules** with overlapping but
-      *deliberately different* capture groups: `image-resolver.ts:18-19` (`WIKI_EMBED`/`MD_EMBED`,
-      global, path + block), `link-format.ts:19-20` (`WIKI`/`MD`, caption + path + block),
-      `live-preview-logic.ts:5,15` (`EMBED_LINE`/`INLINE_EMBED`, whole-line anchored), `caption-logic.ts:17,24`
-      (caption only), `live-preview.ts:48,55` (highlight split + file resolve), `main.ts:264`
-      (native-size fold). Share only the **embed-token sub-pattern** (the
-      `!\[…\]\(…\)|!\[\[…\]\]` alternation and the `(\{[^}]*\})?` block) as named fragments; do **not**
-      force one regex. **Why behaviour-preserving (IF done as pure factoring):** the composed regexes
-      must match byte-for-byte — risky, so treat as L-effort and gate on the full embed-parsing test
-      suite (`tests/link-format`, `tests/live-preview`, `tests/caption`, `tests/transforms`). *Effort L.*
+- [ ] **`styles.css` repeats the button base 5×** (`.lie-crop-preset-btn`, `.lie-filter-preset-btn`,
+      `.lie-class-dropdown-item`, `.lie-submenu-icon-btn`, `.lie-size-choice` each redeclare
+      `border-radius` / `cursor` / a background / `:hover`). A shared `.lie-btn` base would dedupe it,
+      but it touches CSS **and** the markup of all five together and risks changing computed styles —
+      the verification cost (computed-style read-back per button type) outweighs the cosmetic win.
+      *Effort M; deferred.*
+- [ ] **Embed-matching regexes spread across ~6 modules** with *deliberately different* capture
+      groups (`image-resolver`, `link-format`, `live-preview-logic`, `caption-logic`, `live-preview`,
+      `main.ts` native-size fold). Sharing only the embed-token sub-pattern is possible, but the
+      composed regexes must match byte-for-byte — high risk, low reward; the audit's own guidance is
+      **do not force one regex**. *Effort L; deferred (gate any attempt on the full embed-parsing
+      suite).*
 
 > **Rejected / not pursued (do NOT chase):**
 > - The floating toolbar and the in-image toolbar are **not** a duplicate — both build via
->   `buildToolbarElement` (`toolbar.ts:115`); only host + positioning differ (intended, D1/D1.1).
-> - The crop overlay's mirroring image vs the rendered box is tracked as a **design** item
->   (Deferred → "Crop-in-place"), not a pure refactor.
-> - `RevealMode = "auto" | "always"` (`live-preview.ts:29`) is **not** a retired mode cycle — the two
->   values are derived from the global default-state setting (`alwaysShowLink`); the `<>` dismiss
->   is a SEPARATE per-line override (a `lie-dismissed` line decoration, auto-clearing in auto mode),
->   not a third reveal mode. `cycleRevealMode` is gone. Leave it.
+>   `buildToolbarElement`; only host + positioning differ (intended, D1/D1.1).
+> - `RevealMode = "auto" | "always"` is **not** a retired mode cycle — the two values derive from the
+>   global default-state setting (`alwaysShowLink`); the `<>` dismiss is a SEPARATE per-line override
+>   (a `lie-dismissed` line decoration, auto-clearing in auto mode). `cycleRevealMode` is gone.
 
-> **Behaviour-affecting — NOT a pure refactor, flagged for a decision (do NOT bundle into the pure pass):**
-> - **`temperatureAdjust` (`transforms.ts:308-321`) is dead in `src/`** — exported and unit-tested
->   (`tests/transforms.test.ts`) but with **no production caller** (the filter panel builds no
->   temperature row; its comments at `filter-panel.ts:216,261` still describe one). It backs F11 (the
->   virtual temperature control), so removing it *drops a documented capability* — that is a
->   requirements decision (reopen F11), not a refactor. Either wire the temperature slider back into
->   `filter-panel.ts` (restores F11) or retire F11 + the function + its test. **Behaviour-risk —
->   excluded from the pure-refactor list.**
+### `*-logic.ts` split — KISS analysis (KEEP)
 
-### `*-logic.ts` split — KISS analysis (keep, unless a test shim is added)
-
-The user asked whether each pure `*-logic.ts` unit should merge back into its framework-coupled
-counterpart. **Verified import graph (grep):**
-
-| logic unit | imported by (production) | imported by (tests) |
-|---|---|---|
-| `live-preview-logic.ts` | `live-preview.ts` only | `tests/live-preview.test.ts` |
-| `renderer-logic.ts` | `renderer.ts`, **`live-preview.ts`, `export.ts`** | `tests/renderer-logic.test.ts` |
-| `crop-editor-logic.ts` | `crop-editor.ts` only | `tests/crop-editor-logic.test.ts` |
-| `caption-logic.ts` | `caption.ts` (re-export) | `tests/caption.test.ts` |
-| `anchored-submenu-logic.ts` | `anchored-submenu.ts` only | `tests/anchored-submenu-logic.test.ts` |
-
-So the "imported only by its counterpart + the tests" claim holds for four of the five —
-**`renderer-logic.ts` is the exception**: it is consumed by three production modules
-(`renderer.ts`, `live-preview.ts`, `export.ts`), so it is a genuine shared unit and merging it
-anywhere would *create* a new dependency, not remove one. It should stay split regardless.
-
-For the other four, merging would be a real simplicity win (one file per concern, no
-counterpart/`-logic` pair). **But the tradeoff is the load-bearing one (AD7/T8/L6):** there is **no
-vitest/vite config** in the repo and **no obsidian/`@codemirror/*` mock** — every test imports only
-framework-free modules (the five `*-logic.ts`, plus `transforms.ts` / `link-format.ts`). The
-counterparts all import `obsidian` and/or `@codemirror/*`, which **do not resolve under vitest**.
-Merging would force a test to import a module that pulls those in, breaking the suite **unless a
-vitest config with an obsidian + CM mock/alias is added first** (a new build surface and a fragile
-parallel to the real APIs — exactly the cost AD7 pays the `-logic` split to avoid).
-
-- [ ] **Recommendation: KEEP the split as-is.** The pure logic is testable without Obsidian/CM,
-      which is the whole point of AD7/T8/L6; the win from merging is small (file count) and the cost
-      (an obsidian/CM test shim) is the thing the split exists to avoid. **Behaviour note:** a merge
-      would change **test imports only**, never plugin runtime behaviour — so it is *allowed* as a
-      refactor, but it is **not recommended** here. If a shim is ever wanted for other reasons, the
-      four single-consumer units (not `renderer-logic.ts`) could then fold in. *Effort (if pursued): M
-      — the shim, not the moves.*
+The pure `*-logic.ts` units stay split from their framework-coupled counterparts (AD7/T8/L6): the
+logic is unit-testable without an obsidian/CM mock (the repo has **no vitest config and no mock**, by
+design). `renderer-logic.ts` is a genuine shared unit (consumed by `render-core`, `live-preview`,
+`export`). Merging any of the others would only save a file while forcing a test to import
+obsidian/CM — the exact cost the split exists to avoid. The same discipline now also keeps
+`image-resolver.ts` pure (`import type` Editor) so its resolvers are unit-tested. **Recommendation:
+keep the split.**
 
 ---
 
@@ -274,6 +236,60 @@ parallel to the real APIs — exactly the cost AD7 pays the `-logic` split to av
 > Resolved work, kept as the cause+fix record. The **L1–L13** lessons and **Bug N** numbers are
 > referenced by other docs and must keep resolving here. Status legend on bugs: **SOLVED**
 > (code-verified) · **SOLVED✓CDP** (verified live in Obsidian).
+
+### Resolved by the finalization pass (2026-06-05)
+
+The clean-room render-path gaps, the F11 retirement, the dead-code sweep, the open
+auto-persist-on-disconnect bug, and the pure DRY/KISS refactors. Build/lint/test green
+(155 unit tests); the write-path matrix (14/14) + crop / submodal / reveal scripts re-run green;
+new structural checks: `tests/image-resolver.test.ts` (F2), `tests/size-submenu-logic.test.ts`
+(F24), `tests/render-core.test.ts` (CLAIM_SELECTOR), and `scripts/verify-render-gaps.mjs` (F24
+live source read-back PASS; F2 reading-view SKIPs headless — see the reading-view manual bucket).
+
+- [x] **F2 — reading-view render of a DUPLICATED image — SOLVED.** *Cause:* `reconcileFromSource`
+      resolved every rendered image via `findImageInText(source, basename)` → the FIRST basename
+      match, so the 2nd embed of a repeated file rendered the 1st's transform (the Bug-33 failure
+      mode, on the render path; the post-processor was already correct via the sibling text node).
+      *Fix (AB3, root):* the reconcile counts each basename's **occurrence in DOM order** (= source
+      order) and resolves the n-th occurrence via the new occurrence-aware
+      `findImageInText(text, src, occurrence)`; `image-resolver.ts` is made pure (`import type`
+      Editor) so the resolver is unit-tested (`tests/image-resolver.test.ts`, fails on first-match).
+- [x] **Filter `[filter]` in `CLAIM_SELECTOR` — SOLVED.** *Cause:* a bare `filter=` is runtime-only
+      (a browser ignores the bare attribute), but the runtime's `CLAIM_SELECTOR` didn't list it, so a
+      filter-only image was never hydrated on a foreign page. *Fix:* added `[filter]` + `[data-filter]`
+      to `CLAIM_SELECTOR` (`readTransform` already reads `filter`); docs aligned — AD2 / T3 / F25 now
+      list a bare `filter` among the runtime-only keys, `style="filter:…"` as the faithful escape.
+      Pinned by `tests/render-core.test.ts`.
+- [x] **F24 — "icon" preset couples to inline (F17) — SOLVED✓CDP.** *Cause:* the icon preset set only
+      `height: 1.5em`, not the inline rendering, so it didn't flow as an icon. *Fix:* the preset table
+      is now the pure `sizePresets` (`size-submenu-logic.ts`), where `icon` sets `inline=true` (+ the
+      line-height height); the size sub-menu carries `inline` through preview/commit. Pinned by
+      `tests/size-submenu-logic.test.ts` + `verify-render-gaps.mjs` (source read-back → `.lie-inline`).
+- [x] **F11 temperature retired — DONE.** The virtual-temperature control had no production caller
+      (the panel built no temperature row). Decided: retire it. Removed the dead `temperatureAdjust`
+      (+ `clampNum`) and its tests, the `temperature` i18n key (en/de), and the stale filter-panel
+      comments; struck temperature from `requirements.md` F11 and `architecture.md` AB13. (The rest of
+      F11 — the seven sliders + presets — ships.) *(Supersedes the prior "wire it back or retire"
+      decision item.)*
+- [x] **Dead-code sweep — DONE.** Removed `getPreset` / `setPresetWidth` (the retired re-themeable
+      `var(--lie-size-*)` write-model — presets bake to `width=N` px; no `--lie-size-*` var is defined
+      anywhere) and `parseLocationTransform` (zero callers), with their tests. `MARKER_CLASS` has no
+      set path (was already dropped in aff1847); the parser **skip** of a legacy `.lie-img` is kept
+      (back-compat) — verified, nothing to remove there.
+- [x] **Auto-persist on anchor-disconnect wrote the wrong occurrence of a DUPLICATED image — SOLVED.**
+      *Cause:* a panel (crop/filter/size) that auto-persists when its anchor has scrolled out of the
+      CM6 viewport mid-edit re-resolved the line from a now-DETACHED `activeImage`, so `locateImage`
+      fell back to the basename scan → first occurrence. *Fix (root):* the shared `locateActiveImage`
+      prefers the live image's `posAtDOM` only while it is **connected**; when detached it uses the
+      `ImageLocation` **captured at panel-open** (passed as `modifyTransform(..., fallback)`), never the
+      basename scan. The connected path is covered by the write-path matrix's Bug-33 dup row; the
+      detached branch is code-verified (narrow trigger — duplicate + scroll-out mid-edit).
+- [x] **Pure DRY/KISS refactors — DONE** (all behaviour-preserving): the five panel openers funnel
+      through one shared `locateActiveImage`; `nonDefaultFilter` is the single "≠ default" predicate
+      (`filterToCss` / `isDefaultFilter` / the filter panel share it); `main.ts` uses `BOX_CLASS` not
+      the `"lie-image-area"` literal; the labelled preset-button build is one `textButton` (`ui.ts`)
+      across the filter / size / crop panels. (See the re-grounded DRY/KISS audit under OPEN for the
+      two deferred items + the kept `*-logic` split.)
 
 ### Big milestones — landed
 
@@ -348,6 +364,47 @@ Two fixes on the shared sub-menu host (`AnchoredSubmenu`), folded into the canon
       is pointer-hoverable + buttons inert (structural — the synthetic events couldn't catch it).
       *Manual:* the real-pointer `:hover` CSS travel path (not CDP-synthesizable) is a focused-window
       check.
+
+### Resolved by the region visibility-coupling follow-ups (2026-06-05)
+
+Three real-pointer bugs found on the new "one active region" from the rework above. Root cause shared:
+**TWO competing visibility signals** — the in-chrome bar's pure CSS `.lie-wrapper:hover` vs. the JS
+`hoverShown`/`.lie-region-active` state — which desync. The fix makes **one** signal drive everything.
+Folded into the canonical docs (`requirements.md` F14 + D6.2/D6.3/D6.4, `architecture.md` AD8 +
+AB11/AB11a, `implementation-plan.md` §1 + §3.4). New units: `src/toolbar-region-logic.ts`
+(`clickDismissesToolbar`, pure/tested) + `src/region-hover.ts` (`bindRegionHover` /
+`couplePaletteToRegion`, the shared DOM binder — `anchored-submenu.ts` now reuses it, DRY).
+
+- [x] **Bug 1 — Click-away closes the sub-panel (crop EXEMPT).** The document-click delegate dismissed
+      via `dismissToolbar` which closed crop too, so a stray click outside the image destroyed an
+      in-place crop session. Fix: the delegate now consults the pure `clickDismissesToolbar({insideRegion,
+      cropActive})` — an active click OUTSIDE the region closes+persists **filter/size** (auto-persist,
+      one source write, unchanged), but while **crop** is active NO outside click dismisses (clicks/drags
+      on the image, handles and the dimmed ghost are editing; crop ends only via its own toggle / ✓ / ✗ /
+      Esc). The IMG-reselect branch is likewise skipped during crop. Pinned: `tests/toolbar-region-logic.test.ts`
+      + `scripts/verify-region-clickaway.mjs` (read-source-back: filter/size close+persist+one-undo; crop
+      stays open with no write).
+- [x] **Bug 2 — Panel visibility FIRMLY coupled to toolbar visibility (no in-between state).** Open a
+      panel (bar greyed) → leave → the bar could flash **un-greyed** while the panel was open, because
+      the CSS `:hover` rule (`opacity:1`, 0,3,0) *out-specified* `.lie-toolbar-in-image.lie-toolbar-inactive`
+      (`opacity:0`, 0,2,0) and raced the async `.lie-region-active` toggle. Fix: the in-chrome bar's
+      `:hover`/`:focus-within` rules now carry `:not(.lie-toolbar-inactive)`, so the moment a panel
+      opens the CSS `:hover` stops competing and the bar's visibility + staying-greyed ride the host's
+      ONE region signal alone (`.lie-region-active`). The bar stays greyed the **whole** open duration;
+      hover-leave hides bar+panel together (panel stays open), hover-return shows them together. The
+      shared binder also tracks a member **set** (nesting-robust: toolbar→image stays inside). Pinned:
+      `verify-submodal-region.mjs` extended (shown bar = opacity 0.4 never 1; hidden = opacity 0 and
+      still `.lie-toolbar-inactive` the whole time).
+- [x] **Bug 3 — Group popups / class dropdown coupled like Bug 2, but NOT greyed.** The folded-group
+      popups (`.lie-group-popup`) and the add-class dropdown (`.lie-class-dropdown`) live on
+      `document.body` (outside the wrapper paint box), so hovering them dropped `.lie-wrapper:hover` and
+      the in-chrome bar vanished. Fix: `couplePaletteToRegion` binds the palette + wrapper + toolbar as
+      ONE region (the same binder) and marks the wrapper `.lie-region-hover` while hovered — the new CSS
+      `.lie-wrapper.lie-region-hover .lie-toolbar-in-image:not(.lie-toolbar-inactive)` keeps the bar
+      visible (NOT greyed — palettes are not modal) — and closes the palette when the region is left, so
+      bar + palette fade together. `.lie-class-dropdown` is also added to the region selector + the
+      floating-bar mouseover guard. Pinned: `scripts/verify-popup-region.mjs` (popup keeps the region,
+      bar stays visible+not-greyed, leaving closes both).
 
 ### Resolved by the LP rendering rework + follow-ups (2026-06-04)
 
@@ -493,7 +550,7 @@ errors). The drag haptics + pinch sensitivity feel are the one MANUAL check (a f
       `crop()` persist-or-clear; `anchored-submenu.ts`/`filter-panel.ts` auto-persist. Regressions:
       `tests/crop-editor-logic.test.ts` (round-trip == no drift, edge-handle `scale(sx,sy)`),
       `tests/regressions.test.ts` (width-edit keeps the crop, both paths). Structural CDP:
-      `scripts/verify-crop.mjs` 20/20. Fixture: `examples/Crop editor (Bug 32).md`.) *Post-review
+      `scripts/verify-crop.mjs` 20/20 (self-creates `_crop-fixture.md`; manual demo `examples/02 — Crop.md`).) *Post-review
       hardening:* assign `this.cropEditor` BEFORE `open()` so a synchronous self-close (image not in
       the 3-layer DOM) can't restore a dead ref and jam the trigger; skip `.lie-cropping` images in
       `reconcileFromSource` so a layout-change re-render can't clobber a live reading-view session;
@@ -656,15 +713,11 @@ the portable runtime is built.
       the fake link yields to the native source via `.cm-line:has(> .cm-formatting)`; the dismiss
       refinement is recorded under "Resolved by the LP rendering rework + follow-ups" above.)*
 
-- [x] **Temperature — virtual-control LOGIC kept; the SLIDER is currently absent (F11, re-verified
-      2026-06-03).** `temperatureAdjust` still lives in `src/transforms.ts:307` (nudges
-      hue/saturate/brightness; a virtual control, not a native white-point shift) and is unit-tested.
-      **But at HEAD `src/filter-panel.ts` builds NO temperature row** — `buildSliders` iterates only
-      the `SLIDERS` array (no temperature entry), so `temperatureAdjust` has no production caller. The
-      panel comments still describe a temperature slider that isn't there. → reopened as a
-      **behaviour-affecting** item in the 2026-06-03 DRY/KISS audit (wire it back to restore F11, or
-      retire F11 + the dead function + its test). *(Bug 15 "temperature removed" was a transient
-      removal in the post-rework round; the slider has not returned.)*
+- [x] **Temperature — RETIRED (F11).** The virtual-temperature control (`temperatureAdjust`, never
+      wired to a panel row after the rework) was decided dead and removed in the finalization pass
+      (2026-06-05) — see **Resolved by the finalization pass** above. F11 keeps the seven sliders +
+      named presets; the function, its test, the `temperature` i18n key and the stale panel comments
+      are gone, and `requirements.md` F11 / `architecture.md` AB13 no longer mention temperature.
 
 - [x] **#1 Export resolution (F13 / AB15 / §3.4).** Export from the original image's native resolution
       (highest quality; display size never reduces it).
@@ -809,6 +862,27 @@ architecture encodes most in its decisions (`AD…`).
   reading-view renderer is visibility-driven; a backgrounded/headless window leaves
   `.markdown-preview-sizer` empty, so verify that path in a focused window. (See CLAUDE.md → Live
   debugging.)
+- **L14 — "Verified" requires a REBUILT vault AND a guard that actually RUNS** (the over-claim trap;
+  surfaced by the 2026-06-05 finalization re-check). A fix is not verified just because the code is
+  written and a guard script exists. Two failures bit at once: (1) the dev **vault build was stale** —
+  the region-coupling + submodal-rework source was written but the installed
+  `examples/.obsidian/plugins/live-image-editor/main.js` was an earlier snapshot missing
+  `clickDismissesToolbar`/`bindRegionHover`, so any script tested OLD code; (2) two guards
+  (`verify-submodal-region.mjs`, `verify-popup-region.mjs`) had **literal backticks inside their
+  `EVAL_RUN` template literal** — which closes the template early → `ReferenceError` at module load →
+  they had **never executed**. So the "pinned" claim was hollow. *Rule:* before writing "verified",
+  rebuild + install the dev build (`npm run build:dev` + copy to the vault, or `dev:vault`) +
+  `location.reload()`, then RUN the guard and read its PASS lines. After the rebuild + script fixes
+  all 10 guards passed live (write-path 14/14, render-gaps 4/4, reveal 5/5, crop 20/20, crop-teardown
+  all-paths, crop-pan 11/11, submodal-icons 16/16, submodal-region 12/12, region-clickaway 12/12,
+  popup-region 8/8). Two test corrections went with it: an over-strict `opacity === "0"` read the
+  ease-tail mid-fade (→ tolerance `< 0.05`), and `verify-crop-teardown`'s old "clickaway" exit
+  contradicted the Bug-1 crop-exemption (→ a context-loss teardown path instead). (d) **CDP channel:**
+  prefer **9223 direct** for the RUN-eval-then-poll guards — the 9222 relay can buffer so the async
+  RUN eval's `window.__X` is read from a different context (spurious "RUN eval did not finish"). The
+  live window also **degrades under dense fixture churn** (many create/modify/delete + reloads):
+  transient single-image fixtures can fail to render their overlay, making crop/size steps flaky — run
+  guards individually with a settle gap, or reload to a clean state.
 
 ### Solved bugs — verification round (2026-06-01, via CDP)
 

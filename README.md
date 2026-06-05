@@ -18,15 +18,28 @@ Non-destructive image editing for Obsidian. Crop, rotate, flip, resize, and appl
 
 ## How it works
 
-Edits are stored as parameters in standard Markdown image syntax. The original file is never touched.
+Edits are stored as a small, portable attribute block **after** the image embed — standard
+Markdown/wiki syntax, never the alt text or the file. The original image is never touched.
 
 ```markdown
-![rotate:90 flipH lie-small](photo.png)
-![crop:20,10,260,180,15,1.2 brightness:1.1](photo.png)
-![lie-center lie-shadow 400x300](photo.png)
+![A caption](photo.png){rotate=90 width=420}
+![[photo.png]]{align=left filter="sepia(0.8)"}
+![square](photo.png){transform="translate(-50%,-50%) scale(2)" aspect-ratio=1/1 width=260 .rounded}
 ```
 
-Obsidian's native wiki-link syntax (`![[image.png|300]]`) is not affected and continues to work as expected.
+The block uses bare keys (`align`, `width`, `rotate`, `flip`, `transform`, `filter`,
+`aspect-ratio`, `.class`) — the same portable format MkDocs-Material / Python-Markdown / Pandoc
+understand. Open the note **without** the plugin and the image still shows: `align`/`width` carry
+through any renderer, and the rest fall back to the original, untransformed image. Obsidian's native
+wiki-link size (`![[image.png|300]]`) continues to work and is preserved.
+
+## Documentation
+
+- **[User guide](docs/user-guide.md)** — how to use every feature, with screenshots.
+- **[`examples/`](examples/)** — a demo vault that shows each feature on real images
+  (open it as a vault with the plugin enabled; start at *00 — Start here*).
+- **[`documentation/`](documentation/)** — the design docs (requirements, architecture, plan,
+  tests, the bug & lesson registry).
 
 ## Installation
 

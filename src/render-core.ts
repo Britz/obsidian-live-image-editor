@@ -321,14 +321,16 @@ img.lie-inline { vertical-align: middle; }
 `;
 
 // ---------------------------------------------------------------------------
-// Identification (AB7a) — claim an `<img>` IFF it carries a distinctive transform key
-// (`rotate`/`flip`/`transform`/`aspect-ratio`) OR the explicit `.lie` marker; `align`/`width`/
-// `style`/`class` ALONE do not claim (native CSS already handles them). Recognises both the
-// bare keys (python-markdown / Material) and the `data-`-prefixed Pandoc variants.
+// Identification (AB7a) — claim an `<img>` IFF it carries a distinctive RUNTIME-ONLY key
+// (`rotate`/`flip`/`transform`/`aspect-ratio`/`filter`) OR the explicit `.lie` marker;
+// `align`/`width`/`style`/`class` ALONE do not claim (native CSS already handles them faithfully).
+// A bare `filter=` is runtime-only — a browser ignores the bare attribute, so the runtime must
+// claim it to apply the CSS filter; the optional `style="filter:…"` escape needs no runtime.
+// Recognises both the bare keys (python-markdown / Material) and the `data-`-prefixed Pandoc variants.
 // ---------------------------------------------------------------------------
 export const CLAIM_SELECTOR =
-  "[rotate],[flip],[transform],[aspect-ratio],.lie," +
-  "[data-rotate],[data-flip],[data-transform],[data-aspect-ratio]";
+  "[rotate],[flip],[transform],[aspect-ratio],[filter],.lie," +
+  "[data-rotate],[data-flip],[data-transform],[data-aspect-ratio],[data-filter]";
 
 function attr(el: Element, name: string): string | null {
   return el.getAttribute(name) ?? el.getAttribute(`data-${name}`);

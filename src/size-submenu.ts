@@ -1,32 +1,10 @@
 import { setIcon } from "obsidian";
 import { PresetWidths } from "./styles-injector";
 import { t } from "./i18n";
+import { SizeState, sizePresets } from "./size-submenu-logic";
+import { textButton } from "./ui";
 
-// CSS length strings (or null = unset). Width null + height null == "Original".
-export interface SizeState {
-  width: string | null;
-  height: string | null;
-}
-
-// One-tap size preset (F24): each yields a width/height CSS pair. small/medium/large BAKE the
-// configured px width (faithful → the bare width=N key, not setting-reactive); icon sets a
-// line-height height (the inline icon size); original clears both.
-interface SizePreset {
-  key: string;
-  labelKey: Parameters<typeof t>[0];
-  width: string | null;
-  height: string | null;
-}
-
-function presets(widths: PresetWidths): SizePreset[] {
-  return [
-    { key: "original", labelKey: "original", width: null, height: null },
-    { key: "icon", labelKey: "icon", width: null, height: "1.5em" },
-    { key: "small", labelKey: "small", width: `${widths.small}px`, height: null },
-    { key: "medium", labelKey: "medium", width: `${widths.medium}px`, height: null },
-    { key: "large", labelKey: "large", width: `${widths.large}px`, height: null },
-  ];
-}
+export type { SizeState };
 
 export interface SizeBody {
   body: HTMLElement;
@@ -41,13 +19,14 @@ export interface SizeBody {
  * owner reads on commit.
  */
 export function buildSizeBody(
-  current: { width?: string; height?: string },
+  current: { width?: string; height?: string; inline?: boolean },
   onPreview: (s: SizeState) => void,
   state: SizeState,
   presetWidths: PresetWidths
 ): SizeBody {
   state.width = current.width ?? null;
   state.height = current.height ?? null;
+  state.inline = current.inline ?? false;
 
   const body = document.createElement("div");
   body.classList.add("lie-size-body");
@@ -63,17 +42,14 @@ export function buildSizeBody(
 
   const quick = document.createElement("div");
   quick.classList.add("lie-size-quick");
-  for (const p of presets(presetWidths)) {
-    const btn = document.createElement("button");
-    btn.classList.add("lie-size-choice");
-    btn.textContent = t(p.labelKey);
-    btn.addEventListener("click", () => {
+  for (const p of sizePresets(presetWidths)) {
+    quick.appendChild(textButton(t(p.labelKey), "lie-size-choice", () => {
       state.width = p.width;
       state.height = p.height;
+      state.inline = p.inline;  // icon → inline rendering (F17); the others clear it
       sync();
       preview();
-    });
-    quick.appendChild(btn);
+    }));
   }
   body.appendChild(quick);
 
@@ -97,6 +73,7 @@ export function buildSizeBody(
     reset: () => {
       state.width = null;
       state.height = null;
+      state.inline = false;
       sync();
       preview();
     },

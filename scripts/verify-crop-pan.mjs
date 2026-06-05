@@ -88,16 +88,22 @@ const EVAL_RUN = `(async () => {
       await wait(60);
     }
 
-    const ghostImg = area.querySelector(".lie-crop-ghost-img");
-    const ghostBox = area.querySelector(".lie-crop-ghost");
-    const chrome = area.querySelector(".lie-crop-chrome");
+    // The scale-up preview can rebuild the box, detaching the captured area/frame refs — re-query the
+    // LIVE cropping area from the document so the hit-tests run against the on-screen chrome (and bail
+    // with a clear diagnostic instead of dereferencing null if a render churn dropped the ghost).
+    const liveArea = document.querySelector(".lie-image-area.lie-cropping") || area;
+    const liveFrame = liveArea.querySelector(".lie-frame") || frameEl;
+    const ghostImg = liveArea.querySelector(".lie-crop-ghost-img");
+    const ghostBox = liveArea.querySelector(".lie-crop-ghost");
+    const chrome = liveArea.querySelector(".lie-crop-chrome");
+    if (!ghostImg) { await vault.delete(f); window.__CROPPAN = JSON.stringify({ fatal: "no ghost img after scale-up (render churn — re-run)", checks: R }); return; }
 
     // --- Layer pointer-events: the pan layer catches, the frame box + the chrome overlay do not ---
     ok("panLayerCatches", ghostImg && getComputedStyle(ghostImg).pointerEvents !== "none");
     ok("ghostBoxClickThrough", ghostBox && getComputedStyle(ghostBox).pointerEvents === "none");
     ok("chromeOverlayNone", chrome && getComputedStyle(chrome).pointerEvents === "none");
 
-    const fr = frameEl.getBoundingClientRect();
+    const fr = liveFrame.getBoundingClientRect();
     const gr = ghostImg.getBoundingClientRect();
     ok("imageOverflowsCut", gr.right > fr.right + 8 && gr.left < fr.left - 8); // the overflow band exists
 
@@ -117,8 +123,8 @@ const EVAL_RUN = `(async () => {
     // --- Leaving crop tears the transient chrome down (full teardown = verify-crop-teardown.mjs) ---
     plugin.closeCrop();
     await wait(250);
-    ok("teardownNoGhost", !area.querySelector(".lie-crop-ghost-img"));
-    ok("teardownNotCropping", !area.classList.contains("lie-cropping"));
+    ok("teardownNoGhost", !document.querySelector(".lie-crop-ghost-img"));
+    ok("teardownNotCropping", !document.querySelector(".lie-cropping"));
 
     await vault.delete(f);
     window.__CROPPAN = JSON.stringify({ checks: R });

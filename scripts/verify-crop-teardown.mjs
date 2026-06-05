@@ -137,10 +137,13 @@ const EVAL_RUN = `(async () => {
     await runPath("confirm_closeCrop", true, async () => plugin.closeCrop());
     // 3) Esc (dirty) — the host's own capture-phase keydown path
     await runPath("esc", true, async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
-    // 4) click-away — the document click handler → dismissToolbar → closeCrop
-    await runPath("clickaway", true, async () => {
-      const h = document.querySelector(".markdown-source-view .cm-content") || document.body;
-      h.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    // 4) context loss (a menu/modal opens) — the MutationObserver path → dismissToolbar → closeCrop.
+    // NOTE: click-away is deliberately NOT a crop teardown path — crop is click-away EXEMPT (Bug 1;
+    // a stray click must leave the in-place session open), proven by scripts/verify-region-clickaway.mjs.
+    // So the dismissToolbar → closeCrop chain is exercised here via the context-loss observer instead.
+    await runPath("contextloss_menu", true, async () => {
+      const m = document.createElement("div"); m.className = "menu lie-td-fake"; document.body.appendChild(m);
+      await new Promise((r) => setTimeout(r, 80)); m.remove();
     });
 
     await vault.delete(f);

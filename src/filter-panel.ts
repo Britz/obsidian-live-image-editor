@@ -1,6 +1,7 @@
-import { FilterData, getFilterDefaults } from "./transforms";
+import { FilterData, getFilterDefaults, nonDefaultFilter } from "./transforms";
 import { t, TranslationKey } from "./i18n";
 import { AnchoredSubmenu } from "./anchored-submenu";
+import { textButton } from "./ui";
 
 export interface FilterPanelCallbacks {
   // Apply the working filter to the live image WITHOUT persisting (live preview).
@@ -113,15 +114,9 @@ export class FilterPanel {
     this.submenu?.close(persist ? "commit" : "silent");
   }
 
-  // The non-default working values, ready to persist.
+  // The non-default working values, ready to persist (shares the "≠ default" predicate).
   private currentFilter(): FilterData {
-    const defaults = getFilterDefaults();
-    const filter: FilterData = {};
-    for (const slider of SLIDERS) {
-      const val = this.values[slider.key];
-      if (val !== defaults[slider.key]) filter[slider.key] = val;
-    }
-    return filter;
+    return nonDefaultFilter(this.values);
   }
 
   private buildHistogram(): HTMLElement {
@@ -146,17 +141,13 @@ export class FilterPanel {
     const btnRow = document.createElement("div");
     btnRow.classList.add("lie-filter-preset-row");
     for (const preset of PRESETS) {
-      const btn = document.createElement("button");
-      btn.classList.add("lie-filter-preset-btn");
-      btn.textContent = t(preset.labelKey);
-      btn.addEventListener("click", () => this.applyPreset(preset));
-      btnRow.appendChild(btn);
+      btnRow.appendChild(textButton(t(preset.labelKey), "lie-filter-preset-btn", () => this.applyPreset(preset)));
     }
     container.appendChild(btnRow);
     return container;
   }
 
-  // Sliders grouped Light / Color / Effect (D5). Temperature lives in Color (F6).
+  // Sliders grouped Light / Color / Effect (D5).
   private buildSliders(): HTMLElement {
     const container = document.createElement("div");
     container.classList.add("lie-filter-sliders");
@@ -210,8 +201,7 @@ export class FilterPanel {
     input.step = String(config.step);
     input.value = String(this.values[config.key] ?? config.default);
     input.classList.add("lie-filter-slider-input");
-    // Tag by key so refreshSliders() matches by key, not DOM index — the virtual
-    // temperature slider shares the row markup but is NOT a SLIDERS entry (Bug 8).
+    // Tag by key so refreshSliders() matches by key, not DOM index (robust to reordering).
     input.dataset["key"] = String(config.key);
 
     const valueDisplay = document.createElement("span");
@@ -255,9 +245,8 @@ export class FilterPanel {
 
   private refreshSliders(): void {
     if (!this.body) return;
-    // Match each input by its data-key (NOT by DOM index) so the virtual
-    // temperature slider — which shares the row markup but isn't in SLIDERS — is
-    // left untouched (Bug 8).
+    // Match each input by its data-key (NOT by DOM index) so a slider reorder can't
+    // desync the value displays.
     for (const slider of SLIDERS) {
       const input = this.body.querySelector<HTMLInputElement>(
         `.lie-filter-slider-input[data-key="${slider.key}"]`

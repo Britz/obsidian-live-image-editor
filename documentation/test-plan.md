@@ -54,7 +54,8 @@ DOM/source in Live Preview **and** reading view: no `document.body` clone, centr
 on the inner image, 4 corner + 4 edge + rotate, native handle hidden, no reflow, one undo step per
 session, a width edit preserves the crop) plus `scripts/verify-crop-teardown.mjs` (the crop editor
 fully restores every transient override — esp. the lifted host `contain:paint` — on EVERY exit path,
-read back from the live computed style). Fixture: `examples/Crop editor (Bug 32).md`.
+read back from the live computed style). The crop scripts **self-create** their `_crop-fixture.md`
+(and delete it); the manual crop demo is `examples/02 — Crop.md`.
 
 > **The load-bearing rule (the Bug 33 lesson).** A green suite must mean an **edit actually
 > reaches the source and re-renders** — not merely that an isolated pure function is correct.
@@ -165,8 +166,9 @@ Pure box / inner-image geometry; the single source shared by the renderer and th
   is lost, but the model's own entry point strips them, so an end-to-end parse keeps the leading
   class. Verifies the contract pitfall is guarded at the unit boundary (`implementation-plan.md`
   §4).
-- **`temperatureAdjust`** — derives the warmth nudge from the other filter values and is **not**
-  stored on its own. Verifies temperature is a derived control (`F11`).
+- **`nonDefaultFilter`** — reduces a `FilterData` to its non-default keys (the single "≠ default"
+  predicate shared by `filterToCss`, `isDefaultFilter` and the filter panel's commit). Verifies the
+  filter is persisted/serialized as only its non-default keys (`F11`).
 - **Edge cases** — empty block, block with only `style=`, only classes, native size present;
   malformed declarations degrade without throwing. Verifies graceful parsing (`F25`).
 
@@ -193,13 +195,34 @@ serialize → parse → the op's field is back):
 - **`toggleFlipH` / `toggleFlipV`** → `flip=horizontal` / `vertical`; toggled off → absent.
 - **`setFilter(...)`** → `filter="…"` with the non-default values; all-default → absent.
 - **alignment (left / right / center)** → `align=` with the value; reset → absent.
-- **`setPresetWidth` (small / medium / large) + `setWidthPx`** → `width=N` (the resolved px);
+- **preset width (small / medium / large) via `setWidthPx`** → `width=N` (the baked px);
   **`original`** → absent. *(Pins the "small preset does nothing" symptom.)*
 - **inline toggle** → the inline marker; **`addClass`** → the class in `.class`.
 - **crop `toCropResult`** → `transform=` placement (+ `aspect-ratio=` only when shape ≠ original).
 
 Verifies that **every** op persists, not just `width` (`AD1`, `T2.3`; pins **Bug 33**, supports
 **Bug 32**).
+
+### 2.9 `image-resolver.ts` — source↔DOM resolution (`AB3`)
+
+- **`findImageInText(text, src, occurrence)`** — resolves the **occurrence-th** embed of a basename
+  in source order; the 2nd occurrence of a repeated file resolves to the 2nd source line (NOT the
+  first basename match), defaults to the first, returns null past the last, and counts occurrences
+  across both link forms in column order. Verifies the position-exact reading-view resolution
+  (`F2`; fails on the old first-match behaviour). *(The module is pure via `import type` Editor.)*
+
+### 2.10 `size-submenu-logic.ts` — size presets (`AB14`)
+
+- **`sizePresets`** — `icon` sets `inline=true` (the F17 inline rendering) at a line-height size;
+  `small`/`medium`/`large` bake the configured px width and are NOT inline; `original` clears all.
+  Verifies the icon→inline coupling (`F24`/`F17`; fails if icon's inline flag is dropped).
+
+### 2.11 `render-core.ts` — runtime identification (`AB7a`)
+
+- **`CLAIM_SELECTOR`** — claims every runtime-only key (`rotate`/`flip`/`transform`/`aspect-ratio`/
+  **`filter`**) + their `data-` variants + the `.lie` marker, and does **not** claim the
+  native-faithful `align`/`width` alone. Verifies a bare `filter=` image is hydrated by the runtime
+  (`F25`/`T3`; fails if `filter` is dropped from the selector).
 
 ---
 
@@ -272,6 +295,16 @@ run via CDP eval against the example vault (`T-L6`, `AD7`).
   image + toolbar + panel form one active region (toolbar+panel show/hide together). *Verifies the
   single component, not per-feature reimplementation (`F14`, `D6`); pinned by
   `scripts/verify-submodal-icons.mjs` + `scripts/verify-submodal-region.mjs`.*
+- **D6.2/D6.3/D6.4 — Region visibility coupling (Bugs 1–3).** ONE signal drives toolbar visibility,
+  staying-greyed and panel/palette visibility — never the CSS `:hover` competing with the JS region
+  state. Confirm: (1) an active click OUTSIDE the region closes+persists filter/size but leaves an
+  in-place **crop** session untouched (no write); (2) the bar stays **greyed the whole** time a panel
+  is open (shown=opacity 0.4, hidden=0, never un-greyed); (3) the folded-group popup / class dropdown
+  keep the bar visible while hovered (NOT greyed) and close together with the bar on region-leave.
+  *Pure: `clickDismissesToolbar` (`tests/toolbar-region-logic.test.ts`). CDP:
+  `scripts/verify-region-clickaway.mjs` (Bug 1), the extended `scripts/verify-submodal-region.mjs`
+  (Bug 2), `scripts/verify-popup-region.mjs` (Bug 3). The real-pointer `:hover` travel + the floating
+  bar are a manual focused-window pass (synthetic events can't drive `:hover` / `pointer-events`).*
 - **AD9 — Platform reuse.** Confirm captions render via Obsidian's `MarkdownRenderer`, resize
   uses the native handle/frame, the column cap reads `--file-line-width`, link conversion calls
   `fileManager.generateMarkdownLink`, and i18n follows Obsidian's locale. *Verifies the platform
@@ -320,9 +353,8 @@ Grouped by area; each line states what is checked.
   opacity; the live cut quantizes to whole pixels and fixed angle steps **during** the drag; the
   result clips correctly and the box is the cut frame.
 - **Filters (`F11`, `D7`).** Each slider (brightness, contrast, saturate, hue, blur, grayscale,
-  sepia) changes the image live; presets apply; temperature nudges the other sliders without a
-  stored value of its own; double-click resets a slider; the panel docks on the roomier side and
-  hides when the image scrolls out of view.
+  sepia) changes the image live; named presets apply; double-click resets a slider; the panel docks
+  on the roomier side and hides when the image scrolls out of view.
 - **Export (`F13`).** Exported file reproduces all transforms + filters **exactly as displayed**
   (rotation → rotated output, crop → clipped output, filters baked in); the save offers the
   native dialog at the original folder with a free `{name}-{n}` pre-filled and never overwrites

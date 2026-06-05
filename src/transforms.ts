@@ -308,19 +308,27 @@ export function parseFilterCss(s?: string): FilterData {
   return f;
 }
 
-export function filterToCss(f: FilterData): string {
-  const parts: string[] = [];
+// The filter reduced to its non-default keys — the single source of the "≠ default" predicate,
+// shared by filterToCss, isDefaultFilter and the filter panel's commit (DRY).
+export function nonDefaultFilter(f: FilterData): FilterData {
+  const out: FilterData = {};
   for (const key of FILTER_KEYS) {
     const val = f[key];
-    if (val !== undefined && val !== FILTER_DEFAULTS[key]) {
-      parts.push(`${FILTER_FNS[key].fn}(${quantizeFilter(val)}${FILTER_FNS[key].unit})`);
-    }
+    if (val !== undefined && val !== FILTER_DEFAULTS[key]) out[key] = val;
   }
-  return parts.join(" ");
+  return out;
+}
+
+export function filterToCss(f: FilterData): string {
+  const nd = nonDefaultFilter(f);
+  return FILTER_KEYS
+    .filter((key) => nd[key] !== undefined)
+    .map((key) => `${FILTER_FNS[key].fn}(${quantizeFilter(nd[key] as number)}${FILTER_FNS[key].unit})`)
+    .join(" ");
 }
 
 export function isDefaultFilter(f: FilterData): boolean {
-  return FILTER_KEYS.every((k) => f[k] === undefined || f[k] === FILTER_DEFAULTS[k]);
+  return Object.keys(nonDefaultFilter(f)).length === 0;
 }
 
 export function getFilterDefaults(): Required<FilterData> {
@@ -348,46 +356,11 @@ function parsePx(v?: string): number | null {
   return m ? parseFloat(m[1] ?? "") : null;
 }
 
-/** The preset (small/medium/large) if the width is a preset var, else null. */
-export function getPreset(t: ImageTransform): PresetKey | null {
-  const m = t.width?.match(/^var\(--lie-size-(small|medium|large)\)$/);
-  return (m?.[1] as PresetKey) ?? null;
-}
-
 export function setWidthPx(t: ImageTransform, px: number | null): void {
   t.width = px && px > 0 ? `${Math.round(px)}px` : undefined;
 }
 export function setHeightPx(t: ImageTransform, px: number | null): void {
   t.height = px && px > 0 ? `${Math.round(px)}px` : undefined;
-}
-
-/** A preset width via the re-themeable CSS var (falls back to auto without the plugin). */
-export function setPresetWidth(t: ImageTransform, preset: PresetKey | null): void {
-  t.width = preset ? `var(--lie-size-${preset})` : undefined;
-}
-
-// ---------------------------------------------------------------------------
-// Temperature — a virtual control (F11) that NUDGES hue/saturate/brightness; never
-// stored on its own. Pure + testable.
-// ---------------------------------------------------------------------------
-
-export function temperatureAdjust(
-  base: { hueRotate: number; saturate: number; brightness: number },
-  temp: number
-): { hueRotate: number; saturate: number; brightness: number } {
-  const t = Math.max(-100, Math.min(100, temp)) / 100;
-  const hue = ((base.hueRotate + t * 30) % 360 + 360) % 360;
-  const saturate = clampNum(base.saturate * (1 + t * 0.2), 0, 3);
-  const brightness = clampNum(base.brightness * (1 + t * 0.08), 0, 2);
-  return {
-    hueRotate: Math.round(hue),
-    saturate: quantizeFilter(saturate),
-    brightness: quantizeFilter(brightness),
-  };
-}
-
-function clampNum(v: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, v));
 }
 
 function quantizeFilter(val: number): number {

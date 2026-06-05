@@ -1,5 +1,6 @@
 import { setIcon } from "obsidian";
 import { t, TranslationKey } from "./i18n";
+import { couplePaletteToRegion } from "./region-hover";
 
 export interface ToolbarButton {
   kind: "button";
@@ -47,22 +48,37 @@ function makeButton(btn: ToolbarButton): HTMLButtonElement {
   return el;
 }
 
-// A lightweight button-palette popup for a collapsed group (D3). Distinct from the
-// modal AnchoredSubmenu (D8): no greyed toolbar, no confirm/cancel — clicking a
-// button runs it and closes. Esc / click-outside also close it.
+// Close + fully tear down an open group popup (every path: button pick / toggle-off / click-away /
+// Esc / region-leave). The detach hook (set in openGroupPopup) removes the region binding + document
+// listeners so nothing leaks. Idempotent.
+function closeGroupPopup(popup: HTMLElement): void {
+  (popup as PopupEl)._lieDetach?.();
+  popup.remove();
+}
+interface PopupEl extends HTMLElement { _lieDetach?: () => void; }
+
+// A lightweight button-palette popup for a collapsed group (D3). Distinct from the modal
+// AnchoredSubmenu (D8): NOT greyed/modal, no confirm/cancel — clicking a button runs it and closes.
+// It IS coupled to the image + toolbar active region (Bug 3/D6): the popup sits on document.body
+// (outside the wrapper's paint box), so without coupling, hovering it would drop the in-chrome bar's
+// `.lie-wrapper:hover` and hide it. `couplePaletteToRegion` keeps the bar visible while the popup is
+// hovered and closes the popup (bar + popup fade together) when the whole region is left. Esc /
+// click-outside also close it.
 function openGroupPopup(trigger: HTMLElement, group: ToolbarGroup): void {
-  const existing = document.querySelector(".lie-group-popup");
+  const existing = document.querySelector<HTMLElement>(".lie-group-popup");
   if (existing) {
-    existing.remove();
-    if ((existing as HTMLElement).dataset["forId"] === group.id) return; // toggle off
+    const wasSame = existing.dataset["forId"] === group.id;
+    closeGroupPopup(existing);
+    if (wasSame) return; // toggle off
   }
 
-  const popup = document.createElement("div");
+  const popup = document.createElement("div") as PopupEl;
   popup.className = "lie-group-popup";
   popup.dataset["forId"] = group.id;
+  const close = (): void => closeGroupPopup(popup);
   for (const btn of group.buttons) {
     const b = makeButton(btn);
-    b.addEventListener("click", () => popup.remove());
+    b.addEventListener("click", () => close());
     popup.appendChild(b);
   }
 
@@ -73,17 +89,25 @@ function openGroupPopup(trigger: HTMLElement, group: ToolbarGroup): void {
   popup.style.zIndex = "1002";
   document.body.appendChild(popup);
 
-  const close = (e?: Event): void => {
-    if (e && (e.target === trigger || popup.contains(e.target as Node))) return;
-    popup.remove();
-    document.removeEventListener("mousedown", close, true);
-    document.removeEventListener("keydown", onKey, true);
+  const unbindRegion = couplePaletteToRegion(popup, {
+    wrapper: trigger.closest<HTMLElement>(".lie-wrapper"),
+    toolbar: trigger.closest<HTMLElement>(".lie-toolbar"),
+  }, close);
+
+  const onDown = (e: Event): void => {
+    if (e.target === trigger || popup.contains(e.target as Node)) return;
+    close();
   };
   const onKey = (e: KeyboardEvent): void => {
     if (e.key === "Escape") { e.stopPropagation(); close(); }
   };
+  popup._lieDetach = (): void => {
+    unbindRegion();
+    document.removeEventListener("mousedown", onDown, true);
+    document.removeEventListener("keydown", onKey, true);
+  };
   setTimeout(() => {
-    document.addEventListener("mousedown", close, true);
+    document.addEventListener("mousedown", onDown, true);
     document.addEventListener("keydown", onKey, true);
   }, 0);
 }

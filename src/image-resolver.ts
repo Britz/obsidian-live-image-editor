@@ -1,5 +1,4 @@
-import { Editor } from "obsidian";
-import { ImageTransform, parseAltText } from "./transforms";
+import type { Editor } from "obsidian";
 
 export interface ImageLocation {
   line: number;
@@ -13,8 +12,8 @@ export interface ImageLocation {
 
 // Transforms are stored in a trailing {…} attribute block so the link itself —
 // caption (markdown alt) and native size (wikilink pipe) — stays untouched:
-//   ![caption](path){rotate:90}
-//   ![[image.png|300]]{rotate:90}
+//   ![caption](path){rotate=90}
+//   ![[image.png|300]]{rotate=90}
 const WIKI_EMBED = /!\[\[([^\]]+?)\]\](\{([^}]*)\})?/g;
 const MD_EMBED = /!\[[^\]]*\]\(([^)]+)\)(\{([^}]*)\})?/g;
 
@@ -28,6 +27,35 @@ function basename(path: string): string {
   }
 }
 
+// Every embed on ONE line, in column order — the building block of the position-exact
+// source↔DOM map (AB3). The two link forms are disjoint (a wikilink has `]]`, a markdown
+// link `](…)`), so the union never double-counts; sorting by column gives true source order.
+function embedsInLine(line: string, lineNo: number): ImageLocation[] {
+  const out: ImageLocation[] = [];
+  for (const { regex, isWiki } of [
+    { regex: WIKI_EMBED, isWiki: true },
+    { regex: MD_EMBED, isWiki: false },
+  ]) {
+    regex.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(line)) !== null) {
+      const path = m[1] ?? "";
+      const block = m[2] ?? "";
+      const end = m.index + m[0].length;
+      out.push({
+        line: lineNo,
+        start: m.index,
+        headEnd: end - block.length,
+        end,
+        isWikiLink: isWiki,
+        filename: path,
+        params: m[3] ?? "",
+      });
+    }
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
 export function findImageInSource(editor: Editor, img: HTMLImageElement): ImageLocation | null {
   const src = getImageFilename(img);
   if (!src) return null;
@@ -39,12 +67,17 @@ export function findImageInSource(editor: Editor, img: HTMLImageElement): ImageL
   return null;
 }
 
-// Exported so the post processor can resolve params from a section's source.
-export function findImageInText(text: string, src: string): ImageLocation | null {
+// Resolve the `occurrence`-th embed (0 = first) of `src`'s basename across the text, in source
+// order — the position-exact READING-VIEW resolver (F2 / AB3). There is no CM6/posAtDOM in
+// reading view, so a repeated file is disambiguated by occurrence order: the n-th rendered embed
+// of that basename maps to the n-th source embed, not merely the first basename match.
+export function findImageInText(text: string, src: string, occurrence = 0): ImageLocation | null {
   const lines = text.split("\n");
+  let seen = 0;
   for (let i = 0; i < lines.length; i++) {
-    const loc = findImageInLine(lines[i] ?? "", i, src);
-    if (loc) return loc;
+    for (const loc of embedsInLine(lines[i] ?? "", i)) {
+      if (basename(loc.filename) === src && seen++ === occurrence) return loc;
+    }
   }
   return null;
 }
@@ -53,34 +86,10 @@ export function findImageInText(text: string, src: string): ImageLocation | null
 // caller knows the exact line (from the rendered image's DOM position), so a file embedded more
 // than once resolves to the RIGHT occurrence, not merely the first basename match in the note.
 export function findImageInLine(line: string, lineNo: number, src: string): ImageLocation | null {
-  for (const { regex, isWiki } of [
-    { regex: WIKI_EMBED, isWiki: true },
-    { regex: MD_EMBED, isWiki: false },
-  ]) {
-    regex.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(line)) !== null) {
-      const path = m[1] ?? "";
-      if (basename(path) !== src) continue;
-
-      const block = m[2] ?? "";
-      const end = m.index + m[0].length;
-      return {
-        line: lineNo,
-        start: m.index,
-        headEnd: end - block.length,
-        end,
-        isWikiLink: isWiki,
-        filename: path,
-        params: m[3] ?? "",
-      };
-    }
+  for (const loc of embedsInLine(line, lineNo)) {
+    if (basename(loc.filename) === src) return loc;
   }
   return null;
-}
-
-export function parseLocationTransform(location: ImageLocation): ImageTransform {
-  return parseAltText(location.params);
 }
 
 export function getImageFilename(img: HTMLImageElement): string | null {

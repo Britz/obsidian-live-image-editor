@@ -20,9 +20,9 @@ One file per building block where possible; pure decision logic split into a sib
 | File | Building block (arch §4) | Key exports |
 |---|---|---|
 | `src/main.ts` | AB17 Lifecycle | `Plugin` subclass |
-| `src/transforms.ts` | AB1 Transform model | `ImageTransform` *(classes/inline; orientation: rotate/flipH/flipV → inner-frame; content: transform/filter → img; footprint: width/height/aspectRatio/box → outer)*<br>`FilterData`<br>`parseAltText` *(bare keys + legacy `style=` back-compat)*<br>`serializeTransform` *(bare keys)*<br>`getRotation`/`setRotation` *(the orientation field)*<br>`toggleFlipH`/`toggleFlipV`/`getFlipH`/`getFlipV` *(fields)*<br>`isCrop`<br>`getFilter`/`setFilter`/`filterToCss`/`parseFilterCss`<br>`getWidthPx`/`getHeightPx`/`getPreset`/`setPresetWidth`/`setWidthPx`/`setHeightPx`<br>`temperatureAdjust` *(dead — see DRY audit)*<br>`MARKER_CLASS` *(backward-compat parse-skip only)*<br>`INLINE_CLASS` |
+| `src/transforms.ts` | AB1 Transform model | `ImageTransform` *(classes/inline; orientation: rotate/flipH/flipV → inner-frame; content: transform/filter → img; footprint: width/height/aspectRatio/box → outer)*<br>`FilterData`<br>`parseAltText` *(bare keys + legacy `style=` back-compat)*<br>`serializeTransform` *(bare keys)*<br>`getRotation`/`setRotation` *(the orientation field)*<br>`toggleFlipH`/`toggleFlipV`/`getFlipH`/`getFlipV` *(fields)*<br>`isCrop`<br>`getFilter`/`setFilter`/`filterToCss`/`parseFilterCss`/`nonDefaultFilter` *(the shared "≠ default" predicate)*<br>`getWidthPx`/`getHeightPx`/`setWidthPx`/`setHeightPx`<br>`PRESET_KEYS`/`PresetKey`<br>`MARKER_CLASS` *(backward-compat parse-skip only — never written)*<br>`INLINE_CLASS` |
 | `src/link-format.ts` | AB2 Link form & native-size normalization | `parseEmbedLine`<br>`buildEmbed`<br>`convertEmbedLine`<br>`desiredFormat` |
-| `src/image-resolver.ts` | AB3 Source↔DOM mapping | `findImageInSource`<br>`findImageInText`<br>`getImageFilename`<br>`parseLocationTransform` *(dead — see DRY audit)* |
+| `src/image-resolver.ts` | AB3 Source↔DOM mapping (pure — `import type` Editor) | `findImageInSource`<br>`findImageInText` *(occurrence-aware — F2)*<br>`findImageInLine` *(one line, the posAtDOM-disambiguated resolver)*<br>`getImageFilename`<br>`ImageLocation` |
 | `src/source-writer.ts` | AB3 / AD1 edit writer (shared) | `writeSource` *(one isolated CM transaction per edit)*<br>`LIE_USER_EVENT` |
 | `src/snippet-scanner.ts` | AB4 Snippet class discovery | `scanSnippets` *(enabled-only)*<br>`SnippetClass`<br>`installBundledSnippet`<br>`resetBundledSnippet`<br>`isBundledSnippetInstalled` |
 | `src/renderer-logic.ts` | AB5 Geometry (pure) | `boxAspectRatio`<br>`innerImageSize`<br>`rotatedAabb`<br>`estimatedBlockHeight`<br>`isTallFloat`<br>`TALL_FLOAT_THRESHOLD_PX` |
@@ -34,10 +34,14 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/toolbar.ts` | AB10 Toolbar | `ImageToolbar`<br>`buildToolbarElement` |
 | `src/anchored-submenu-logic.ts` | AB11 Sub-menu placement (pure) | `placeSubmenu`<br>`SubmenuPlacement` |
 | `src/anchored-submenu.ts` | AB11 Shared sub-menu host | `AnchoredSubmenu` |
+| `src/region-hover.ts` | AB11a Active-region hover binder (D6.2/D6.4) | `bindRegionHover` *(N members → one grace-bridged, nesting-robust hover signal)*<br>`couplePaletteToRegion` *(body-level palette ↔ region, not greyed)* |
+| `src/toolbar-region-logic.ts` | AB11a Region decisions (pure) | `clickDismissesToolbar` *(click-away closes filter/size; crop exempt — Bug 1)* |
 | `src/crop-editor-logic.ts` | AB12 Crop quantization (pure) | `snapTranslate`<br>`snapAngle`<br>`snapScale`<br>`applyRotateGesture` *(macOS trackpad rotate-gesture delta → snapped content angle)*<br>`parsePlacement` *(round-trip inverse)*<br>`toCropResult` *(placement transform + cut width + aspect-ratio ≠ original)* |
 | `src/crop-editor.ts` | AB12 Crop editor | `CropEditor` |
 | `src/filter-panel.ts` | AB13 Filter panel | `FilterPanel` |
-| `src/size-submenu.ts` | AB14 Size sub-menu | `buildSizeBody`<br>`SizeState` *(CSS-string width/height)* |
+| `src/size-submenu-logic.ts` | AB14 Size presets (pure) | `sizePresets` *(icon → inline, F24/F17)*<br>`SizeState`/`SizePreset` *(width/height/inline)* |
+| `src/size-submenu.ts` | AB14 Size sub-menu | `buildSizeBody`<br>`SizeState` *(re-export)* |
+| `src/ui.ts` | shared DOM helpers | `textButton` *(labelled button — filter/size/crop presets)* |
 | `src/export.ts` | AB15 Export | `renderTransformedImage`<br>`suggestExportPath`<br>`saveExport` |
 | `src/commands.ts` | AB18 Commands | `registerCommands` |
 | `src/settings.ts` | AB19 Settings | `LieSettingTab`<br>`LieSettings` *(alwaysShowLink, presetWidths, tallFloatSafe)*<br>`DEFAULT_SETTINGS` |
@@ -45,7 +49,7 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/editing-toolbar-integration.ts` | AB22 Editing-toolbar integration | `getEditingToolbarStatus`<br>`addEditingToolbarButtons`<br>`removeEditingToolbarButtons` |
 | `src/i18n/` | AB21 Localization | `index.ts`<br>`en.ts`<br>`de.ts` |
 | `src/dev-bridge.ts` | AB23 Dev bridge | CDP relay (dev builds only) |
-| `src/runtime.ts` | AB7a Portable runtime | second esbuild entry → `lie-runtime.js` (framework-free IIFE; `RENDER_CSS` inlined → single `<script>` include, CSS-in-JS); on `DOMContentLoaded` + `MutationObserver` it hydrates claimed imgs via the shared `buildLayers`/`readTransform`; tolerant selector `[rotate],[flip],[transform],[aspect-ratio],.lie` (+ `data-*` Pandoc variants); no `obsidian` external (import-discipline guard) |
+| `src/runtime.ts` | AB7a Portable runtime | second esbuild entry → `lie-runtime.js` (framework-free IIFE; `RENDER_CSS` inlined → single `<script>` include, CSS-in-JS); on `DOMContentLoaded` + `MutationObserver` it hydrates claimed imgs via the shared `buildLayers`/`readTransform`; tolerant selector `[rotate],[flip],[transform],[aspect-ratio],[filter],.lie` (+ `data-*` Pandoc variants — a bare `filter=` is runtime-only so it must be claimed); no `obsidian` external (import-discipline guard) |
 
 ---
 
@@ -90,8 +94,8 @@ separate crop type (R0 on the data). Fields:
   `translate()` (pan, in **%** → box-relative) and `scale()` (zoom; shown as w/h in the editor).
   A plain rotate needs **no** `translate`/`scale`: centered rotation + the box's resize keep it in
   place. Only the `<img>` is transformed; the box stays axis-aligned.
-- **filter** (`FilterData`: brightness, contrast, saturate, hue, blur, grayscale, sepia);
-  `temperature` is derived (`temperatureAdjust`), not stored (F10). Plus the class list + `inline`.
+- **filter** (`FilterData`: brightness, contrast, saturate, hue, blur, grayscale, sepia), serialized
+  as the bare `filter=` CSS string. Plus the class list + `inline`.
 
 The inner-image placement is **derivable for non-crop and stored only for crop**:
 
@@ -175,6 +179,45 @@ to the bare keys). The legacy forms `parseAltText` decomposes:
 - **`params` handed to `parseAltText` is the block CONTENT without the `{` `}` braces.** The
   model strips them; the reading-view capture group and `lineDecorations` both pass brace-less
   content. *(Pitfall §4 — leaving the braces silently drops the leading `.class` token.)*
+
+#### 2.2b Cross-renderer fallback — verified (2026-06-04)
+
+How the bare-key block degrades in the three attribute-list families, deep-researched +
+adversarially re-verified (memory `img-attr-fallback-prior-art`; sources: python-markdown
+`attr_list`, Pandoc MANUAL, kramdown `syntax.html`, Material-for-MkDocs, W3C CSS Transforms L1).
+Grounds the §2.2 **faithful / inert / runtime-only** claims with primary-source facts:
+
+- **Brace syntax — the one hard incompatibility.** python-markdown (`attr_list`) and Pandoc
+  (`link_attributes`) both bind the **bare** `{…}` directly after the image; **kramdown** requires the
+  **colon** form `{:…}` (verified 3-0; maintainer declined bare-brace, `gettalong/kramdown#176`). So in
+  kramdown / Jekyll / GitHub-Pages the bare block does **not** bind and renders as **literal text**
+  after the image — the worst fallback (already flagged in requirements T3). No single brace string is
+  valid in both families.
+- **No allow-list, no wrapper anywhere** (verified). All three route `.class` / `#id` / `key=value`
+  onto the `<img>` **itself** — none wraps it. This is *why* the runtime-only keys need the injected
+  runtime: a foreign renderer never builds the outer/inner-frame two-element structure the
+  footprint-swap needs, and there is **no pure-CSS single-element path** for a quarter-turn that
+  reserves its rotated footprint (`transform` is post-layout — confirmed it does not reflow; the one
+  property that did, `image-orientation:<angle>`, was removed from CSS). So on a no-runtime page
+  rotate/flip/crop can only degrade to the original image, never render faithfully.
+- **Per-attr-type, with no plugin and no runtime:**
+  - `style="filter:…"` / `style="width:…%"` (the power-user escapes) → passed through verbatim onto
+    the `<img>` in all three → **faithful** (filter + size are layout-neutral, browser-applied).
+  - `width=N` → Pandoc emits a real HTML `width=` attribute (its px special-path); python-markdown a
+    verbatim `width` attr; both browser-honoured → **faithful**. Using `style="width:…%"` for the
+    responsive case deliberately **avoids** Pandoc's width/height path (it only special-cases px units).
+  - an unknown decoration `.class` → appended to `class`, **inert** without CSS.
+  - the runtime-only keys — `rotate` / `flip` / `transform` **and the DEFAULT bare `filter=`** →
+    **python-markdown** emits them verbatim (`rotate="90"` — non-standard but browser-**inert**);
+    **Pandoc** prepends `data-` → `data-rotate="90"` (valid HTML5, inert). The orientation/crop keys
+    are NOT carried in `style=` on purpose — a `transform:rotate` there would not reflow but **would**
+    overflow/overlap neighbours (Murx); a bare `filter=` is inert only because an HTML attribute named
+    `filter` does nothing — its faithful path is the `style="filter:…"` escape above (layout-neutral,
+    no Murx). The runtime claims `[rotate],[flip],[transform],[filter]` + the `data-*` (Pandoc)
+    spellings (§1, `runtime.ts`); with no runtime they all degrade to the original image.
+
+*(Whether the WRITER should also emit the `data-` prefix — valid HTML5 in python-markdown output too,
+at the cost of a longer hand-edited block — is an open decision: issues.md → Open decisions.)*
 
 ### 2.3 DOM layers & sizing model
 
@@ -272,10 +315,12 @@ there is no second crop/rotate/scale implementation. (This collapses the old dup
   (D3)
   reuses Obsidian's own **`--file-line-width`** (the text-column width, `700px` by default) rather
   than measuring or hard-coding it (AD9).
-- **Preset widths** are the CSS variables `--lie-size-small/medium/large`, injected by
-  `styles-injector.ts` with the settings-configured values so presets stay re-themeable in one
-  place. *(Verified — CDP on the running app + the Obsidian Embed CSS-variable docs: Obsidian
-  ships no native image-size / width-preset variables, so these are plugin-defined.)*
+- **Preset widths** live in settings (small/medium/large) and are **baked to a literal `width=N` px**
+  at click time (`applyPreset` → `setWidthPx`) — faithful in any renderer (the bare `width` HTML
+  attribute), not a re-themeable CSS variable, and so **not** setting-reactive (an existing preset
+  image keeps its baked px when the setting changes — the deliberate trade-off). *(The earlier
+  re-themeable `--lie-size-*` var write-model + `getPreset`/`setPresetWidth` were retired with the
+  bare-key migration; the parser still reads a legacy `width: var(--lie-size-…)` as a non-px width.)*
 - **Alignment** sits as a class on the `img`; the float acts on the **embed** (the plugin's own
   `.lie-wrapper` overlay container in live preview / Obsidian's `.image-embed` in reading view) via
   `:has(img.lie-left)` — never on the `img` (flex child) or the `.lie-image-area` (inside the
@@ -327,10 +372,13 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   (Obsidian's wikilink setting) differs, via Obsidian's `fileManager.generateMarkdownLink`,
   defensively (falls back to leaving the link as-is). It folds a Markdown native `|size` into
   the block and leaves a wikilink's native size in place (F5, F6).
-- **`image-resolver.ts`** — `findImageInSource` maps a DOM `img` to its `{ line, ch }` range
-  (`findImageInText` is the pure half; `getImageFilename` reads the linkpath). The rewrite itself goes
-  through the shared `writeSource` (below), leaving the cursor and scroll untouched (D11). *(The old
-  `updateImageSource` writer is gone; `parseLocationTransform` is a dead export — DRY audit.)*
+- **`image-resolver.ts`** — maps a DOM `img` to its source `ImageLocation`. `findImageInLine`
+  resolves the embed on ONE known line (the CM6 `posAtDOM` path — line-accurate even for a duplicated
+  file); `findImageInText(text, src, occurrence)` resolves the **occurrence-th** embed of a basename
+  for the reading-view render path (F2 — both halves position-exact, never first-basename-match);
+  `findImageInSource` is the editor-scan fallback. The module is **pure** (`import type` Editor — so
+  the resolvers are vitest-tested, `tests/image-resolver.test.ts`); the rewrite goes through the
+  shared `writeSource` (below), cursor/scroll untouched (D11).
 - **`source-writer.ts`** — `writeSource(view, changes)` is the **single funnel** for every plugin
   edit to the document (AD1, edit direction): it dispatches the change as **one** CM transaction,
   isolated in history (`isolateHistory.of("full")`) and tagged `LIE_USER_EVENT`, so each plugin edit
@@ -450,15 +498,31 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   bottom: 100% } }` flips the bar above at small sizes and is inert when large. (`container-type:
   size` needs a resolvable height — the box's `aspect-ratio`/explicit size provides it; a
   content-driven height would collapse under size containment, so use it only on the sized box.)
+  *Folded-group popup (`openGroupPopup`):* a lightweight body-level palette, **coupled** to the
+  image+toolbar region via `couplePaletteToRegion` (D6.4) so hovering it keeps the in-chrome bar
+  visible (`.lie-region-hover` on the wrapper) and closes the popup when the region is left — **not**
+  greyed (palettes are not modal). A single `closeGroupPopup` is the teardown for every path (button
+  pick / toggle-off / click-away / Esc / region-leave; the detach hook clears the region binding +
+  document listeners).
+- **`region-hover.ts`** — the shared region-hover binder (AB11a / D6.2). `bindRegionHover(members,
+  onActiveChange, grace)` treats N elements as ONE hover region: the region is active while the
+  pointer is over ANY member, a short grace bridges the gaps (image→panel travel, toolbar→popup), and
+  it is **robust to nesting** (a `Set` of the members the pointer is inside — moving toolbar→image,
+  both inside the wrapper, stays "inside"; seeded from `:hover` at bind time so a move right after
+  open is tracked, while synthetic CDP events drive it purely). `couplePaletteToRegion(palette,
+  {wrapper, toolbar}, close)` wires a body-level palette in (marks the wrapper `.lie-region-hover`,
+  closes the palette on region-leave), used by `openGroupPopup` and `addClass`. The pure click-away
+  decision (`clickDismissesToolbar`) lives in `toolbar-region-logic.ts`.
 - **`anchored-submenu.ts` (+ `-logic`)** — `AnchoredSubmenu` is the single host (AD8/D6/F14): the
   greyed toolbar, the header **reset · cancel (✗) · accept (✓)** icons, and the **one active
   region** (image + toolbar + panel bound to a shared hover/active state via `.lie-region-active`,
-  with a grace delay over the image→panel gap so the two show/hide together). `close(exit)` routes
-  the exit reason through the pure `submenuExitEffect` — **commit** (accept / Enter / leave /
-  dismiss / context loss) → `onCommit`; **cancel** (✗ / Esc) → `onCancel` (owner re-renders the
-  live DOM from the unchanged source, no write); **silent** (unload) → neither. `placeSubmenu`
-  computes placement (compact under the toolbar; clamped into the viewport, never flipped past the
-  explorer).
+  driven by the shared `bindRegionHover` so the two show/hide together on ONE signal — never the CSS
+  `:hover`, which is suppressed while a panel is open via `:not(.lie-toolbar-inactive)` so the bar
+  stays greyed the whole open duration, D6.2). `close(exit)` routes the exit reason through the pure
+  `submenuExitEffect` — **commit** (accept / Enter / leave / dismiss / context loss) → `onCommit`;
+  **cancel** (✗ / Esc) → `onCancel` (owner re-renders the live DOM from the unchanged source, no
+  write); **silent** (unload) → neither. `placeSubmenu` computes placement (compact under the
+  toolbar; clamped into the viewport, never flipped past the explorer).
 - **`crop-editor.ts` (+ `-logic`)** — `CropEditor` edits the LIVE 3-layer DOM **in place** (no
   clone), driving the SAME `toCropResult` placement the render core commits (centre origin →
   preview == committed); handles on the inner `<img>` (corner aspect-locked + edge single-axis +
@@ -478,10 +542,13 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   is unreachable. Structural subscribe/unsubscribe + leak proof: `scripts/verify-crop-teardown.mjs`
   (per exit path, listener count 0→1→0); the delta→sign→snap math is a unit (`applyRotateGesture`);
   the actual native firing is a manual user test (the gesture can't be synthesized via CDP).
-- **`filter-panel.ts`** — `FilterPanel`: histogram + grouped sliders + temperature; reads/writes
-  the native `filter` value; docked beside the image on the roomier side (D7).
-- **`size-submenu.ts`** — `buildSizeBody`: the presets (icon/small/medium/large/original) and the
-  side-by-side width/height fields (F24, D6.1), hosted by `AnchoredSubmenu`.
+- **`filter-panel.ts`** — `FilterPanel`: live histogram + sliders grouped by purpose + named
+  presets; reads/writes the native `filter` value (its non-default keys via `nonDefaultFilter`);
+  docked beside the image on the roomier side (D7).
+- **`size-submenu.ts`** + **`size-submenu-logic.ts`** — `buildSizeBody`: the presets
+  (icon/small/medium/large/original — `sizePresets`, where **icon couples to `inline`**, F24/F17) and
+  the side-by-side width/height fields (D6.1), hosted by `AnchoredSubmenu`; the preset table is the
+  pure unit (`tests/size-submenu-logic.test.ts`).
 - **`export.ts`** — `renderTransformedImage` replays the **shared geometry** (`renderer-logic`) +
   the native `filter` + the same inner-image transform onto a canvas (canvas bounds clip =
   `overflow:hidden`), producing the **same visual** as displayed but sized from the **original

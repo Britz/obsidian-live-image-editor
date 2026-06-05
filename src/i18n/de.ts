@@ -41,7 +41,6 @@ export default {
   blur: "Weichzeichnen",
   grayscale: "Schwarzweiß",
   sepia: "Sepia",
-  temperature: "Temperatur",
   groupLight: "Licht",
   groupColor: "Farbe",
   groupEffect: "Effekt",

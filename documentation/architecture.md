@@ -68,10 +68,12 @@ current code and are restated here as architecture, not invented anew.
   `aspect-ratio`) plus `.class` and a `style=` escape (grammar in T2.3). Native CSS is used **only
   for the faithful subset** — `align` (legacy HTML float / center) and `width` (a real HTML
   attribute) render with no plugin and no shipped CSS; a `style="filter:…"` escape likewise stays
-  faithful. The **runtime-only** keys (`rotate`, `flip`, the inner crop `transform`) have no
-  faithful native path — `transform` does not reflow, so a rotated **footprint** needs its own
-  element — and are realized by the render core / runtime, degrading to the original image
-  otherwise (F25). Each datum is routed to the layer it must act on (AD3, 3-layer model):
+  faithful. The **runtime-only** keys (`rotate`, `flip`, the inner crop `transform`, and a bare
+  `filter=`) have no faithful native path — `transform` does not reflow, so a rotated **footprint**
+  needs its own element, and a browser ignores a bare `filter` attribute (the faithful filter path
+  is the `style="filter:…"` escape) — and are realized by the render core / runtime (so the runtime's
+  `CLAIM_SELECTOR` must include `filter`, AB7a), degrading to the original image otherwise (F25).
+  Each datum is routed to the layer it must act on (AD3, 3-layer model):
   `align` / `width` / `aspect-ratio` / `style` / `.class` → the **outer** (the flow footprint);
   `rotate` + `flip` → the **inner-frame** (orientation + crop clip); `transform` (crop placement)
   + `filter` → the **`<img>`** (content). A `filter` and a `transform` value pass through
@@ -188,6 +190,21 @@ current code and are restated here as architecture, not invented anew.
   the toolbar (greyed) and the panel show and hide together. Placement is the only thing that varies
   by size (compact menus hang under the toolbar; the large filter panel docks beside the image). The
   behaviour is implemented once, not per feature.
+  - **One signal, not two (D6.2).** The hover region is driven by **one** binder (`bindRegionHover`,
+    shared by the host and the palettes below) whose single boolean drives toolbar visibility,
+    staying-greyed AND panel visibility together. The in-chrome bar's CSS `:hover` no longer competes
+    while a panel is open (`.lie-toolbar-in-image:not(.lie-toolbar-inactive)`): the bar is greyed for
+    the **whole** open duration, never momentarily un-greyed. The binder tracks a **set** of the
+    members the pointer is inside, so it is robust to the toolbar being nested in the image wrapper
+    (toolbar→image stays "inside") and seeds that set from `:hover` at bind time.
+  - **Click-away closes; crop exempt (D6.3).** An active click outside the region dismisses the
+    toolbar and persists any open filter/size panel (`clickDismissesToolbar`, pure/tested) — but
+    **not** while the in-place crop editor is active, so a stray click can't tear down the session.
+  - **Palettes coupled, not greyed (D6.4).** The folded-group popups and the add-class dropdown live
+    on `document.body`; `couplePaletteToRegion` (over the same binder) marks the wrapper
+    `.lie-region-hover` so the in-chrome bar stays visible while the body-level palette is hovered,
+    and closes the palette when the region is left — bar + palette fade together — **without** greying
+    the bar (palettes are not modal).
 
 - **AD9 — Reuse the platform (DRY).** *(F5, F6, F21, F22, D4, F13)* Where Obsidian already
   provides the capability, the platform's own code is the building block: `MarkdownRenderer`
@@ -234,7 +251,11 @@ The boundary between Markdown text and everything above it. Pure where possible 
   (carrying the attribute block across intact), and folds a Markdown native size into the block
   while leaving a wikilink's native size as-is (F5, F6).
 - **AB3 — Source↔DOM mapping** — maps a rendered image to its position in the Markdown source so
-  an edit knows which line to rewrite, without moving the cursor or jumping scroll (D11).
+  the right occurrence is rewritten / rendered, without moving the cursor or jumping scroll (D11).
+  A file embedded more than once is disambiguated **position-exact**, not by first basename match:
+  in live preview / the editing actions via CM6 `posAtDOM` (the exact line), and on the reading-view
+  render path by **occurrence order** (the n-th rendered embed of a basename = its n-th source
+  occurrence) (F2; the Bug-33 failure mode otherwise).
 - **AB4 — Snippet class discovery** — reads the vault's CSS snippets, extracts image-targeting
   classes, filters out internal and platform classes, and refreshes on load and on change (F16).
   Also **ships installable example decoration snippets** (opt-in, resettable) that surface
@@ -272,11 +293,12 @@ the correct geometry.
   toolbar writer — there is no parallel format. On a foreign page the runtime **hydrates claimed
   `<img>`s** (on `DOMContentLoaded` + a `MutationObserver`) by building the **3-layer structure**
   (AD3) and routing the CSS per layer.
-  **Identification rule:** an `<img>` is claimed **iff** it carries a distinctive transform key
-  (`rotate` / `flip` / `transform` / `aspect-ratio`) **or** the explicit `.lie` marker; `align` /
-  `width` / `style` / `class` alone do **not** claim (native CSS already handles them, and an
-  align-only image needs no runtime structure). The bare-key choice (no prefix) accepts a small
-  collision risk for brevity (T2.3). Where the bundle is injectable (e.g. MkDocs) fidelity is
+  **Identification rule:** an `<img>` is claimed **iff** it carries a distinctive runtime-only key
+  (`rotate` / `flip` / `transform` / `aspect-ratio` / `filter`) **or** the explicit `.lie` marker;
+  `align` / `width` / `style` / `class` alone do **not** claim (native CSS already handles them, and
+  an align-only image needs no runtime structure). A bare `filter=` IS claimed — a browser ignores
+  the bare attribute, so the runtime must apply it (the `style="filter:…"` escape needs no runtime).
+  The bare-key choice (no prefix) accepts a small collision risk for brevity (T2.3). Where the bundle is injectable (e.g. MkDocs) fidelity is
   100%; otherwise the no-JS fallback keeps `align`/`width` and degrades the runtime-only transforms
   to the original image (F25). kramdown/Jekyll never attach the bare-brace block to the DOM, so
   there it is unsupported (shows the original) — a documented limitation.
@@ -322,6 +344,11 @@ display state — each produces an edit that round-trips through the model layer
   **auto-persist on leave** with cancel/Esc discarding via the owner's revert; the one active region
   of image + toolbar + panel); its placement logic and exit-reason routing (`submenuExitEffect`) are
   pure and tested.
+- **AB11a — Region-hover binder** (`region-hover.ts`) — the shared DOM helper realizing D6.2/D6.4:
+  `bindRegionHover` treats a set of elements as ONE hover region (one signal, grace-bridged,
+  nesting-robust) and `couplePaletteToRegion` wires the body-level palettes (group popup / class
+  dropdown) into it without greying. Used by AB11 (modal) and AB10's popups (palettes). The pure
+  click-away decision lives in `toolbar-region-logic.ts` (`clickDismissesToolbar`, tested).
 - **AB12 — Crop editor** — edits the **LIVE 3-layer DOM in place** (no clone): the user
   moves/scales/rotates the original under a fixed cut window, the editor driving the SAME
   `toCropResult` placement the render core commits (centre origin) so **preview == committed**.
@@ -335,8 +362,9 @@ display state — each produces an edit that round-trips through the model layer
   content about the cut centre — same accumulate/quantize as the handle, which stays the cross-
   platform fallback; the listener is scoped to the crop session and removed on every exit path
   (leak-checked in `scripts/verify-crop-teardown.mjs`). macOS-only — no gesture code runs elsewhere.
-- **AB13 — Filter panel** — the docked panel with histogram and grouped sliders, including the
-  temperature approximation; reads/writes the declarative contract (F11, D7).
+- **AB13 — Filter panel** — the docked panel with a live histogram and sliders grouped by purpose
+  (brightness, contrast, saturation, hue, blur, grayscale, sepia) plus named presets; reads/writes
+  the declarative `filter` contract (F11, D7).
 - **AB14 — Size sub-menu** — the size presets (icon/small/medium/large/original) plus manual
   width/height entry fields side by side, hung under the toolbar through the shared host
   (F10, F24, D6.1).

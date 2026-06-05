@@ -2,6 +2,7 @@ import { ImageTransform, isCrop, getRotation, getFlipH, getFlipV } from "./trans
 import { snapAngle, snapScale, snapTranslate, toCropResult, parsePlacement, applyRotateGesture, CropResult } from "./crop-editor-logic";
 import { BOX_CLASS, FRAME_CLASS, buildLayers } from "./render-core";
 import { AnchoredSubmenu } from "./anchored-submenu";
+import { textButton } from "./ui";
 import { t } from "./i18n";
 
 interface Point { x: number; y: number; }
@@ -290,11 +291,8 @@ export class CropEditor {
     const body = document.createElement("div");
     body.classList.add("lie-crop-presets");
     for (const ratio of Object.keys(ASPECT_RATIOS) as AspectRatio[]) {
-      const btn = document.createElement("button");
-      btn.classList.add("lie-crop-preset-btn");
-      btn.textContent = ratio === "free" ? t("free") : ratio;
-      btn.addEventListener("click", () => { this.aspectRatio = ratio; this.applyAspectRatio(); });
-      body.appendChild(btn);
+      body.appendChild(textButton(ratio === "free" ? t("free") : ratio, "lie-crop-preset-btn",
+        () => { this.aspectRatio = ratio; this.applyAspectRatio(); }));
     }
 
     const anchor = toolbarEl ?? anchorEl ?? this.img;

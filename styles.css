@@ -332,8 +332,15 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
   transition: opacity 0.1s ease;
   pointer-events: none;
 }
-.lie-wrapper:hover .lie-toolbar-in-image,
-.lie-wrapper:focus-within .lie-toolbar-in-image {
+/* Normal hover-reveal (D1) — but ONLY while no modal panel is open. The moment a panel opens the bar
+   gets `.lie-toolbar-inactive`, and from then on its visibility rides the host's ONE region-hover
+   signal alone (the `.lie-region-active` rules below) — never the CSS `:hover`, which would desync
+   from the JS state and flap the bar between greyed and un-greyed (Bug 2). `.lie-region-hover` is the
+   SAME single hover signal for the lightweight body-level palettes (group popup / class dropdown):
+   it keeps the in-chrome bar visible while you hover the palette (Bug 3) WITHOUT greying it. */
+.lie-wrapper:hover .lie-toolbar-in-image:not(.lie-toolbar-inactive),
+.lie-wrapper:focus-within .lie-toolbar-in-image:not(.lie-toolbar-inactive),
+.lie-wrapper.lie-region-hover .lie-toolbar-in-image:not(.lie-toolbar-inactive) {
   opacity: 1;
   pointer-events: auto;
 }
