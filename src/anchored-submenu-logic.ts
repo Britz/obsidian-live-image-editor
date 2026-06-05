@@ -90,3 +90,19 @@ export function placeSubmenu(
     left: clamp(left, margin, maxLeft),
   };
 }
+
+// ---- Exit-reason routing (F14/AD8/D6) -------------------------------------
+// The shared host is auto-persist AND carries an explicit accept/cancel. The teardown must know
+// WHICH exit happened, because they fan out to different owner callbacks:
+//   - "commit"  — ✓ accept, Enter, click-away, dismiss, context loss: the working state is
+//                 persisted ONCE (one source write / one undo step). This is the auto-persist leave.
+//   - "cancel"  — ✗ cancel, Esc: the edits are DISCARDED — NO source write; the owner reverts the
+//                 live preview to the pre-open state (re-render from the unchanged source).
+//   - "silent"  — plugin unload only: neither persist nor revert (no source write while the plugin
+//                 is going away; the DOM is being torn down anyway).
+// Keeping the mapping pure makes the routing unit-testable away from the DOM (AD7).
+export type SubmenuExit = "commit" | "cancel" | "silent";
+
+export function submenuExitEffect(exit: SubmenuExit): { commit: boolean; cancel: boolean } {
+  return { commit: exit === "commit", cancel: exit === "cancel" };
+}

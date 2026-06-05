@@ -23,6 +23,17 @@
 - [ ] **Display-mode residual (AD3, minor).** The uniform box computes to `display:block` on a plain
       page vs `inline-block` where an alignment class is present — harmless given the explicit px
       width, but a residual special case worth tidying.
+- [ ] **Enter=accept is captured globally while a panel is open (verify it doesn't surprise).** The
+      shared host captures Enter→accept (and Esc→cancel) on `document` while open, so an Enter pressed
+      with focus back in the editor accepts-and-closes rather than inserting a newline. This matches
+      the active-region/modal-ish model (the panel is the focus while open) and pairs Enter with ✓,
+      but revisit if it ever feels wrong — e.g. scope the capture to focus within the panel/region.
+      (Submodal accept/cancel rework, 2026-06-05.)
+- [ ] **F14 lists Export among the shared-host panels, but Export uses the native save dialog.** Crop,
+      Filters and Resize go through `AnchoredSubmenu`; Export is a one-shot native dialog
+      (`export.ts`, AD9/F13), never a live-preview panel. Pre-existing wording, surfaced while
+      pulling F14 to IST for the accept/cancel rework — decide whether to reword F14 ("…and Export"
+      → "Export uses the native dialog") or leave it as the conceptual grouping.
 
 ### Verifications (need eyes on a real / focused window)
 
@@ -33,6 +44,11 @@
       need a focused-window / manual pass. The pure logic each depends on is unit-tested.
 - [ ] **Crop responsive scaling (#7).** Box-relative `translate%` + `width:100%` img should rescale a
       crop as the column narrows; structurally correct but not yet measured under a narrowing column.
+- [ ] **Submodal accept/cancel + active-region — real-pointer pass.** `verify-submodal-icons.mjs` and
+      `verify-submodal-region.mjs` pin the structural facts (read-source-back; synthetic enter/leave),
+      but the real-pointer `:hover` CSS travel image→panel and the visual greyed-while-open state are
+      not CDP-synthesizable — confirm in a focused window that the bar+panel don't flicker on the way
+      across and that ✓/✗ feel right. (Submodal rework, 2026-06-05.)
 - [ ] **Caption pure-CSS sizing** against the implemented new DOM (verified in isolation, not the
       real structure).
 - [ ] **Toolbar container-query** with the box's aspect-ratio height (tested with an explicit px
@@ -293,6 +309,45 @@ parallel to the real APIs — exactly the cost AD7 pays the `-logic` split to av
 - [x] **R0 + F22/D9 captions (CDP-verified).** One uniform box for every image (the `display:contents`
       "normal" special case removed); alt text → Markdown caption, centred, wraps within the image
       width, settings toggle, off by default.
+
+### Resolved by the submodal accept/cancel + active-region rework (2026-06-05)
+
+Two fixes on the shared sub-menu host (`AnchoredSubmenu`), folded into the canonical docs
+(`requirements.md` F14/D6, `architecture.md` AD8, `implementation-plan.md` → `anchored-submenu.ts`).
+
+- [x] **(A) Restored accept (✓) + cancel (✗) icons — WITHOUT changing auto-persist-on-leave.** The
+      header now carries **reset · cancel (✗) · accept (✓)**. While open it is a pure live-DOM
+      preview (no source write); the **exit REASON** is routed through the pure
+      `submenuExitEffect` (`anchored-submenu-logic.ts`): **commit** (✓ accept, Enter, click-away,
+      dismiss, context loss) → `onCommit` = exactly one source write / one undo step (auto-persist,
+      unchanged); **cancel** (✗, Esc) → `onCancel` = DISCARD, no write, the owner re-renders the
+      live DOM from the unchanged source (crop re-renders from `existing`; size/filter from
+      `location.params`); **silent** (plugin unload) → neither. Esc = cancel, **Enter = accept**
+      (confirmed with the user). Per-panel Reset kept. Pinned: `submenuExitEffect` unit
+      (tests/anchored-submenu-logic.test.ts) + `scripts/verify-submodal-icons.mjs` (read-source-back:
+      ✓ writes the `{…}`, ✗ writes nothing AND restores the DOM, one undo step, leaving still
+      persists). *Review follow-up:* `writeToSource` (main.ts) now skips a byte-identical dispatch, so
+      an UNCHANGED size/filter accept/leave adds no redundant undo step (was a self-replacing write;
+      crop was already dirty-guarded) — one undo step per ACTUAL edit, uniformly.
+- [x] **(B) Toolbar ↔ sub-modal = ONE active region (flicker bug).** The in-chrome toolbar's
+      visibility was pure CSS `.lie-wrapper:hover`, so moving image→panel dropped the bar (and the
+      panel could flicker) the instant the pointer left the image rect — before reaching the panel.
+      Fix (D6): the host binds enter/leave on **all three** members (image region + panel +
+      toolbar) with the existing grace delay bridging the travel gap, and toggles `.lie-region-active`
+      on the toolbar in lock-step with the panel's visibility. New CSS keeps the toolbar visible
+      (greyed) while the region is active and hides it **together** with the panel when the region is
+      left — for the in-chrome bar (`.lie-toolbar-in-image.lie-toolbar-inactive.lie-region-active`)
+      and the floating bar (`.lie-toolbar-floating.lie-toolbar-inactive:not(.lie-region-active)`)
+      alike. Pinned: `scripts/verify-submodal-region.mjs` (synthetic enter/leave: grace keeps the
+      region across the gap, leaving anywhere hides both together, re-entering via image/toolbar/panel
+      restores both). *Review follow-up:* the greyed bar kept `pointer-events:none` (from
+      `.lie-toolbar-inactive`), so a REAL pointer moving onto the FLOATING bar (which sits outside the
+      image rect) fired no mouseenter → the region dropped (the float-case flicker survived). Fixed:
+      `.lie-toolbar-inactive.lie-region-active { pointer-events: auto }` makes the greyed bar a hover
+      surface while its buttons stay inert (D6); `verify-submodal-region.mjs` now also asserts the bar
+      is pointer-hoverable + buttons inert (structural — the synthetic events couldn't catch it).
+      *Manual:* the real-pointer `:hover` CSS travel path (not CDP-synthesizable) is a focused-window
+      check.
 
 ### Resolved by the LP rendering rework + follow-ups (2026-06-04)
 

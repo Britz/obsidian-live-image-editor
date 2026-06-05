@@ -32,6 +32,7 @@ export default {
   height: "Height",
   keepAspectRatio: "Keep aspect ratio",
   apply: "Apply",
+  accept: "Accept and close",
   cancel: "Cancel",
   brightness: "Brightness",
   contrast: "Contrast",

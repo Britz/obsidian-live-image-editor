@@ -175,13 +175,18 @@ current code and are restated here as architecture, not invented anew.
   verified in the running app.
 
 - **AD8 — One shared sub-menu host for all editing panels.** *(F14, D6)* Crop, Filters, Export
-  and Resize open through a single host that provides the greyed-toolbar state, the per-panel
-  **reset** icon, Esc/dismiss and the open/close toggle. It is **auto-persist**: no accept/cancel
-  — while open the working state is a live DOM preview only; **leaving** the host (close / Esc /
-  click-away / dismiss / context loss) persists it **once** through the shared
-  `isolateHistory.of("full")` writer = one undo step for the session (Reset is the only in-session
-  revert; plugin unload is the one silent teardown). Placement is the only thing that varies by
-  size (compact menus hang under the toolbar; the large filter panel docks beside the image). The
+  and Resize open through a single host that provides the greyed-toolbar state and three icon
+  actions — per-panel **reset**, **cancel** (✗) and **accept** (✓) — plus the open/close toggle.
+  While open the working state is a live DOM preview only; the host routes the **exit reason**
+  (the pure `submenuExitEffect`): **accept** and every other **leave** (Enter / click-away /
+  dismiss / context loss) persist **once** through the shared `isolateHistory.of("full")` writer =
+  one undo step for the session (**auto-persist**); **cancel** / **Esc** discard — no write — and
+  the owner re-renders the live DOM from the unchanged source; plugin unload is the one silent
+  teardown (neither). Reset and cancel are the in-session reverts. The host also owns the **one
+  active region** (D6): image + toolbar + panel share a single hover/active state — the toolbar
+  carries `.lie-region-active` while the region is hovered (incl. the image→panel travel grace) — so
+  the toolbar (greyed) and the panel show and hide together. Placement is the only thing that varies
+  by size (compact menus hang under the toolbar; the large filter panel docks beside the image). The
   behaviour is implemented once, not per feature.
 
 - **AD9 — Reuse the platform (DRY).** *(F5, F6, F21, F22, D4, F13)* Where Obsidian already
@@ -312,8 +317,10 @@ display state — each produces an edit that round-trips through the model layer
   divider-wrapping (D1, D2, F7); the entry point to every editing action. Sits inset at the
   image top, or **above** the image when it is too small to hold the bar (D1.1). That too-small
   placement is **declarative — a CSS container query on the box — with no JS measurement**.
-- **AB11 — Shared sub-menu host** — the one component realizing AD8 (greyed toolbar, per-panel
-  reset icon, Esc/dismiss, open/close toggle, **auto-persist on leave**); its placement logic is
+- **AB11 — Shared sub-menu host** — the one component realizing AD8 (greyed toolbar; per-panel
+  **reset**, **cancel (✗)** and **accept (✓)** icons; Esc=cancel / Enter=accept; open/close toggle;
+  **auto-persist on leave** with cancel/Esc discarding via the owner's revert; the one active region
+  of image + toolbar + panel); its placement logic and exit-reason routing (`submenuExitEffect`) are
   pure and tested.
 - **AB12 — Crop editor** — edits the **LIVE 3-layer DOM in place** (no clone): the user
   moves/scales/rotates the original under a fixed cut window, the editor driving the SAME

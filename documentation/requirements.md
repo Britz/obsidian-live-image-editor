@@ -69,11 +69,13 @@ no language or link-format setting of its own.
   overwrite, or relocate. It never overwrites silently, and falls back to an in-app dialog where no
   native one is reachable (mobile).
 - **F14 — Shared editing sub-menu.** Crop, Filters, Export and Resize all open through **one
-  shared host element** — a modular component, not reimplemented per feature. It is
-  **auto-persist**: while a panel is open the working state is a **live preview** only (no
-  source write); **leaving** the panel (close / Esc / click-away / dismiss) persists it **once**
-  as a single undo step. The host provides a per-panel **reset** (the only in-session revert) and
-  **close / dismiss** — there is **no separate accept or cancel**; **Esc** leaves-and-persists.
+  shared host element** — a modular component, not reimplemented per feature. While a panel is open
+  the working state is a **live preview** only (no source write). The host carries three icon
+  actions: a per-panel **reset**, a **cancel** (✗) and an **accept** (✓). **Accept** — and every
+  other way of **leaving** the panel (Enter / click-away / dismiss / context loss) — persists the
+  working state **once** as a single undo step (**auto-persist**). **Cancel** (✗) and **Esc**
+  **discard** the edits (no source write) and restore the pre-open state by re-rendering from the
+  unchanged source. Reset and cancel are the in-session reverts; Ctrl/Cmd-Z reverts after a commit.
 - **F15 — Built-in alignment & inline.** Built-in, toggleable **alignment** (left / right /
   center) and **inline** styling, plus a reset that restores defaults. Alignment exists as a
   functional capability; whether it is carried as an attribute key or a CSS class is an
@@ -147,11 +149,13 @@ no language or link-format setting of its own.
   line above the image: borderless, full content width, auto-height (wraps fully, never
   clipped), never a boxed or resizable text field.
 - **D6 — Sub-menu appearance.** While the shared sub-menu (F14) is open, the toolbar is
-  **greyed out and inactive**, and its **reset** + **dismiss** actions are shown as **icons**
-  (auto-persist — no accept/cancel; leaving persists, F14). Placement is the only thing that
-  varies by size — compact menus hang under the toolbar, the large filter panel sits beside the
-  image — and the menu is never clipped or internally scrolled. Image + toolbar + open panel form
-  one continuous active region.
+  **greyed out and inactive**, and the host's **reset**, **cancel** (✗) and **accept** (✓) actions
+  are shown as **icons** (leaving still persists — auto-persist, F14). Placement is the only thing
+  that varies by size — compact menus hang under the toolbar, the large filter panel sits beside the
+  image — and the menu is never clipped or internally scrolled. **Image + toolbar + the open panel
+  form one continuous active region:** the toolbar (greyed) and the panel stay visible while the
+  pointer is anywhere in that region — including the gap while moving from the image to the panel —
+  and they show and hide **together** when it is entered / left.
   - **D6.1 — Resize panel contents:** the resize sub-menu shows the size presets (F24) and
     **manual width and height entry fields placed side by side**. (Its reset is the shared
     host's per-panel reset, part of F14.)

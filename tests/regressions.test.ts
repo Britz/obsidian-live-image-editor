@@ -12,6 +12,15 @@ import { parseAltText, serializeTransform, setWidthPx, isCrop } from "../src/tra
 // findImageInSource resolved by basename → first occurrence; the fix resolves the line from the
 // rendered image's DOM position). That CDP check is not a vitest unit (it needs Obsidian, T-L6).
 //
+// Submodal ACCEPT/CANCEL + ONE-ACTIVE-REGION rework (F14/AD8/D6 — restored ✓/✗ icons without
+// changing auto-persist-on-leave; image+toolbar+panel = one hover/active region). The PURE crux —
+// the host routing the EXIT reason (commit / cancel / silent) to the right owner callback — is
+// `submenuExitEffect`, pinned in tests/anchored-submenu-logic.test.ts. The DOM/interactive halves
+// are read-DOM-back CDP scripts (T-L6): `scripts/verify-submodal-icons.mjs` (✓ persists the `{…}`,
+// ✗ writes nothing AND restores the live DOM, one undo step, leaving still persists) and
+// `scripts/verify-submodal-region.mjs` (the toolbar+panel share one region: the image→panel travel
+// grace keeps it, leaving anywhere hides both together, re-entering via image/toolbar/panel restores).
+//
 // The bugs below are FIXED; each is pinned at the level that catches it — the PURE, autonomously-
 // verifiable half as a vitest unit here, the obsidian/CM-coupled (DOM/interactive) half as a
 // read-the-real-DOM CDP script (T-L6), never assumed.

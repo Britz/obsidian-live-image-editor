@@ -266,9 +266,12 @@ run via CDP eval against the example vault (`T-L6`, `AD7`).
   and a backgrounded window (animation frames throttled). *Verifies sizing is box→image at edit
   time, designing out the rotated-box drift (`T7`).*
 - **AD8 — Shared sub-menu host.** Open crop, filters and resize; confirm each opens through the
-  **one** host — greyed toolbar, icon reset/accept/dismiss, Esc-dismiss, open/close toggle — and
-  that only **placement** differs by size. *Verifies the single component, not per-feature
-  reimplementation (`F14`, `D6`).*
+  **one** host — greyed toolbar, icon **reset / cancel (✗) / accept (✓)**, **Esc=cancel** (discard,
+  no source write) / **Enter=accept**, open/close toggle — and that only **placement** differs by
+  size. Confirm ✗/Esc discards (no write, live DOM restored) while ✓/leave persists once; and that
+  image + toolbar + panel form one active region (toolbar+panel show/hide together). *Verifies the
+  single component, not per-feature reimplementation (`F14`, `D6`); pinned by
+  `scripts/verify-submodal-icons.mjs` + `scripts/verify-submodal-region.mjs`.*
 - **AD9 — Platform reuse.** Confirm captions render via Obsidian's `MarkdownRenderer`, resize
   uses the native handle/frame, the column cap reads `--file-line-width`, link conversion calls
   `fileManager.generateMarkdownLink`, and i18n follows Obsidian's locale. *Verifies the platform

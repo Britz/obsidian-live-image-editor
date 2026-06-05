@@ -32,6 +32,7 @@ export default {
   height: "Höhe",
   keepAspectRatio: "Seitenverhältnis beibehalten",
   apply: "Übernehmen",
+  accept: "Übernehmen und schließen",
   cancel: "Abbrechen",
   brightness: "Helligkeit",
   contrast: "Kontrast",

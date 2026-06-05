@@ -593,10 +593,21 @@ export default class LiveImageEditorPlugin extends Plugin {
   // Funnel a document edit through the shared isolateHistory writer (one undo step per
   // edit, cursor/scroll left untouched — D11). CM6 is always present in the editing
   // modes; the editor.replaceRange fallback only guards a hypothetical non-CM6 editor.
+  // No-op guard: skip the dispatch when the new block is byte-identical to what's already
+  // there, so an UNCHANGED accept/leave (open size/filter, change nothing, then ✓/click-away)
+  // adds no redundant undo step — matching crop's dirty-guarded commit (one undo step per
+  // ACTUAL edit, never a self-replacing one).
   private writeToSource(editor: Editor, from: number, to: number, insert: string): void {
     const cm = (editor as unknown as { cm?: EditorView }).cm;
-    if (cm) { writeSource(cm, { from, to, insert }); return; }
-    editor.replaceRange(insert, editor.offsetToPos(from), editor.offsetToPos(to));
+    if (cm) {
+      if (cm.state.doc.sliceString(from, to) === insert) return;
+      writeSource(cm, { from, to, insert });
+      return;
+    }
+    const fromPos = editor.offsetToPos(from);
+    const toPos = editor.offsetToPos(to);
+    if (editor.getRange(fromPos, toPos) === insert) return;
+    editor.replaceRange(insert, fromPos, toPos);
   }
 
   private rotateCw(): void {
@@ -645,7 +656,9 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   private closeSubmenu(persist = true): void {
-    this.submenu?.close(persist);
+    // The size submenu owns an AnchoredSubmenu directly: map the leave/unload flag to the exit
+    // reason (the ✗/Esc DISCARD path is internal to the host). persist → commit, unload → silent.
+    this.submenu?.close(persist ? "commit" : "silent");
   }
 
   private customSize(): void {
@@ -680,6 +693,9 @@ export default class LiveImageEditorPlugin extends Plugin {
       hoverRegion: img.closest<HTMLElement>(".lie-wrapper") ?? undefined,
       onReset: () => sizeBody.reset(),
       onCommit: () => this.modifyTransform((tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; }),
+      // ✗ cancel / Esc (F14): discard — no source write. The source was never touched while open,
+      // so re-rendering the live image from its original params restores the pre-open size.
+      onCancel: () => applyTransformToImage(this.liveTarget(img), parseAltText(location.params)),
       onClose: () => { this.submenu = null; },
     });
     this.submenu = submenu;
@@ -739,6 +755,9 @@ export default class LiveImageEditorPlugin extends Plugin {
     const panel = new FilterPanel(img, originalFilter, {
       onPreview: (filter: FilterData) => applyFilterPreview(this.liveTarget(img), filter),
       onCommit: (filter: FilterData) => this.modifyTransform((tr) => setFilter(tr, Object.keys(filter).length ? filter : undefined)),
+      // ✗ cancel / Esc (F14): discard — no source write. Re-render from the untouched source to
+      // restore the pre-open filter (and any other transform the live preview painted over).
+      onCancel: () => applyTransformToImage(this.liveTarget(img), parseAltText(location.params)),
       onClose: () => { this.filterPanel = null; },
     });
     panel.open(img, this.activeToolbarEl());

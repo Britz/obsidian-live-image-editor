@@ -5,9 +5,11 @@ import { AnchoredSubmenu } from "./anchored-submenu";
 export interface FilterPanelCallbacks {
   // Apply the working filter to the live image WITHOUT persisting (live preview).
   onPreview: (filter: FilterData) => void;
-  // Persist the working filter into the document. Auto-persist (AD8): fired once when the panel
-  // is LEFT (close / Esc / click-away / dismiss), not via an accept button.
+  // Persist the working filter into the document (F14/AD8): fired once when the panel is LEFT to
+  // persist — ✓ accept, Enter, click-away, dismiss, context loss.
   onCommit: (filter: FilterData) => void;
+  // DISCARD (✗ cancel / Esc): restore the live preview to the pre-open filter — no source write.
+  onCancel: () => void;
   // The panel element was removed — clear any reference the owner holds.
   onClose: () => void;
 }
@@ -96,6 +98,7 @@ export class FilterPanel {
       // clear all filters to default and preview; the panel stays open.
       onReset: () => this.resetFilters(),
       onCommit: () => this.callbacks.onCommit(this.currentFilter()),
+      onCancel: () => this.callbacks.onCancel(),
       onClose: () => { this.submenu = null; this.body = null; this.callbacks.onClose(); },
     });
     this.submenu = submenu;
@@ -103,11 +106,11 @@ export class FilterPanel {
     this.updateHistogram();
   }
 
-  // Leave the panel. Auto-persist: the working filter is persisted once (`persist`, the default);
-  // `persist=false` is the silent teardown for plugin unload. Idempotent (AnchoredSubmenu guards
-  // against double-fire).
+  // Leave the panel to PERSIST (`persist`, the default — accept/leave); `persist=false` is the
+  // silent teardown for plugin unload. The ✗/Esc DISCARD path is internal to the AnchoredSubmenu
+  // (its cancel icon / Esc) and runs `onCancel`. Idempotent (AnchoredSubmenu guards double-fire).
   close(persist = true): void {
-    this.submenu?.close(persist);
+    this.submenu?.close(persist ? "commit" : "silent");
   }
 
   // The non-default working values, ready to persist.

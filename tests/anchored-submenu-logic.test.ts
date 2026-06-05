@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { placeSubmenu, Rect } from "../src/anchored-submenu-logic";
+import { placeSubmenu, Rect, submenuExitEffect } from "../src/anchored-submenu-logic";
 
 const vp = { width: 1200, height: 800 };
 const rect = (o: Partial<Rect>): Rect => ({
@@ -34,5 +34,31 @@ describe("placeSubmenu", () => {
       { width: 300, height: 300 }, "beside-image", vp, undefined, undefined, false);
     expect(p.left).toBe(468); // right 460 + gap 8
     expect(p.top).toBe(100);
+  });
+});
+
+// The accept/cancel rework (F14/AD8/D6 — restored icons + discard-on-cancel) hinges on the host
+// routing the EXIT reason to the right owner callback. The PURE crux is `submenuExitEffect`; the
+// live-DOM half (✓ writes the `{…}`, ✗ does NOT and restores the pre-open transform, one undo step,
+// toolbar+panel one active region) is the read-DOM-back CDP guard `scripts/verify-submodal-icons.mjs`
+// + `scripts/verify-submodal-region.mjs` (obsidian/CM-coupled — not a vitest unit, T-L6).
+describe("submenuExitEffect — the host's exit-reason routing (restored accept/cancel)", () => {
+  it("accept / leave / dismiss / context loss → COMMIT (one source write, auto-persist)", () => {
+    expect(submenuExitEffect("commit")).toEqual({ commit: true, cancel: false });
+  });
+
+  it("✗ cancel / Esc → CANCEL only (revert the live preview, NO source write)", () => {
+    expect(submenuExitEffect("cancel")).toEqual({ commit: false, cancel: true });
+  });
+
+  it("plugin unload → SILENT (neither persist nor revert — no write while going away)", () => {
+    expect(submenuExitEffect("silent")).toEqual({ commit: false, cancel: false });
+  });
+
+  it("commit and cancel are mutually exclusive across every reason (never both, never a double write)", () => {
+    for (const exit of ["commit", "cancel", "silent"] as const) {
+      const e = submenuExitEffect(exit);
+      expect(e.commit && e.cancel).toBe(false);
+    }
   });
 });

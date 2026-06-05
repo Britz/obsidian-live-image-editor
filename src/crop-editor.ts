@@ -42,7 +42,8 @@ const PINCH_ZOOM_PER_PX = 0.01;     // trackpad pinch (wheel + ctrlKey) → scal
  * F24). For the crop duration the frame/area `overflow:hidden` is lifted and the host
  * `contain:paint` (LP block widget) worked around, so the whole image overflows the window with
  * the outside DIMMED and the inside full — no jump or reflow (the footprint stays reserved).
- * Auto-persist (AD8/D6): no accept/cancel — leaving the shared host persists the session ONCE.
+ * Auto-persist (AD8/D6/F14): leaving the shared host (✓ accept / Enter / click-away / dismiss)
+ * persists the session ONCE; ✗ cancel / Esc discards it (re-render from `existing`, no write).
  */
 export class CropEditor {
   private controls: AnchoredSubmenu | null = null;
@@ -73,6 +74,9 @@ export class CropEditor {
   private initFrameH = 0;
   // Any gesture / preset / reset marks the session dirty; an untouched open→leave persists nothing.
   private dirty = false;
+  // ✗ cancel / Esc (F14): discard the session — re-render from `existing` on exit and write nothing,
+  // even when dirty (the same restore the no-op leave already does, forced regardless of `dirty`).
+  private cancelled = false;
 
   // The live layers + the transient chrome the editor injects for the crop duration.
   private frameEl: HTMLElement | null = null;
@@ -140,10 +144,11 @@ export class CropEditor {
     this.applyPlacement();
   }
 
-  // Leave the editor; under auto-persist this persists the session (one undo step). `persist=false`
-  // is the silent teardown for plugin unload.
+  // Leave the editor to PERSIST the session (`persist`, the default — accept/leave, one undo step);
+  // `persist=false` is the silent teardown for plugin unload. The ✗/Esc DISCARD path is internal to
+  // the AnchoredSubmenu and routes through `onCancel` (re-render from `existing`, no write).
   close(persist = true): void {
-    this.controls?.close(persist);
+    this.controls?.close(persist ? "commit" : "silent");
   }
 
   // ---- In-place mode: un-clip the live structure, draw the dim-outside ghost + handles ---------
@@ -232,7 +237,10 @@ export class CropEditor {
     }
     this.gestureWin = null;
     this.onRotateGesture = null;
-    if (!this.dirty) buildLayers(this.img, this.existing);
+    // Restore the committed geometry from `existing` on a NO-OP leave (nothing to persist) OR a ✗/Esc
+    // CANCEL (discard, even when dirty — back to the pre-open state). A committed leave already
+    // re-rendered via the source write, so it needs no restore here.
+    if (this.cancelled || !this.dirty) buildLayers(this.img, this.existing);
   }
 
   // The cut-frame positioning box (top/left 50%, centred + oriented like the live `.lie-frame`),
@@ -299,9 +307,11 @@ export class CropEditor {
       title: t("crop"),
       hoverRegion: this.img.closest<HTMLElement>(".lie-wrapper") ?? undefined,
       onReset: () => this.resetCrop(),
-      // Auto-persist (AD8): leaving the host persists the session ONCE — and only if it was
-      // actually touched (an untouched open→leave writes nothing). Teardown always runs onClose.
+      // Auto-persist (AD8): leaving-to-persist writes the session ONCE — and only if it was actually
+      // touched (an untouched open→leave writes nothing). ✗ cancel / Esc DISCARDS: mark cancelled so
+      // exitCropMode re-renders from `existing` and onCommit never runs. Teardown always runs onClose.
       onCommit: () => { if (this.dirty) this.persist(this.toResult()); },
+      onCancel: () => { this.cancelled = true; },
       onClose: () => { this.exitCropMode(); this.controls = null; this.onClosed(); },
     });
     this.controls = controls;

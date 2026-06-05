@@ -450,9 +450,15 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   bottom: 100% } }` flips the bar above at small sizes and is inert when large. (`container-type:
   size` needs a resolvable height — the box's `aspect-ratio`/explicit size provides it; a
   content-driven height would collapse under size containment, so use it only on the sized box.)
-- **`anchored-submenu.ts` (+ `-logic`)** — `AnchoredSubmenu` is the single host (AD8);
-  `placeSubmenu` computes placement (compact under the toolbar; clamped into the viewport,
-  never flipped past the explorer).
+- **`anchored-submenu.ts` (+ `-logic`)** — `AnchoredSubmenu` is the single host (AD8/D6/F14): the
+  greyed toolbar, the header **reset · cancel (✗) · accept (✓)** icons, and the **one active
+  region** (image + toolbar + panel bound to a shared hover/active state via `.lie-region-active`,
+  with a grace delay over the image→panel gap so the two show/hide together). `close(exit)` routes
+  the exit reason through the pure `submenuExitEffect` — **commit** (accept / Enter / leave /
+  dismiss / context loss) → `onCommit`; **cancel** (✗ / Esc) → `onCancel` (owner re-renders the
+  live DOM from the unchanged source, no write); **silent** (unload) → neither. `placeSubmenu`
+  computes placement (compact under the toolbar; clamped into the viewport, never flipped past the
+  explorer).
 - **`crop-editor.ts` (+ `-logic`)** — `CropEditor` edits the LIVE 3-layer DOM **in place** (no
   clone), driving the SAME `toCropResult` placement the render core commits (centre origin →
   preview == committed); handles on the inner `<img>` (corner aspect-locked + edge single-axis +
