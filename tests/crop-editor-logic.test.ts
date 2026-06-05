@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { snapTranslate, snapAngle, snapScale, toCropResult, parsePlacement } from "../src/crop-editor-logic";
+import { snapTranslate, snapAngle, snapScale, toCropResult, parsePlacement, applyRotateGesture } from "../src/crop-editor-logic";
 import { isCrop } from "../src/transforms";
 
 describe("crop live snapping (F12 — quantize during the interaction)", () => {
@@ -14,6 +14,23 @@ describe("crop live snapping (F12 — quantize during the interaction)", () => {
   it("snaps scale to 1/1000", () => {
     expect(snapScale(1.23456)).toBe(1.235);
     expect(snapScale(0.9999)).toBe(1);
+  });
+});
+
+describe("applyRotateGesture (macOS trackpad rotate-gesture → content rotation)", () => {
+  // Native delta is CCW-positive; CSS rotate() is CW-positive — so a clockwise (negative) gesture
+  // delta must INCREASE the content angle (clockwise on screen). The sign is negated.
+  it("negates the native CCW-positive delta so a CW gesture rotates content CW", () => {
+    expect(applyRotateGesture(0, -5)).toBe(5);   // CW gesture → +5° (CW on screen)
+    expect(applyRotateGesture(0, 5)).toBe(-5);   // CCW gesture → -5°
+  });
+  it("accumulates deltas from the current angle and snaps to 0.1° like the handle", () => {
+    expect(applyRotateGesture(10, -2)).toBe(12);
+    expect(applyRotateGesture(12, -0.34)).toBeCloseTo(12.3, 5);   // snaps to 0.1°
+    expect(applyRotateGesture(-3.1, 1)).toBeCloseTo(-4.1, 5);
+  });
+  it("is a no-op for a zero delta (the gesture's final emission)", () => {
+    expect(applyRotateGesture(7.5, 0)).toBe(7.5);
   });
 });
 

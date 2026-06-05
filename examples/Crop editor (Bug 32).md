@@ -10,7 +10,7 @@ Crop should open in place with **no jump/reflow**; rotate pivots the **centre**;
 frame sits on the **image** (corner + edge + rotate handles); the box stays fixed; leaving the
 panel persists once (Cmd-Z undoes the whole session in one step).
 
-![](images/sample-landscape.png){rotate=90 transform="translate(-1.4%, -3.3%) rotate(-85.4deg) scale(1.325)" aspect-ratio=363/363 width=363}
+![](images/sample-landscape.png){rotate=90 transform="translate(-1.4%, -3.3%) rotate(-88deg) scale(1.325)" aspect-ratio=363/363 width=363}
 
 ## 2 — Already cropped (re-open a crop)
 

@@ -323,7 +323,11 @@ display state — each produces an edit that round-trips through the model layer
   frame/area `overflow:hidden` + the host `contain:paint` and dims the overflow (a ghost copy) — no
   reflow. Quantization to whole pixels / fixed angle steps **during** the interaction is pure and
   tested; the structural facts are CDP-verified (`scripts/verify-crop.mjs`), the drag feel manual
-  (F12, D8).
+  (F12, D8). On **macOS** the editor additionally subscribes Electron's native `rotate-gesture`
+  window event (via the existing `@electron/remote` path) so a two-finger trackpad turn rotates the
+  content about the cut centre — same accumulate/quantize as the handle, which stays the cross-
+  platform fallback; the listener is scoped to the crop session and removed on every exit path
+  (leak-checked in `scripts/verify-crop-teardown.mjs`). macOS-only — no gesture code runs elsewhere.
 - **AB13 — Filter panel** — the docked panel with histogram and grouped sliders, including the
   temperature approximation; reads/writes the declarative contract (F11, D7).
 - **AB14 — Size sub-menu** — the size presets (icon/small/medium/large/original) plus manual

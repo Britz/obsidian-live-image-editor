@@ -34,7 +34,7 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/toolbar.ts` | AB10 Toolbar | `ImageToolbar`<br>`buildToolbarElement` |
 | `src/anchored-submenu-logic.ts` | AB11 Sub-menu placement (pure) | `placeSubmenu`<br>`SubmenuPlacement` |
 | `src/anchored-submenu.ts` | AB11 Shared sub-menu host | `AnchoredSubmenu` |
-| `src/crop-editor-logic.ts` | AB12 Crop quantization (pure) | `snapTranslate`<br>`snapAngle`<br>`snapScale`<br>`toCropResult` *(placement transform + cut width + aspect-ratio ≠ original)* |
+| `src/crop-editor-logic.ts` | AB12 Crop quantization (pure) | `snapTranslate`<br>`snapAngle`<br>`snapScale`<br>`applyRotateGesture` *(macOS trackpad rotate-gesture delta → snapped content angle)*<br>`parsePlacement` *(round-trip inverse)*<br>`toCropResult` *(placement transform + cut width + aspect-ratio ≠ original)* |
 | `src/crop-editor.ts` | AB12 Crop editor | `CropEditor` |
 | `src/filter-panel.ts` | AB13 Filter panel | `FilterPanel` |
 | `src/size-submenu.ts` | AB14 Size sub-menu | `buildSizeBody`<br>`SizeState` *(CSS-string width/height)* |
@@ -459,6 +459,19 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   rotate), the cut window + box fixed, the overflow un-clipped + dimmed for the crop duration.
   `snapTranslate` / `snapAngle` / `snapScale` quantize live (F12); `parsePlacement` is the pure
   round-trip inverse; auto-persist on leave.
+  *macOS trackpad two-finger rotate:* on open the editor also subscribes Electron's native
+  `rotate-gesture` window event (electron/electron#19294 — a continuous per-emission delta in
+  degrees, CCW-positive), reached via the SAME `@electron/remote`.`getCurrentWindow()` path the
+  export save-dialog uses (`macTrackpadWindow()` guards platform === darwin + remote reachable, else
+  returns null). Each delta folds into the content rotation through the pure
+  `applyRotateGesture(current, delta)` (negates the sign so a clockwise turn rotates content
+  clockwise, then `snapAngle` — identical accumulate/quantize to the handle) and re-previews via the
+  one `applyPlacement`. The listener is removed in `exitCropMode` — the single teardown the one
+  `onClose` runs on **every** exit path (confirm + cancel/Esc/click-away/close) — so no listener
+  leak. The rotate **handle** is untouched and stays the only rotation path off macOS / when remote
+  is unreachable. Structural subscribe/unsubscribe + leak proof: `scripts/verify-crop-teardown.mjs`
+  (per exit path, listener count 0→1→0); the delta→sign→snap math is a unit (`applyRotateGesture`);
+  the actual native firing is a manual user test (the gesture can't be synthesized via CDP).
 - **`filter-panel.ts`** — `FilterPanel`: histogram + grouped sliders + temperature; reads/writes
   the native `filter` value; docked beside the image on the roomier side (D7).
 - **`size-submenu.ts`** — `buildSizeBody`: the presets (icon/small/medium/large/original) and the

@@ -55,6 +55,12 @@ const EVAL_RUN = `(async () => {
 
     const orphans = () => document.querySelectorAll(".lie-crop-ghost,.lie-crop-chrome,.lie-crop-handles,.lie-crop-ghost-img").length;
     const anyCropping = () => document.querySelectorAll(".lie-cropping").length;
+    // macOS trackpad rotate-gesture leak check: the editor subscribes one rotate-gesture listener
+    // on the Electron window per open and MUST remove it on every exit. Count it directly (n/a off
+    // macOS, where nothing is subscribed -> no leak by construction).
+    const gwin = (() => { try { return window.require("@electron/remote").getCurrentWindow(); } catch (e) { return null; } })();
+    const rgAvailable = (() => { try { return window.require("process").platform === "darwin" && !!gwin && typeof gwin.listenerCount === "function"; } catch (e) { return false; } })();
+    const rgCount = () => (rgAvailable ? gwin.listenerCount("rotate-gesture") : -1);
     const inlineContainLeak = () => Array.from(document.querySelectorAll(".lie-wrapper,.image-embed"))
       .some((h) => h.style.contain && h.style.contain !== "");
 
@@ -69,6 +75,7 @@ const EVAL_RUN = `(async () => {
       const host0 = img.closest(".lie-wrapper, .image-embed");
       const preContain = getComputedStyle(host0).contain;
       const preOverflow = getComputedStyle(area0).overflow;
+      const rgPre = rgCount();
       const before = errs.length;
 
       plugin.crop();
@@ -82,6 +89,8 @@ const EVAL_RUN = `(async () => {
         overflowVisible: !!area && getComputedStyle(area).overflow === "visible",
         ghost: !!(area && area.querySelector(".lie-crop-ghost-img")),
         handles8: area ? area.querySelectorAll(".lie-crop-handle").length === 8 : false,
+        // On macOS the open subscribed exactly one rotate-gesture listener; elsewhere n/a (passes).
+        rotateGestureSubscribed: rgAvailable ? rgCount() === rgPre + 1 : true,
       };
 
       if (dirty) {
@@ -113,8 +122,11 @@ const EVAL_RUN = `(async () => {
         imageRenders: !!img2 && img2.offsetWidth > 0,
         noNewConsoleError: errs.length === before,
         persisted: dirty ? /transform=/.test(block()) : true,
+        // The exit removed the gesture listener — back to the pre-crop count (no leak across paths).
+        noRotateGestureLeak: rgCount() === rgPre,
       };
       out.paths[name] = { preContain, preOverflow, hostClass: host0.className, active, restored,
+        rgAvailable, rgPre, rgPost: rgCount(),
         blockHostContains: blockHosts.map((h) => getComputedStyle(h).contain) };
     };
 
@@ -169,12 +181,14 @@ const res = runEval();
 if (res.fatal) { console.error("FATAL:", res.fatal); process.exit(2); }
 
 let failed = 0;
-const ACTIVE = ["areaCropping", "hostCropping", "hostContainNone", "overflowVisible", "ghost", "handles8"];
+const ACTIVE = ["areaCropping", "hostCropping", "hostContainNone", "overflowVisible", "ghost", "handles8",
+  "rotateGestureSubscribed"];
 const RESTORED = ["noCroppingAnywhere", "noStuckContainment", "sameHostRestored", "inlineContainRemoved",
-  "overflowRestored", "noOrphanChrome", "cleanThreeLayer", "imageRenders", "noNewConsoleError", "persisted"];
+  "overflowRestored", "noOrphanChrome", "cleanThreeLayer", "imageRenders", "noNewConsoleError", "persisted",
+  "noRotateGestureLeak"];
 for (const [name, p] of Object.entries(res.paths)) {
   if (p.fatal) { console.log(`FAIL  [${name}] ${p.fatal}`); failed++; continue; }
-  console.log(`\n[${name}]  host="${p.hostClass}"  pre-crop contain="${p.preContain}"`);
+  console.log(`\n[${name}]  host="${p.hostClass}"  pre-crop contain="${p.preContain}"  rotate-gesture[avail=${p.rgAvailable} pre=${p.rgPre} post=${p.rgPost}]`);
   for (const k of ACTIVE) { const ok = p.active[k]; console.log(`  ${ok ? "PASS" : "FAIL"}  active:${k}`); if (!ok) failed++; }
   for (const k of RESTORED) { const ok = p.restored[k]; console.log(`  ${ok ? "PASS" : "FAIL"}  restored:${k}`); if (!ok) failed++; }
 }

@@ -1,5 +1,5 @@
 import { ImageTransform, isCrop, getRotation, getFlipH, getFlipV } from "./transforms";
-import { snapAngle, snapScale, snapTranslate, toCropResult, parsePlacement, CropResult } from "./crop-editor-logic";
+import { snapAngle, snapScale, snapTranslate, toCropResult, parsePlacement, applyRotateGesture, CropResult } from "./crop-editor-logic";
 import { BOX_CLASS, FRAME_CLASS, buildLayers } from "./render-core";
 import { AnchoredSubmenu } from "./anchored-submenu";
 import { t } from "./i18n";
@@ -82,6 +82,13 @@ export class CropEditor {
   private ghostImg: HTMLImageElement | null = null;
   private chromeFrame: HTMLElement | null = null;
   private handleBox: HTMLElement | null = null;
+
+  // macOS trackpad two-finger rotate (Electron `rotate-gesture`, electron/electron#19294).
+  // Subscribed on open, removed on EVERY teardown path — both null off macOS / when `@electron/
+  // remote` is unreachable, where the rotate handle stays the only rotation. The stored handler
+  // reference is what `removeListener` needs to detach the exact same listener (no leak).
+  private gestureWin: ElectronRotateWindow | null = null;
+  private onRotateGesture: ((...args: unknown[]) => void) | null = null;
 
   private gesture: "pan" | "scale" | "rotate" | null = null;
   private scaleAxis: "both" | "x" | "y" = "both";
@@ -218,6 +225,13 @@ export class CropEditor {
     this.areaEl?.removeEventListener("wheel", this.onWheel);
     document.removeEventListener("pointermove", this.onPointerMove);
     document.removeEventListener("pointerup", this.onPointerUp);
+    // Detach the macOS rotate gesture (exact same handler ref) — this is the ONE teardown the
+    // single onClose runs on every exit path, so confirm + cancel/Esc/close all unsubscribe here.
+    if (this.gestureWin && this.onRotateGesture) {
+      this.gestureWin.removeListener("rotate-gesture", this.onRotateGesture);
+    }
+    this.gestureWin = null;
+    this.onRotateGesture = null;
     if (!this.dirty) buildLayers(this.img, this.existing);
   }
 
@@ -327,6 +341,26 @@ export class CropEditor {
     area.addEventListener("wheel", this.onWheel, { passive: false });
     document.addEventListener("pointermove", this.onPointerMove);
     document.addEventListener("pointerup", this.onPointerUp);
+    this.bindRotateGesture();
+  }
+
+  // Subscribe the native macOS two-finger trackpad rotate, if reachable (Phase-0-verified path).
+  // Each `rotate-gesture` delta updates the CONTENT rotation (snapped, about the cut centre) and
+  // re-previews — the exact same effect as the rotate handle, which stays the fallback. No-op off
+  // macOS / no Electron remote: nothing subscribed, the handle is the only rotation path.
+  private bindRotateGesture(): void {
+    const win = macTrackpadWindow();
+    if (!win) return;
+    const handler = (...args: unknown[]): void => {
+      const delta = args[1];
+      if (typeof delta !== "number" || delta === 0) return; // last emission is 0 — ignore
+      this.rotation = applyRotateGesture(this.rotation, delta);
+      this.dirty = true;
+      this.applyPlacement();
+    };
+    win.on("rotate-gesture", handler);
+    this.gestureWin = win;
+    this.onRotateGesture = handler;
   }
 
   private frameCenter(): Point {
@@ -473,4 +507,38 @@ export class CropEditor {
 
 function clampScale(s: number): number {
   return Math.max(0.05, Math.min(20, s));
+}
+
+// The minimal slice of the Electron BrowserWindow EventEmitter surface the rotate gesture needs.
+interface ElectronRotateWindow {
+  on(event: string, listener: (...args: unknown[]) => void): void;
+  removeListener(event: string, listener: (...args: unknown[]) => void): void;
+}
+
+// The current Electron window on macOS, reached via the SAME `@electron/remote` path the export
+// save-dialog uses (export.ts) — its `rotate-gesture` event drives two-finger trackpad rotation
+// (electron/electron#19294: a continuous per-emission delta in degrees, CCW-positive). Returns null
+// off macOS, on mobile, or when `@electron/remote` is unavailable, so the rotate handle stays the
+// only rotation path everywhere else. Reachability was verified in the running renderer (Phase 0).
+function macTrackpadWindow(): ElectronRotateWindow | null {
+  const req = (window as unknown as { require?: (m: string) => unknown }).require;
+  if (!req) return null;
+  try {
+    if ((req("process") as { platform?: string } | undefined)?.platform !== "darwin") return null;
+  } catch {
+    return null; // no Node `process` (mobile) → not macOS desktop
+  }
+  for (const mod of ["@electron/remote", "electron"]) {
+    try {
+      const m = req(mod) as {
+        getCurrentWindow?: () => ElectronRotateWindow;
+        remote?: { getCurrentWindow?: () => ElectronRotateWindow };
+      };
+      const win = (m?.getCurrentWindow ?? m?.remote?.getCurrentWindow)?.();
+      if (win && typeof win.on === "function" && typeof win.removeListener === "function") return win;
+    } catch {
+      /* not available — try the next module */
+    }
+  }
+  return null;
 }

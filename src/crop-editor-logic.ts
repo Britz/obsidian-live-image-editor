@@ -67,6 +67,21 @@ export function snapAngle(deg: number): number {
   return Math.round(deg * 10) / 10;
 }
 
+// The native trackpad rotate-gesture sign: Electron's `rotate-gesture` delta is CCW-positive
+// (macOS NSEvent.rotation), while CSS `rotate()` is CW-positive (screen Y points down). Negating
+// makes a clockwise two-finger turn rotate the content clockwise — the natural mapping. Flip this
+// single sign if the feel ever reads reversed.
+const ROTATE_GESTURE_SIGN = -1;
+
+/**
+ * Fold one Electron `rotate-gesture` delta (degrees since the last emission, macOS only) into the
+ * current content rotation, snapped to 0.1° LIVE — exactly like the rotate handle, so the gesture
+ * and the handle accumulate and commit identical angles. Pure (DOM-free) so it's unit-testable.
+ */
+export function applyRotateGesture(current: number, deltaDeg: number): number {
+  return snapAngle(current + ROTATE_GESTURE_SIGN * deltaDeg);
+}
+
 /** Snap a live scale to 1/1000 so the committed value is stable. */
 export function snapScale(s: number): number {
   return Math.round(s * 1000) / 1000;
