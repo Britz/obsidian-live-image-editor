@@ -35,11 +35,11 @@ export interface SubmenuOptions {
   rootClass?: string;
   // Beside-image only: allow flipping to the left of the anchor when it would
   // overflow the right edge. The filter panel sets this false so it never lands on
-  // the left over the file explorer (Bug 3). Defaults to true.
+  // the left over the file explorer (Bug 56). Defaults to true.
   allowFlip?: boolean;
   // Hide (instead of clamp-sticking) when the anchor scrolls out of view, and
   // re-show when it returns — so the panel tracks the image and disappears with it
-  // rather than clinging to a corner (Bug 3).
+  // rather than clinging to a corner (Bug 56).
   hideWhenAnchorOffscreen?: boolean;
   // Bind the panel's visibility to hover (D6/D7/B4): the panel is visible only
   // while the pointer is over this region (the image+toolbar) OR over the panel

@@ -18,8 +18,8 @@ export interface InlineEmbed { from: number; to: number; embed: string; params: 
 
 /**
  * Find image embeds embedded WITHIN a line of text (returns [] for a standalone image
- * line — that path uses the block widget). Pure, unit-testable (T-L6). `params` is the
- * attr content without braces (T-L9).
+ * line — that path uses the block widget). Pure, unit-testable (Lesson 6). `params` is the
+ * attr content without braces (Lesson 9).
  */
 export function inlineEmbeds(lineText: string, lineFrom: number): InlineEmbed[] {
   if (EMBED_LINE.test(lineText)) return [];
@@ -38,7 +38,7 @@ export function inlineEmbeds(lineText: string, lineFrom: number): InlineEmbed[] 
 }
 
 export type LineDecoration =
-  // `params` is the attr_list CONTENT, WITHOUT the surrounding `{…}` braces (T-L9).
+  // `params` is the attr_list CONTENT, WITHOUT the surrounding `{…}` braces (Lesson 9).
   | { kind: "widget"; from: number; to: number; embed: string; params: string }
   | { kind: "mark"; from: number; to: number; class: string };
 
@@ -78,7 +78,7 @@ export function rewriteWidth(lineText: string, width: number): string | null {
   return `${match[1] ?? ""}${match[2] ?? ""}${params ? `{${params}}` : ""}`;
 }
 
-// ---- Raw-link reveal/dismiss state machine (F8) — pure, unit-testable (T-L6) --------------------
+// ---- Raw-link reveal/dismiss state machine (F8) — pure, unit-testable (Lesson 6) --------------------
 // The CM StateField in `live-preview.ts` owns the transient reveal state; the DECISION over it lives
 // here so it can be tested without CodeMirror. `dismissed` holds the line-start positions whose
 // source the `<>` toggle has hidden; `hoveredLine` is the line-start of the mouse-hovered image.

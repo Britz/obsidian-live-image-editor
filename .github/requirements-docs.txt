@@ -1,0 +1,15 @@
+# Docs site build — MaterialX theme on the ProperDocs engine: the maintained continuation of
+# mkdocs-material + MkDocs 1.x. The original MkDocs is abandoned and the incoming "MkDocs 2.0"
+# drops plugin support / switches to TOML (breaks Material + every plugin); ProperDocs (by a former
+# MkDocs maintainer) is an exact 1.x drop-in, and MaterialX continues mkdocs-material 9.7.x.
+# MaterialX pulls ProperDocs and caps mkdocs<=1.6.1, so the breaking 2.0 can never be installed.
+#
+# Used by .github/workflows/docs.yml and for local preview (run from the repo root):
+#   python3 -m venv .venv-docs && .venv-docs/bin/pip install -r .github/requirements-docs.txt
+#   .venv-docs/bin/properdocs serve     # live preview   (build with `properdocs`, NOT `mkdocs`)
+#   .venv-docs/bin/properdocs build     # render docs/ into site/
+# pymdown-extensions come in transitively via mkdocs-materialx.
+mkdocs-materialx==10.1.7         # MaterialX theme (continues mkdocs-material 9.7.x); pulls properdocs + caps mkdocs<2
+properdocs==1.6.7                # ProperDocs engine (drop-in MkDocs 1.x continuation; build with `properdocs`)
+mkdocs-roamlinks-plugin==0.3.2   # Obsidian [[wikilinks]] / ![[embeds]] -> relative links
+mkdocs-callouts==1.16.1          # Obsidian > [!note] callouts -> Material admonitions

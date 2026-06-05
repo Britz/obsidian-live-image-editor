@@ -1,5 +1,5 @@
 // Pure caption-text logic (no DOM / no `obsidian` import) so it's unit-testable
-// in vitest (T-L6). The DOM rendering lives in caption.ts.
+// in vitest (Lesson 6). The DOM rendering lives in caption.ts.
 
 // A bare Obsidian size token (the part after a `|`): `300` or `300x200`. Such a
 // token is sizing, never caption text, so it's stripped from the caption.

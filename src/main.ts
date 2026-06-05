@@ -128,7 +128,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   async refreshSnippets(): Promise<void> {
-    // Only scan snippets ENABLED in Obsidian, not merely present in the folder (#6b).
+    // Only scan snippets ENABLED in Obsidian, not merely present in the folder (Decision 6).
     const enabled = (this.app as unknown as { customCss?: { enabledSnippets?: Set<string> } }).customCss?.enabledSnippets;
     this.snippetClasses = await scanSnippets(this.app.vault, enabled);
   }
@@ -247,7 +247,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     try {
       const file = this.app.metadataCache.getFirstLinkpathDest(decodeURIComponent(path.split("|")[0] ?? path), sourcePath);
       if (!(file instanceof TFile)) return null;
-      const link = this.app.fileManager.generateMarkdownLink(file, sourcePath); // never an alias arg (T-L5)
+      const link = this.app.fileManager.generateMarkdownLink(file, sourcePath); // never an alias arg (Lesson 5)
       if (desired === "wiki") {
         const m = link.match(/^!?\[\[([^\]|]+)/);
         return m?.[1] ?? null;
@@ -286,7 +286,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   // Reading-view render path only (Obsidian caches embeds). The LP CM6 widget owns its
-  // own `.lie-wrapper` images — reconcile must NOT touch them (no double render, T-L8).
+  // own `.lie-wrapper` images — reconcile must NOT touch them (no double render, Lesson 8).
   private reconcileFromSource(): void {
     const run = () => {
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -349,29 +349,44 @@ export default class LiveImageEditorPlugin extends Plugin {
     return null;
   }
 
-  // Every member of the combined active region (D6): a click on any of these is "inside" and never
-  // dismisses (the image wrapper, the toolbar, an open modal panel, a lightweight palette, the crop
-  // chrome). `.lie-class-dropdown` is a region member too, so picking a class no longer dismisses the
-  // toolbar out from under the user (Bug 3).
+  // Every member of the combined active region (D6): with NO panel open, a click on any of these is
+  // "inside" and never dismisses the bare toolbar (the image wrapper, the toolbar, a lightweight
+  // palette, the crop chrome). `.lie-class-dropdown` is a region member too, so picking a class no
+  // longer dismisses the toolbar out from under the user (Bug 56).
   private static readonly REGION_SELECTOR =
     ".lie-toolbar, .lie-filter-panel, .lie-submenu, .lie-group-popup, .lie-class-dropdown, .lie-cropping, .lie-wrapper";
+
+  // While a modal FILTER/SIZE panel is open the click-away boundary SHRINKS to this: the sub-panel
+  // itself plus the toolbar chrome docked to it. A click anywhere else — the image INCLUDED — closes+
+  // persists the panel (Bug 54 follow-up). The image is NOT a safe harbor: it fills most of the
+  // canvas, so treating it as "inside" left the panel stuck open when the user clicked the image to
+  // dismiss it. (Hover visibility still spans the whole region — that's `REGION_SELECTOR` above.)
+  private static readonly PANEL_SELECTOR = ".lie-submenu, .lie-filter-panel, .lie-toolbar";
 
   private registerImageSelectionHandler(): void {
     this.registerDomEvent(document, "click", (evt: MouseEvent) => {
       const target = evt.target as HTMLElement;
-      // Crop owns its clicks (Bug 1): while it is active, re-selecting the image or dismissing must
-      // not happen — the session ends only via its own controls (toggle / ✓ / ✗ / Esc).
-      if (target.tagName === "IMG" && target.closest(".markdown-source-view") && !this.cropEditor) {
+      const panelOpen = !!this.filterPanel || !!this.submenu;
+      // Re-select an image on click ONLY when the bar is "bare" — no modal panel open, not cropping.
+      // While a filter/size panel is open an image click is an OUTSIDE-THE-PANEL click → it must
+      // CLOSE+persist the panel (handled below), not re-select. Crop owns its clicks entirely — the
+      // session ends only via its own controls (toggle / ✓ / ✗ / Esc).
+      if (target.tagName === "IMG" && target.closest(".markdown-source-view") && !this.cropEditor && !panelOpen) {
         this.hoverShown = false; // click-shown: stays until click-outside, not hover-out
         this.onImageSelected(target as HTMLImageElement);
       } else if (clickDismissesToolbar({
-        insideRegion: !!target.closest(LiveImageEditorPlugin.REGION_SELECTOR),
         cropActive: !!this.cropEditor,
+        panelOpen,
+        insidePanel: !!target.closest(LiveImageEditorPlugin.PANEL_SELECTOR),
+        insideRegion: !!target.closest(LiveImageEditorPlugin.REGION_SELECTOR),
       })) {
-        // Active click OUTSIDE the region (Bug 1): dismiss the toolbar and PERSIST any open
-        // filter/size panel (auto-persist, one source write). Crop is EXEMPT — `clickDismissesToolbar`
-        // returns false while cropping — so a stray click can't destroy the in-place session.
-        // Hover-leave only HIDES (the panel stays open, Bug 2); this click path closes.
+        // The click-away CLOSE (Bug 54 + boundary follow-up):
+        //   • a FILTER/SIZE panel open → a click outside the sub-panel (the image included) closes it
+        //     and PERSISTS the working state (auto-persist, one source write);
+        //   • no panel → dismiss the bare toolbar only on a click outside the whole region;
+        //   • CROP active → `clickDismissesToolbar` returns false, so no stray click can destroy the
+        //     in-place session.
+        // Hover-leave only HIDES (the panel stays open, Bug 55); this click path closes.
         this.dismissToolbar();
       }
     });
@@ -395,7 +410,7 @@ export default class LiveImageEditorPlugin extends Plugin {
         return;
       }
       // Hover-out dismiss for the floating bar — but never while a panel OR a lightweight palette is
-      // open (the palette is a hover member of the region, D6/Bug 3; it governs its own close-on-leave
+      // open (the palette is a hover member of the region, D6/Bug 56; it governs its own close-on-leave
       // and keeps the bar up until then).
       if (this.hoverShown && !this.filterPanel && !this.submenu && !this.cropEditor &&
           !document.querySelector(".lie-group-popup, .lie-class-dropdown")) {
@@ -536,7 +551,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     registerCommands(this, handler);
   }
 
-  // Resolve the active image's source location (Bug 33). Prefer the rendered image's ACTUAL
+  // Resolve the active image's source location (Bug 48). Prefer the rendered image's ACTUAL
   // line, read from its DOM position via CM6 `posAtDOM` (the same line-accurate path the resize
   // handle uses) — so a file embedded more than once resolves to the RIGHT occurrence, not the
   // first basename match. Falls back to the basename scan only when there is no live editor
@@ -556,7 +571,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   // The single image-location lookup every toolbar/menu action shares (DRY). Prefers the LIVE
-  // image's DOM position (line-accurate even after the doc shifts — Bug 33); when the image is
+  // image's DOM position (line-accurate even after the doc shifts — Bug 48); when the image is
   // DETACHED (a panel whose anchor scrolled out of the CM6 viewport mid-edit), it falls back to
   // the location captured at panel-open — NOT a basename scan, which would hit the wrong
   // occurrence of a duplicated image. `notify` shows the user-facing Notices (resolveLocation);
@@ -708,7 +723,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     const state: SizeState = { width: current.width ?? null, height: current.height ?? null, inline: current.inline ?? false };
 
     // Live preview by RE-RENDERING with the new size (so clearing a field / "Original"
-    // falls back to the intrinsic default rather than collapsing the box — Bug 20).
+    // falls back to the intrinsic default rather than collapsing the box — Bug 34).
     const preview = (s: SizeState): void => {
       const tr = parseAltText(location.params);
       tr.width = s.width ?? undefined;
@@ -823,7 +838,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     const menu = document.createElement("div");
     menu.classList.add("lie-class-dropdown");
 
-    // The class dropdown is a lightweight palette, like the group popups (Bug 3): it is coupled to
+    // The class dropdown is a lightweight palette, like the group popups (Bug 56): it is coupled to
     // the image + toolbar active region (so hovering it keeps the bar visible, and leaving the region
     // closes it — bar and palette fade together) but it is NOT greyed/modal. `close` is the single
     // teardown for every path (pick a class / click-away / region-leave).

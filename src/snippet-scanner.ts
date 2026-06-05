@@ -1,22 +1,13 @@
 import { Vault } from "obsidian";
+// The shipped default snippet now lives in the Obsidian-free `bundled-snippet` module so the
+// standalone runtime can inject the SAME CSS (DRY); re-exported here for existing call sites.
+import { BUNDLED_SNIPPET_FILE, BUNDLED_SNIPPET_CSS } from "./bundled-snippet";
+export { BUNDLED_SNIPPET_FILE, BUNDLED_SNIPPET_CSS };
 
 export interface SnippetClass {
   className: string;
   sourceFile: string;
 }
-
-// The example DECORATION snippet the plugin ships (F16.1) — both a usable feature and
-// a worked example of image CSS classes. Installed on request (opt-in), discovered
-// like any other snippet once installed, and resettable to this shipped version.
-export const BUNDLED_SNIPPET_FILE = "live-image-editor-examples.css";
-export const BUNDLED_SNIPPET_CSS = `/* Live Image Editor — example image decoration classes.
-   Installed from the plugin settings (opt-in). Edit freely; "Reset" in settings
-   restores this shipped version. Apply a class in the image's trailing block. */
-img.rounded { border-radius: 8px; }
-img.shadow { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
-img.bordered { border: 1px solid var(--background-modifier-border); }
-img.circle { border-radius: 50%; object-fit: cover; aspect-ratio: 1; }
-`;
 
 const IMG_SELECTOR_PATTERNS = [
   /img\.([a-zA-Z][\w-]*)/g,
@@ -31,7 +22,7 @@ const IMG_SELECTOR_PATTERNS = [
 /**
  * Discover image-targeting CSS classes from the vault's snippets (F16). When
  * `enabled` is given, ONLY snippets whose file is enabled in Obsidian are scanned
- * (#6b — not merely present in the folder). Internal `lie-*` and platform classes are
+ * (Decision 6 — not merely present in the folder). Internal `lie-*` and platform classes are
  * filtered out.
  */
 export async function scanSnippets(vault: Vault, enabled?: Set<string>): Promise<SnippetClass[]> {
@@ -49,7 +40,7 @@ export async function scanSnippets(vault: Vault, enabled?: Set<string>): Promise
   for (const filePath of files) {
     const fileName = filePath.split("/").pop() ?? "";
     const base = fileName.replace(/\.css$/, "");
-    if (enabled && !enabled.has(base)) continue; // only enabled snippets (#6b)
+    if (enabled && !enabled.has(base)) continue; // only enabled snippets (Decision 6)
 
     try {
       const content = await vault.adapter.read(filePath);
@@ -65,7 +56,7 @@ export async function scanSnippets(vault: Vault, enabled?: Set<string>): Promise
 }
 
 /** Install the bundled example snippet WITHOUT overwriting an existing same-named file
- * (effectively a restore of a deleted file, #6). Returns true if it wrote the file. */
+ * (effectively a restore of a deleted file, Decision 6). Returns true if it wrote the file. */
 export async function installBundledSnippet(vault: Vault): Promise<boolean> {
   const path = `${vault.configDir}/snippets/${BUNDLED_SNIPPET_FILE}`;
   if (await vault.adapter.exists(path)) return false;
@@ -74,7 +65,7 @@ export async function installBundledSnippet(vault: Vault): Promise<boolean> {
   return true;
 }
 
-/** Reset the bundled example snippet to the shipped version (overwrites, #6). */
+/** Reset the bundled example snippet to the shipped version (overwrites, Decision 6). */
 export async function resetBundledSnippet(vault: Vault): Promise<void> {
   await ensureSnippetsDir(vault);
   await vault.adapter.write(`${vault.configDir}/snippets/${BUNDLED_SNIPPET_FILE}`, BUNDLED_SNIPPET_CSS);
@@ -95,7 +86,7 @@ const FILE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp", "av
 
 function extractImageClasses(css: string): string[] {
   // Strip /* … */ comments first so example text like `img.png` in a comment isn't
-  // mistaken for a class (Bug 13).
+  // mistaken for a class (Bug 26).
   const code = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const classes = new Set<string>();
   for (const pattern of IMG_SELECTOR_PATTERNS) {

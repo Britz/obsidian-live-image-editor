@@ -89,13 +89,13 @@ export class FilterPanel {
       toolbar: toolbarEl ?? null,
       title: t("filters"),
       rootClass: "lie-filter-panel",
-      allowFlip: false,                  // never flip onto the file explorer (Bug 3)
+      allowFlip: false,                  // never flip onto the file explorer (Bug 56)
       hideWhenAnchorOffscreen: true,     // track the image; hide when it scrolls away
       // Show/hide with the toolbar's hover while staying part of the active region
       // (D6/D7): the live-preview overlay is the hover region. In reading view there's
       // no overlay → undefined → the panel stays shown until dismissed.
       hoverRegion: anchorEl.closest<HTMLElement>(".lie-wrapper") ?? undefined,
-      // Per-panel reset (the SAME shared-host reset as crop/size, F14/Bug 22/23):
+      // Per-panel reset (the SAME shared-host reset as crop/size, F14/Bug 33):
       // clear all filters to default and preview; the panel stays open.
       onReset: () => this.resetFilters(),
       onCommit: () => this.callbacks.onCommit(this.currentFilter()),

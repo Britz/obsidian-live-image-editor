@@ -15,7 +15,7 @@ import { boxAspectRatio, innerImageSize, rotatedAabb, isTallFloat } from "./rend
 //          .class. Axis-aligned, NEVER rotated, so the footprint stays correct even though
 //          `transform` would not reflow. Carries the chrome anchor (`.lie-box` is its parent).
 //   FRAME  `.lie-frame`      — ORIENTATION + CROP CLIP: rotate + flip composed about its
-//          CENTRE (structural pivot — the Bug 25 fix), `overflow:hidden`.
+//          CENTRE (structural pivot — the Bug 42 fix), `overflow:hidden`.
 //   <img>                    — CONTENT: the crop placement `transform` (pan/zoom + optional
 //          content-rotate, verbatim AD2) and `filter`.
 // Code keeps the structural "box" vocabulary for the outer (BOX_CLASS).
@@ -28,7 +28,7 @@ export const FRAME_CLASS = "lie-frame";
  * called by the plugin renderer and the portable runtime (AB7a — two callers, one builder).
  * ORIENTATION (`rotate`/`flip`) acts on the frame, composed about its centre, so re-orienting
  * an already-cropped image pivots structurally and never touches the crop placement on the
- * `<img>` (Bug 25). The crop placement + `filter` ride the `<img>` verbatim. Sizing runs one
+ * `<img>` (Bug 42). The crop placement + `filter` ride the `<img>` verbatim. Sizing runs one
  * way (outer → frame → image): the footprint's `aspect-ratio` is derived from the base shape
  * (the natural ratio, or the cut-frame shape for a crop) + the angle and applied to the DOM.
  */
@@ -58,7 +58,7 @@ export function buildLayers(img: HTMLImageElement, t: ImageTransform): void {
   // IMG filter: native CSS, verbatim (AD2).
   img.style.filter = t.filter ?? "";
 
-  // OUTER: route width / height / aspect-ratio / passthrough by property name (#5).
+  // OUTER: route width / height / aspect-ratio / passthrough by property name (Decision 5).
   routeBoxStyle(outer, t);
 
   // FRAME: orientation (rotate + flip) composed about the centre — STRUCTURAL pivot.
@@ -106,7 +106,7 @@ function sizeLayers(img: HTMLImageElement, outer: HTMLElement, frame: HTMLElemen
     // CENTRED in the frame statically (inset:0 + margin:auto — never mixed into the transform
     // string, AD2); the crop placement then pans/zooms/ROTATES it about its CENTRE
     // (transform-origin:center) — the same origin the in-place editor uses, so a rotate pivots
-    // intuitively and editor == render (Bug 32 A). The frame (+ its orientation) does the rest.
+    // intuitively and editor == render (Bug 43 A). The frame (+ its orientation) does the rest.
     img.style.top = "0";
     img.style.left = "0";
     img.style.right = "0";
@@ -279,7 +279,7 @@ function ensureLayers(img: HTMLImageElement): HTMLElement {
 }
 
 // Layout/decoration classes go on the IMG so the `:has(img.lie-*)` rules on the embed match
-// (Bug 11). Recorded in data-lie-classes so resetLieState clears exactly these.
+// (Bug 10). Recorded in data-lie-classes so resetLieState clears exactly these.
 function applyClasses(img: HTMLImageElement, classes: string[]): void {
   const clean = classes.filter(Boolean); // never classList.add("") — empty token throws
   for (const cls of clean) img.classList.add(cls);

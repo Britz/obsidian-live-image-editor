@@ -7,14 +7,14 @@ Non-destructive image editing via CSS transforms and filters — the original im
 
 ## Documentation
 
-This file is the **build & debug guide** only. The design — requirements, architecture, plan, tests, bugs — lives in `documentation/`, one source of truth per altitude. Ground any research or change on the artifact at the right altitude, not on this file's prose.
+This file is the **build & debug guide** only. The design — requirements, architecture, plan, tests, bugs — lives in `docs/development/`, one source of truth per altitude (see its `README.md` for the index). Ground any research or change on the artifact at the right altitude, not on this file's prose.
 
-- **`documentation/requirements.md`** — the F/D/T requirements (functional / design / technical): *what it does, how it looks, how it must be built*. Coding conventions live in the T-items (naming/prefix, no runtime deps, pure `*-logic.ts` units, linter kept as-shipped).
-- **`documentation/architecture.md`** — mid-level decisions (`AD1–AD9`) and building blocks (`AB…`); data flow; the **R0** uniform-rendering model.
-- **`documentation/implementation-plan.md`** — low-level: the module map (file → block → exports), per-layer realization, pitfalls.
-- **`documentation/test-plan.md`** — the test strategy (currently a draft).
-- **`documentation/issues.md`** — the backlog **and** the bug & lesson registry, merged into one file: the **open** items at the top (open decisions, verifications, deferred ideas, the DRY/KISS audit, known open bugs) and the **solved/done** registry at the bottom (every resolved defect and hard-won lesson with cause + fix; the old `[LEARNED]` `T-Ln` are here as `L1–L13`).
-- **`documentation/methodology.md`** / **`agent_methodology.md`** — the core principles (DRY, KISS, elegance, think-first, ground-up) and how we work.
+- **`docs/development/requirements.md`** — the F/D/T requirements (functional / design / technical): *what it does, how it looks, how it must be built*. Coding conventions live in the T-items (naming/prefix, no runtime deps, pure `*-logic.ts` units, linter kept as-shipped).
+- **`docs/development/architecture.md`** — mid-level decisions (`AD1–AD9`) and building blocks (`AB…`); data flow; the **R0** uniform-rendering model.
+- **`docs/development/implementation-plan.md`** — low-level: the module map (file → block → exports), per-layer realization, pitfalls.
+- **`docs/development/test-plan.md`** — the test strategy (currently a draft).
+- **`docs/development/issues.md`** — the backlog **and** the bug & lesson registry, merged into one file: the **open** items at the top (open decisions, verifications, deferred ideas, the DRY/KISS audit, known open bugs) and the **solved/done** registry at the bottom (every resolved defect (one flat global sequence, `Bug 1–59`) and hard-won lesson with cause + fix; the old `[LEARNED]` lessons are here as `Lesson 1–16`).
+- **`docs/development/methodology.md`** — the core principles (DRY, KISS, elegance, think-first, ground-up), the abstraction-level model, and how we work.
 
 ## Build & Test
 
@@ -25,7 +25,7 @@ npm run build      # tsc -noEmit + esbuild production
 npm run lint       # eslint src/
 npm test           # vitest run
 npm run dev        # esbuild watch mode
-npm run dev:vault  # esbuild watch -> writes straight into the examples/ vault plugin dir (Developer Toolbox auto-reloads)
+npm run dev:vault  # esbuild watch -> writes straight into the example-vault/ vault plugin dir (Developer Toolbox auto-reloads)
 npm run check:watch  # tsc -noEmit --watch (live type errors in the terminal; esbuild does not type-check)
 ```
 
@@ -38,6 +38,18 @@ Install into a vault for testing:
 Build gotcha — `esbuild: Failed to write to output file: open /workspace/main.js: permission denied`: a pre-existing `main.js` couldn't be overwritten (verified fix: `rm -f main.js && npm run build`; likely cause — the file was owned by another uid, e.g. created on the host or by root, so the container user couldn't write it; not independently confirmed).
 
 Fresh-devcontainer gotcha (verified 2026-06-03) — after the podman named volume is recreated, the `node_modules` binaries can land without the execute bit (and/or root-owned, non-readable): `esbuild … EACCES`, `vitest: Permission denied`, `Cannot find type definition file for 'node'`. **Do NOT** blanket-`chmod +x node_modules` — it can flip files to `711` root-owned (execute-only, so Node can no longer *read* `.mjs`/`.d.ts`), making it worse. Clean fix: `rm -rf node_modules && npm install` (network needed). Minimal fix when only the bundler is hit: `chmod +x node_modules/@esbuild/*/bin/esbuild`. The install script itself also loses its `+x` — invoke it as `bash scripts/dev-install.sh <vault>`. Use that script to install into a vault (it builds + copies `main.js`/`manifest.json`/`styles.css`) rather than copying by hand.
+
+## Versioning, changelog & commits
+
+After every **larger code change or fix**, bump the version and record it — this is part of finishing the work, not a release-only step. **Documentation-only changes do not bump the version** (and so get no changelog entry).
+
+- **Version (SemVer `<major>.<minor>.<patch>`)** — pick the increment by the nature of the code change: **major** = breaking / incompatible change, **minor** = new backwards-compatible feature, **patch** = backwards-compatible bug fix. **`package.json` is the single source of truth; `manifest.json` and `versions.json` are *generated* from it — never hand-edit those.** Do it in three steps and don't skip the third:
+  1. Edit `version` in `package.json` (the only file you touch by hand).
+  2. Run `npm run version` — `version-bump.mjs` rewrites `manifest.json` and adds `versions.json[<version>] = minAppVersion`. This step is **mandatory**: editing `package.json` alone (or hand-editing only some of the files) leaves `manifest.json` stale — and `manifest.json` is the version Obsidian actually ships. That is exactly how the `0.4.0`/`0.4.1` drift happened.
+  3. **Verify all three agree** before moving on: `grep -H '"version"' package.json manifest.json` (both must show the new version) and confirm `versions.json` has the new key. If they disagree, re-run step 2.
+  - *Not* version sources — do **not** hand-edit these for a bump: `example-vault/.obsidian/plugins/live-image-editor/manifest.json` is a build artifact (regenerated by `npm run build` / `npm run dev:vault`), and the `x.y.z` strings in `README.md` are illustrative release-checklist examples.
+- **Changelog** — add the matching entry to `CHANGELOG.md` ([Keep a Changelog](https://keepachangelog.com/) format: `### Added` / `### Changed` / `### Fixed` under a `## [x.y.z] - YYYY-MM-DD` heading).
+- **Commits** — commit **regularly**, and **always** on a version change. The agent **never commits itself**: it **reminds** the user when a commit is due (regular cadence; mandatory on a version bump); the user makes all git commits.
 
 ## Live debugging in Obsidian (CDP)
 
@@ -63,4 +75,4 @@ CDP gotchas:
 - **Relay (9222) flaps after a plugin reload** (the in-plugin relay's old `0.0.0.0:9222` socket lingers in TIME_WAIT, so the new one can't rebind — the relay *logs* it's up but the port is refused). Workaround: connect **directly to Obsidian's own CDP with `CDP_PORT=9223`** — that's reachable from the container and survives `location.reload()`. With multiple windows open, `9223` may target the wrong one; the relay (9222), once back, reliably hits the main window. After a reload, give it ~20–30s and re-poll.
 - **Stale-build trap:** with `npm run dev:vault` watching, two quick saves can make Developer-Toolbox load an *intermediate* build (e.g. a function renamed at the call site but not yet at the definition → `ReferenceError: X is not defined`, which looks like "rendering broke"). The on-disk build is fine; force a clean `location.reload()` to load it. Verify the running build via the console exception, not assumptions.
 - `--eval` returns an arrow function as `{}` if you forget to invoke it; wrap returns in `JSON.stringify(...)` for arrays/objects.
-- (Never `disablePlugin` the plugin — see `documentation/issues.md` → **L4**.)
+- (Never `disablePlugin` the plugin — see `docs/development/issues.md` → **Lesson 4**.)

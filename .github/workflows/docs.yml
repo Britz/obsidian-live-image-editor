@@ -1,0 +1,67 @@
+name: Deploy docs to GitHub Pages
+
+# Builds docs/ with MaterialX (on the ProperDocs engine) and publishes it to the gh-pages branch
+# via `properdocs gh-deploy`. GitHub Pages then serves that branch — a single, always-current site.
+# The standalone runtime (lie-runtime.js) is built from src/ with esbuild and dropped into
+# docs/assets so the example vault's `{…}` image blocks render as the real transformed images,
+# not screenshots. The compiled-from release is shown by the native header repository link (the
+# latest GitHub Release tag, fetched live) — so publish GitHub Releases (tag = version).
+#
+# One-time setup (after the FIRST successful run creates the gh-pages branch):
+#   Repo Settings → Pages → Build and deployment → Source: "Deploy from a branch",
+#   Branch: "gh-pages" / "/ (root)".
+# The branch can only be selected once it exists, so let this workflow run once first.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "example-vault/**"
+      - "mkdocs.yml"
+      - "scripts/mkdocs_hooks.py"
+      - ".github/requirements-docs.txt"
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+# gh-deploy force-pushes the built site to the gh-pages branch, so the token needs write access.
+permissions:
+  contents: write
+
+# Serialize publishes so two runs can't race on the gh-pages branch; don't cancel one midway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build the portable runtime (esbuild 2nd entry -> lie-runtime.js) into docs/assets.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: cp lie-runtime.js docs/assets/lie-runtime.js
+
+      # Install the docs toolchain (MaterialX + ProperDocs + the Obsidian-compat plugins).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: .github/requirements-docs.txt
+      - run: pip install -r .github/requirements-docs.txt
+
+      # Build the site and force-push it to the gh-pages branch (ghp-import under the hood); GitHub
+      # Pages serves that branch. The first run CREATES gh-pages — then select it in Settings → Pages.
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          properdocs gh-deploy --force

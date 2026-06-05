@@ -7,7 +7,7 @@ metadata:
   originSessionId: 025352f9-da70-4fb2-b9c2-74c5ad3df12a
 ---
 
-Deep-research + adversarial verification (2026-06-04) on cross-renderer fallback of the plugin's `![](url){.class style="…" attr="…"}` representation. Sources: python-markdown attr_list docs, Pandoc MANUAL (Images/link_attributes), kramdown syntax.html, Material-for-MkDocs images ref, W3C CSS Transforms L1.
+Deep-research + adversarial verification (2026-06-04) on cross-renderer fallback of the plugin's `![](url){.class style="…" attr="…"}` representation. Sources: python-markdown attr_list docs, Pandoc MANUAL (Images/link_attributes), kramdown syntax.html, Material-for-MkDocs images ref, W3C CSS Transforms Lesson 1.
 
 **Brace syntax — the ONE hard incompatibility:** python-markdown (attr_list) and Pandoc (link_attributes) both use the BARE brace `{…}` directly after the image (no space). kramdown REQUIRES the colon form `{:…}` — verified 3-0 (kramdown syntax.html: span IAL "same structure as block IAL" → all examples `{:…}`; maintainer declined bare-brace in gettalong/kramdown#176). So the plugin's bare brace attaches in python-markdown + Pandoc but NOT kramdown → in Jekyll/GitHub-Pages the `{.lie-left …}` renders as LITERAL TEXT after the image (worst fallback). No single brace string is valid in both families.
 
@@ -17,7 +17,7 @@ Deep-research + adversarial verification (2026-06-04) on cross-renderer fallback
 - `style="…"` (size/filter): passed through verbatim onto `<img>` in all three (style is a known HTML5 attr). filter + size are layout-neutral → applied, safe.
 - unknown class `.lie-rot-90`: appended to class list, inert without CSS. Clean.
 - custom attr (crop): python-markdown emits VERBATIM (`lie-crop="…"`); Pandoc HTML5 prepends `data-` → `data-lie-crop` (verified 3-0, MANUAL "Unknown attributes are passed through as custom attributes, with data- prepended"). Both inert (browsers ignore). → RECOMMEND naming it `data-lie-crop` so it's valid HTML5 + consistent.
-- `transform: rotate()`: W3C CSS Transforms L1 — "the transform property does not affect the flow of the content surrounding the transformed element" (verified 3-0). So rotate-in-`style=` does NOT reflow but DOES overflow/overlap visually. → rotate-as-CLASS (inert) is the CLEANER fallback than rotate-in-style. Validates moving rotate out of style into a class.
+- `transform: rotate()`: W3C CSS Transforms Lesson 1 — "the transform property does not affect the flow of the content surrounding the transformed element" (verified 3-0). So rotate-in-`style=` does NOT reflow but DOES overflow/overlap visually. → rotate-as-CLASS (inert) is the CLEANER fallback than rotate-in-style. Validates moving rotate out of style into a class.
 
 **CORRECTIONS to the first research pass (re-verified):**
 - Pandoc px width/height → emits HTML `width=`/`height=` ATTRIBUTES, only NON-pixel units (%, em) → `style` (verified 3-0 refute of "px→style", gettalong/pandoc#8047). Irrelevant to us since we use `style="width:…"` not `width=` keys — and using `style=` AVOIDS Pandoc's width/height special path.

@@ -33,6 +33,46 @@
       "program": "${workspaceFolder}/esbuild.config.mjs",
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      // ProperDocs entries — run the docs venv's properdocs (the maintained MkDocs 1.x fork) under
+      // the debugger so you can set breakpoints in scripts/mkdocs_hooks.py and the callouts/roamlinks
+      // plugins. Require the ms-python.python extension (added to .devcontainer/devcontainer.json).
+      // For a plain run, prefer the matching tasks in tasks.json. Local hosting — live-reload server.
+      "name": "ProperDocs: serve (local hosting)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "properdocs",
+      "args": ["serve"],
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.venv-docs/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      // Build the page — render docs/ into site/ exactly as CI does (before gh-deploy pushes it).
+      "name": "ProperDocs: build the page",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "properdocs",
+      "args": ["build"],
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.venv-docs/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      // Check for issues — strict build: any warning (broken nav link, missing file, dead
+      // [[wikilink]]) exits non-zero. Stricter than the plain `properdocs build` that CI deploys.
+      "name": "ProperDocs: check for issues (--strict)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "properdocs",
+      "args": ["build", "--strict"],
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.venv-docs/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": false
     }
   ]
 }

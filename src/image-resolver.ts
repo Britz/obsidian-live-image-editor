@@ -82,7 +82,7 @@ export function findImageInText(text: string, src: string, occurrence = 0): Imag
   return null;
 }
 
-// Match the embed for `src` on ONE specific line — the disambiguating resolver (Bug 33): the
+// Match the embed for `src` on ONE specific line — the disambiguating resolver (Bug 48): the
 // caller knows the exact line (from the rendered image's DOM position), so a file embedded more
 // than once resolves to the RIGHT occurrence, not merely the first basename match in the note.
 export function findImageInLine(line: string, lineNo: number, src: string): ImageLocation | null {

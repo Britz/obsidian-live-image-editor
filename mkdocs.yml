@@ -1,0 +1,121 @@
+# MaterialX (on the ProperDocs engine) site for Live Image Editor — the maintained continuation of
+# mkdocs-material + MkDocs 1.x (the original MkDocs is abandoned; "MkDocs 2.0" drops plugins). The
+# config below is the familiar Material schema; only `theme.name` changes (material -> materialx).
+# Renders docs/ as GitHub Pages and embeds the standalone runtime (lie-runtime.js) so the
+# example vault's `{…}` blocks render as the REAL transformed images, not static screenshots.
+# Built + deployed in CI by .github/workflows/docs.yml (`properdocs gh-deploy`). Local preview:
+# `properdocs serve` inside a venv with the .github/requirements-docs.txt deps.
+
+site_name: Live Image Editor
+site_description: >-
+  Non-destructive image editing for Obsidian — crop, rotate, flip, resize and filter images
+  live, without ever modifying the original file.
+site_url: https://britz.github.io/obsidian-live-image-editor/
+site_author: britz
+
+repo_name: Britz/obsidian-live-image-editor
+repo_url: https://github.com/Britz/obsidian-live-image-editor
+edit_uri: edit/main/docs/
+
+# The example vault lives at example-vault/. A build hook copies its reader pages + images into
+# docs/examples/ before the build (see scripts/mkdocs_hooks.py for why a copy, not a symlink).
+hooks:
+  - scripts/mkdocs_hooks.py
+
+theme:
+  name: materialx          # MaterialX — the maintained fork of mkdocs-material (was: material)
+  language: en
+  font:
+    text: Inter           # Obsidian's UI font
+    code: JetBrains Mono
+  icon:
+    logo: material/image-edit-outline
+    repo: fontawesome/brands/github
+  palette:
+    # Light — Obsidian's accent purple (fine-tuned in assets/extra.css).
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    # Dark — Obsidian's signature near-black + purple.
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs          # top-level sections as tabs (Obsidian-Publish feel)
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+
+# Version provenance is native: the header repository link shows the latest GitHub Release tag
+# (version) + stars/forks, fetched live from the GitHub API because repo_url points at GitHub
+# (above). No mike, no versions.json, no footer hook — just publish GitHub Releases (tag = version,
+# no `v` prefix). Single-version site (one current site); see docs.yml.
+extra_css:
+  - assets/extra.css
+
+# The standalone runtime hydrates every claimed `<img>` (rotate/flip/transform/aspect-ratio).
+# It self-injects its CSS (R0) and re-hydrates on SPA navigation via a MutationObserver, so a
+# single global include is all the site needs.
+extra_javascript:
+  - assets/lie-runtime.js
+
+markdown_extensions:
+  - attr_list            # turns ![](img){rotate=90 width=300} into real <img> attributes
+  - md_in_html
+  - tables
+  - footnotes
+  - def_list
+  - admonition           # target for the Obsidian callouts plugin
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search
+  - callouts             # Obsidian `> [!note]` callouts -> Material admonitions
+  - roamlinks            # Obsidian `[[wikilinks]]` and `![[embeds]]` -> relative links
+
+nav:
+  - Home: index.md
+  - User Guide: user-guide.md
+  - Development:
+      - Overview: development/README.md
+      - Methodology: development/methodology.md
+      - Requirements: development/requirements.md
+      - Architecture: development/architecture.md
+      - Implementation plan: development/implementation-plan.md
+      - Test plan: development/test-plan.md
+      - Issues & lessons: development/issues.md
+      - Community checklist: development/rc-issues.md
+  - Examples:
+      - examples/README.md
+      - Rotate & flip: examples/01 — Rotate & flip.md
+      - Crop: examples/02 — Crop.md
+      - Size & presets: examples/03 — Size & presets.md
+      - Filters: examples/04 — Filters.md
+      - Layout, float & wrap: examples/05 — Layout, float & wrap.md
+      - Captions: examples/06 — Captions.md
+      - Classes & snippets: examples/07 — Classes & snippets.md

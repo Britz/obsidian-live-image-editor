@@ -16,7 +16,11 @@
         "Anthropic.claude-code",
         "vitest.explorer",
         "ms-vscode.js-debug",
-        "EditorConfig.EditorConfig"
+        "ms-python.python",
+        "ms-python.debugpy",
+        "EditorConfig.EditorConfig",
+        "DavidAnson.vscode-markdownlint",
+        "eamodio.gitlens"
       ]
     }
   }

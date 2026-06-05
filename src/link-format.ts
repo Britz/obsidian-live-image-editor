@@ -1,7 +1,7 @@
 // Pure logic for converting an image embed between markdown `![](…)` and wikilink
 // `![[…]]` form while keeping the trailing `{…}` transform block, the caption
 // (markdown alt) and the native `|size` intact (F4). DOM/Obsidian-free so it's
-// unit testable (T-L6). The actual format is dictated by Obsidian's central
+// unit testable (Lesson 6). The actual format is dictated by Obsidian's central
 // "Use [[Wikilinks]]" setting; the plugin never adds its own toggle.
 
 export type LinkFormat = "wiki" | "md";

@@ -1,5 +1,5 @@
 // Pure placement geometry for the shared anchored sub-menu (D8/D9). Kept separate
-// from the DOM so it can be unit-tested (T-L6): given the anchor rect, the panel
+// from the DOM so it can be unit-tested (Lesson 6): given the anchor rect, the panel
 // size, the placement and the viewport, compute a fixed {top,left} that keeps the
 // panel FULLY visible (D9 — never clipped, never scrolled).
 
@@ -77,7 +77,7 @@ export function placeSubmenu(
     left = anchor.right + gap;
     // Flip to the left side when it would overflow the right edge — but only if
     // allowed. The filter panel disables this (allowFlip=false) so it never lands
-    // on the left over the file explorer; it just clamps to the right edge (Bug 3).
+    // on the left over the file explorer; it just clamps to the right edge (Bug 56).
     if (allowFlip && left + panel.width > viewport.width - margin) {
       const leftSide = anchor.left - gap - panel.width;
       if (leftSide >= margin) left = leftSide;

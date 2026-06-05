@@ -1,6 +1,6 @@
 // Pure geometry (AB5) — the single source consumed by the render core (to derive the
 // box's aspect-ratio + the inner image's box-relative size) and by the canvas export.
-// No DOM, so it's unit-testable (AD7/T-L6). Everything is derived from the image's
+// No DOM, so it's unit-testable (AD7/Lesson 6). Everything is derived from the image's
 // INTRINSIC ratio (a stable property of the file) plus the transform — never measured
 // from the rendered, column-dependent box, so there is no measure-then-resize loop
 // (AD6, the root of the historical rotated-box drift).
@@ -52,7 +52,7 @@ export function rotatedAabb(w: number, h: number, deg: number): { w: number; h: 
  * `estimatedHeight` (so CodeMirror doesn't model an off-screen image line as one ~14px
  * text line and lurch the scroll when it's measured). No access to the natural size (an
  * off-screen image isn't loaded), so it's rough on purpose — the real size still lands
- * declaratively once the box has its aspect-ratio. Pure (T-L6).
+ * declaratively once the box has its aspect-ratio. Pure (Lesson 6).
  *
  * Prefers an explicit px height, then a px width × the box aspect-ratio (or a typical
  * landscape ratio), else a sensible constant for a column-width image.
@@ -79,7 +79,7 @@ export const TALL_FLOAT_THRESHOLD_PX = 250;
  * Whether an image's estimated rendered height exceeds the tall-float threshold — i.e. a
  * float at this size would derender on scroll, so it should fall back to a non-floated block.
  * Uses the synchronous (declarative) estimate, so the decision is the SAME in both views with
- * no DOM measurement (AD6). Pure (T-L6).
+ * no DOM measurement (AD6). Pure (Lesson 6).
  */
 export function isTallFloat(opts: {
   widthPx?: number | null;

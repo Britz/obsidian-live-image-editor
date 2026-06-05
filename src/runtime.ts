@@ -14,11 +14,12 @@
 // unsupported (the plain original shows) — documented, out of scope.
 
 import { buildLayers, readTransform, RENDER_CSS, CLAIM_SELECTOR } from "./render-core";
+import { BUNDLED_SNIPPET_CSS } from "./bundled-snippet";
 
 // On a foreign page the OUTER `.lie-image-area` IS the flow participant (no Obsidian embed
 // wrapper), so alignment floats/centres the outer directly. The marker class rides the img
 // (buildLayers re-derives it from `align`), so `:has(img.lie-…)` matches. margin:auto centres
-// fine here (no `.cm-content > * { margin:0 !important }` to fight, unlike Obsidian — Bug 20).
+// fine here (no `.cm-content > * { margin:0 !important }` to fight, unlike Obsidian — Bug 19).
 const RUNTIME_CSS = `
 .lie-image-area:has(img.lie-left) { float: left; clear: none; margin: 0 1em 0.5em 0; }
 .lie-image-area:has(img.lie-right) { float: right; clear: none; margin: 0 0 0.5em 1em; }
@@ -55,6 +56,12 @@ function hydrate(root: Node): void {
 function run(): void {
   inject("lie-runtime-render-css", RENDER_CSS);
   inject("lie-runtime-css", RUNTIME_CSS);
+  // Ship the plugin's DEFAULT decoration-class stack (F16.1: rounded/shadow/bordered/circle) so a
+  // foreign page renders class-styled images the same as Obsidian. The plugin installs this as an
+  // opt-in vault snippet; the runtime always injects this shipped default (shipping the user's
+  // MODIFIED in-vault snippets is a future extension — issues.md). `var(--background-modifier-border)`
+  // in `.bordered` is an Obsidian theme var absent off-Obsidian, so that one border may not paint.
+  inject("lie-runtime-snippet-css", BUNDLED_SNIPPET_CSS);
   hydrate(document);
   // Hydrate content added after load (SPA / lazy theme rendering).
   const observer = new MutationObserver((mutations) => {

@@ -1,0 +1,78 @@
+{
+  // ProperDocs run tasks — work out of the box, no extension needed. They call the docs venv's
+  // properdocs (.venv-docs/), the same engine CI uses (.github/workflows/docs.yml). ProperDocs is
+  // the maintained MkDocs 1.x fork; build with `properdocs`, NOT `mkdocs`. For step-debugging the
+  // build hook / plugins, use the matching "ProperDocs: …" entries in launch.json (needs the Python
+  // extension). Run with: Terminal ▸ Run Task… (or Cmd/Ctrl+Shift+P ▸ Tasks: Run Task).
+  "version": "2.0.0",
+  "options": {
+    "cwd": "${workspaceFolder}"
+  },
+  "tasks": [
+    {
+      // Local hosting — live-reload preview server on http://127.0.0.1:8000 (VS Code forwards the
+      // port automatically in the devcontainer). Backgrounded; the task shows "ready" once it
+      // logs "Serving on …".
+      "label": "ProperDocs: serve (local hosting)",
+      "detail": "properdocs serve — live-reload preview on http://127.0.0.1:8000",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv-docs/bin/properdocs",
+      "args": ["serve"],
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": {
+        "owner": "properdocs",
+        "pattern": {
+          "regexp": "^WONT_MATCH$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Building documentation",
+          "endsPattern": "Serving on http"
+        }
+      }
+    },
+    {
+      // Build the page — render docs/ into site/ exactly as CI does (before gh-deploy pushes it).
+      "label": "ProperDocs: build the page",
+      "detail": "properdocs build — render docs/ into site/",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv-docs/bin/properdocs",
+      "args": ["build"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      // Check for issues — strict build: any warning (broken nav link, missing file, dead
+      // [[wikilink]], orphaned page) becomes a non-zero exit. Catches problems a plain build
+      // would otherwise ship silently.
+      "label": "ProperDocs: check for issues (--strict)",
+      "detail": "properdocs build --strict — fail on any warning (broken links, missing files)",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv-docs/bin/properdocs",
+      "args": ["build", "--strict"],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 // never fall mid-pixel or mid-angle in the FIRST place — so the image position snaps
 // to whole pixels and the rotation to 0.1° steps CONTINUOUSLY while the user drags,
 // not merely by rounding the committed output. Kept DOM-free so it's unit testable
-// (T-L6). The committed result is the img's NATIVE transform (translate% + rotate +
+// (Lesson 6). The committed result is the img's NATIVE transform (translate% + rotate +
 // scale, box-relative → responsive, AD2) plus the cut-frame box width/height.
 
 export interface Point {
@@ -35,7 +35,7 @@ export interface Placement {
  * Parse a stored crop placement transform back into the editor's px-state — the INVERSE of
  * `toCropResult` (translate% → px over the cut frame, content-rotate, per-axis scale). Pure so the
  * round-trip is unit-testable: `parsePlacement(toCropResult(state).transform, fw, r)` reproduces the
- * state, i.e. the editor reads back EXACTLY what it commits — no top-left/centre drift (Bug 32 A).
+ * state, i.e. the editor reads back EXACTLY what it commits — no top-left/centre drift (Bug 43 A).
  */
 export function parsePlacement(s: string | undefined, frameW: number, intrinsicRatio: number): Placement {
   const out: Placement = { tx: 0, ty: 0, rotate: 0, scaleX: 1, scaleY: 1 };
@@ -96,7 +96,7 @@ export type CropScale = number | { x: number; y: number };
 /**
  * Build the committed native-transform crop from the (already-snapped) editor state — the SINGLE
  * geometry source the in-place editor ALSO uses for its live preview (so preview == committed by
- * construction, the Bug-32 A/B/C fix). The placement is the verbatim `<img>` transform the render
+ * construction, the Bug-43 A/B/C fix). The placement is the verbatim `<img>` transform the render
  * core consumes (AD2), pivoting about the image CENTRE (render-core sets `transform-origin:center`).
  *
  * The editor works in DISPLAY px over the cut-frame's on-screen rect; the render shows the original
@@ -105,7 +105,7 @@ export type CropScale = number | { x: number; y: number };
  * cut frame in the same display px; `intrinsicRatio` = naturalWidth/naturalHeight. The `scale` is
  * re-expressed against the cut-frame width so editor and render agree. translate is in % of the
  * cut-frame width (x) and the cut-frame-width display height (y), so the crop rescales with the
- * column AND survives a footprint-width resize without re-anchoring (the Bug-32 G fix).
+ * column AND survives a footprint-width resize without re-anchoring (the Bug-43 G fix).
  */
 export function toCropResult(
   translate: Point,

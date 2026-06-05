@@ -23,7 +23,7 @@ const HANDLES: { key: string; axis: "both" | "x" | "y" }[] = [
   { key: "e", axis: "x" }, { key: "w", axis: "x" },
 ];
 
-// Gesture sensitivity (Bug-32 H — tunable; the user verifies the FEEL). In-place, screen px == content
+// Gesture sensitivity (Bug-43 H — tunable; the user verifies the FEEL). In-place, screen px == content
 // px, so PAN stays 1:1; only ZOOM is damped (raw deltas jump). One named constant per zoom source so
 // a feel tweak is a single edit: the mouse wheel (±~100 deltaY per notch) and the trackpad pinch
 // (a wheel event with ctrlKey, small deltaY) want different multipliers.
@@ -34,7 +34,7 @@ const PINCH_ZOOM_PER_PX = 0.01;     // trackpad pinch (wheel + ctrlKey) → scal
  * In-place crop editor (D8/AD3). Operates on the LIVE 3-layer DOM — outer `.lie-image-area`
  * (footprint) → `.lie-frame` (cut clip + orientation) → `<img>` (the placement) — NOT a clone:
  * the preview IS the live image, re-derived from the SAME geometry the render core commits, so
- * preview == committed by construction (Bug-32 A/B/C). The user moves / scales / rotates the
+ * preview == committed by construction (Bug-43 A/B/C). The user moves / scales / rotates the
  * ORIGINAL image under a FIXED cut window: drag = pan, wheel / corner-handle = aspect-locked
  * scale, edge-handle = single-axis scale, the rotate knob = rotate — all about the cut CENTRE
  * (mirroring render-core's `transform-origin:center`), quantized LIVE to whole px / 0.1° (F12).
@@ -57,7 +57,7 @@ export class CropEditor {
 
   // Working state in the PLACEMENT space (mirrors render-core's crop branch). translate is display
   // px over the cut frame (serialized to % by toCropResult), rotate the CONTENT rotate (distinct
-  // from the frame orientation, which the editor leaves alone — Bug 25), scaleX/scaleY the per-axis
+  // from the frame orientation, which the editor leaves alone — Bug 42), scaleX/scaleY the per-axis
   // zoom (corner = both, edge = one).
   private tx = 0;
   private ty = 0;
@@ -272,7 +272,7 @@ export class CropEditor {
   }
 
   // The frame orientation (rotate + flip about the centre) — the SAME string render-core writes,
-  // so the chrome/ghost overlay the live oriented frame. The editor never EDITS it (Bug 25).
+  // so the chrome/ghost overlay the live oriented frame. The editor never EDITS it (Bug 42).
   private orientationTransform(): string {
     const parts = ["translate(-50%, -50%)"];
     if (this.orientDeg) parts.push(`rotate(${this.orientDeg}deg)`);

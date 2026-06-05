@@ -4,9 +4,23 @@ main.js
 .devcontainer/.env
 **.DS_Store
 
+# Local dev scratch — handoff/working prompts, deleted once the work is handled.
+prompts/
+
 # Obsidian per-vault local state (regenerated on open) — keep the committed debug
 # config (plugins/snippets/app.json) but not the per-machine layout/settings.
 **/.obsidian/workspace.json
 **/.obsidian/workspace-mobile.json
-examples/.obsidian/plugins/live-image-editor/data.json
+example-vault/.obsidian/plugins/live-image-editor/data.json
 lie-runtime.js
+
+# MkDocs site build (docs/ -> GitHub Pages)
+/site/
+.venv-docs/
+__pycache__/
+# generated example pages + images (scripts/mkdocs_hooks.py copies them from example-vault/);
+# the committed README.md landing page is kept.
+docs/examples/*
+!docs/examples/README.md
+# copied from the build artifact in CI / local preview
+docs/assets/lie-runtime.js

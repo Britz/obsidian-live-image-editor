@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Capture the user-guide screenshots from the examples demo vault via CDP.
+// Capture the user-guide screenshots from the example-vault demo vault via CDP.
 // Each shot: open a demo page, arrange the feature's state (hover / open a panel / start crop),
 // then Page.captureScreenshot clipped to the feature. Writes docs/img/*.png.
 //
@@ -7,14 +7,14 @@
 //   node scripts/shoot-docs.mjs toolbar    # only the named shot(s)
 //
 // Env: CDP_HOST (default host.containers.internal), CDP_PORT (default 9223 — direct to Obsidian,
-// survives reloads), CDP_TARGET (default "examples" — the demo vault window).
+// survives reloads), CDP_TARGET (default "example-vault" — the demo vault window).
 import http from "node:http";
 import dns from "node:dns/promises";
 import fs from "node:fs";
 
 const HOST = process.env.CDP_HOST || "host.containers.internal";
 const PORT = Number(process.env.CDP_PORT || 9223);
-const TARGET = (process.env.CDP_TARGET || "examples").toLowerCase();
+const TARGET = (process.env.CDP_TARGET || "example-vault").toLowerCase();
 const only = process.argv.slice(2);
 const OUT = "docs/img";
 fs.mkdirSync(OUT, { recursive: true });
@@ -53,62 +53,87 @@ const PAGES = {
   captions: "06 — Captions.md",
 };
 
-// Each setup runs in the page. `rectOf` returns a padded rect; `union` merges element rects.
+// Each setup runs in the page. `rectEl`/`rectOf` return padded rects; `center` scrolls an element
+// to the middle of the editor (the demo notes are long, so target images open below the fold and —
+// in Live Preview — aren't even rendered until scrolled near). `editorTo` uses the editor API to
+// scroll a virtualized image (e.g. the rotated one) into render range. `hideSB` drops the status bar
+// so it never bleeds into a clip.
 const HELPERS = `
-  const rectOf = (sel, pad=20) => { const el = document.querySelector(sel); if(!el) return null; const r = el.getBoundingClientRect(); return {x:Math.max(0,r.x-pad), y:Math.max(0,r.y-pad), width:r.width+pad*2, height:r.height+pad*2}; };
-  const open = async (path) => { const f = app.vault.getAbstractFileByPath(path); await app.workspace.getLeaf(false).openFile(f); await new Promise(r=>setTimeout(r,1200)); };
+  const sleep = (ms) => new Promise(r=>setTimeout(r,ms));
+  const rectEl = (el, pad=20) => { if(!el) return null; const r = el.getBoundingClientRect(); return {x:Math.max(0,r.x-pad), y:Math.max(0,r.y-pad), width:r.width+pad*2, height:r.height+pad*2}; };
+  const rectOf = (sel, pad=20) => rectEl(document.querySelector(sel), pad);
+  const open = async (path) => { const f = app.vault.getAbstractFileByPath(path); await app.workspace.getLeaf(false).openFile(f); await sleep(1200); };
   const wrapAt = (n) => Array.from(document.querySelectorAll(".lie-wrapper"))[n];
+  const center = async (el) => { if(el){ el.scrollIntoView({block:"center"}); await sleep(650); } return el; };
+  const hideSB = () => { if(!document.getElementById("lie-shot-hide")){ const s=document.createElement("style"); s.id="lie-shot-hide"; s.textContent=".status-bar{display:none!important}"; document.head.appendChild(s); } };
+  const editorTo = async (re) => { const ed=app.workspace.activeEditor&&app.workspace.activeEditor.editor; if(!ed) return; const i=ed.getValue().split("\\n").findIndex(l=>re.test(l)); if(i>=0){ ed.scrollIntoView({from:{line:Math.max(0,i-2),ch:0},to:{line:i+1,ch:0}}, true); await sleep(800); } };
+  const frameRot90 = () => Array.from(document.querySelectorAll(".lie-wrapper")).find(w=>{const fr=w.querySelector(".lie-frame"); const t=(fr&&fr.style.transform)||""; return /rotate\\(90deg/.test(t) && !/scale[XY]?\\(-/.test(t);});
 `;
 
 const SHOTS = [
-  // Toolbar revealed over a normal image (hover).
+  // Toolbar revealed over a normal image (hover), image centred in the editor.
   { name: "toolbar", setup: `(async()=>{${HELPERS}
       await open(${JSON.stringify(PAGES.rotate)});
-      const w = wrapAt(0); const r = w.getBoundingClientRect();
-      return JSON.stringify({ clip: rectOf(".lie-wrapper", 28), hoverAt: { x: r.x + r.width/2, y: r.y + r.height/2 } });
+      hideSB();
+      const w = await center(wrapAt(0)); const r = w.getBoundingClientRect();
+      return JSON.stringify({ clip: rectEl(w, 30), hoverAt: { x: r.x + r.width/2, y: r.y + r.height/2 } });
     })()` },
-  // A rotated image result (90°).
+  // A rotated image result (90°): scroll the virtualized rotated image into view and clip its frame.
   { name: "rotate", setup: `(async()=>{${HELPERS}
       await open(${JSON.stringify(PAGES.rotate)});
-      let w = wrapAt(1); w.scrollIntoView({block:"center"});
-      await new Promise(r=>setTimeout(r,700));
-      w = wrapAt(1) || w; const r = w.getBoundingClientRect();
-      return JSON.stringify({ clip: { x:Math.max(0,r.x-24), y:Math.max(0,r.y-24), width:r.width+48, height:r.height+48 } });
+      hideSB();
+      await editorTo(/rotate=90 width=300/);
+      let w = frameRot90(); if(w){ await center(w); w = frameRot90() || w; }
+      const fr = (w && w.querySelector(".lie-frame")) || w;
+      const r = fr.getBoundingClientRect();
+      // start at the frame top so the revealed source line above the image is excluded
+      return JSON.stringify({ clip: { x: Math.max(0, r.x-26), y: Math.max(0, r.y-2), width: r.width+52, height: r.height+10 } });
     })()` },
-  // Crop editor open in place.
+  // Crop editor open in place over a centred image.
   { name: "crop", setup: `(async()=>{${HELPERS}
       await open(${JSON.stringify(PAGES.crop)});
-      const w = wrapAt(0); const img = w.querySelector("img");
+      hideSB();
+      const w = await center(wrapAt(0)); const img = w.querySelector("img");
       const p = app.plugins.plugins["live-image-editor"]; p.activeImage = img; p.crop();
-      await new Promise(r=>setTimeout(r,700));
-      return JSON.stringify({ clip: rectOf(".lie-wrapper", 70) });
+      await sleep(750);
+      return JSON.stringify({ clip: rectEl(wrapAt(0) || w, 72) });
     })()` },
-  // Filter panel docked beside the image.
+  // Filter panel docked beside the image — keep the image near the top so the tall panel fits.
   { name: "filter-panel", setup: `(async()=>{${HELPERS}
       await open(${JSON.stringify(PAGES.filters)});
-      const w = wrapAt(0); const img = w.querySelector("img");
+      hideSB();
+      const w = wrapAt(0); w.scrollIntoView({block:"start"}); await sleep(550);
+      const img = w.querySelector("img");
       const p = app.plugins.plugins["live-image-editor"]; p.activeImage = img; p.toggleFilters();
-      await new Promise(r=>setTimeout(r,700));
+      await sleep(750);
       const a = w.getBoundingClientRect(); const panel = document.querySelector(".lie-filter-panel");
       const b = panel ? panel.getBoundingClientRect() : a;
       const x = Math.max(0, Math.min(a.x,b.x)-24), y = Math.max(0, Math.min(a.y,b.y)-24);
       return JSON.stringify({ clip: { x, y, width: Math.max(a.right,b.right)-x+24, height: Math.max(a.bottom,b.bottom)-y+24 } });
     })()` },
-  // Float + text wrap.
+  // Float left + text wrap: centre the float, clip the column so several wrapped lines show.
   { name: "float-wrap", setup: `(async()=>{${HELPERS}
       await open(${JSON.stringify(PAGES.layout)});
-      const w = wrapAt(0); const r = w.getBoundingClientRect();
-      const sizer = document.querySelector(".cm-sizer, .markdown-preview-sizer");
-      const s = sizer ? sizer.getBoundingClientRect() : r;
-      return JSON.stringify({ clip: { x:Math.max(0,r.x-16), y:Math.max(0,r.y-16), width: Math.min(s.width, 760), height: 320 } });
+      hideSB();
+      const w = await center(wrapAt(0)); const r = w.getBoundingClientRect();
+      const x = Math.max(0, r.x-10);
+      return JSON.stringify({ clip: { x, y: Math.max(0, r.y-14), width: Math.min(720, innerWidth-x-12), height: 300 } });
     })()` },
-  // Caption below an image.
+  // Caption below an image: clean (no toolbar). The .lie-box (.lie-has-caption) already wraps the
+  // image AND the caption span, so clip that. Put the cursor on the line just ABOVE the image so
+  // CM keeps that line in view (instead of re-anchoring to the top and drifting the image — and its
+  // below-image caption — back under the fold), and re-centre right before the clip.
   { name: "caption", setup: `(async()=>{${HELPERS}
       await open(${JSON.stringify(PAGES.captions)});
-      const cap = document.querySelector(".lie-caption"); const w = wrapAt(0);
-      const a = w.getBoundingClientRect(); const b = cap ? cap.getBoundingClientRect() : a;
-      const x = Math.max(0, Math.min(a.x,b.x)-28), y = Math.max(0, a.y-28);
-      return JSON.stringify({ clip: { x, y, width: Math.max(a.right,b.right)-x+28, height: b.bottom-y+28 } });
+      hideSB();
+      const ed = app.workspace.activeEditor && app.workspace.activeEditor.editor;
+      if(ed){ const i = ed.getValue().split("\\n").findIndex(l=>/A calm landscape at dusk\\]\\(/.test(l)); if(i>0) ed.setCursor({line:i-1,ch:0}); }
+      await sleep(200);
+      let w = await center(wrapAt(0));
+      let box = (w && w.querySelector(".lie-box")) || w;
+      box.scrollIntoView({block:"center"}); await sleep(450);
+      w = wrapAt(0) || w; box = (w && w.querySelector(".lie-box")) || w;
+      return JSON.stringify({ clip: rectEl(box, 18) });
     })()` },
 ];
 
@@ -126,6 +151,10 @@ for (const shot of SHOTS) {
     if (info.hoverAt) {
       await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: info.hoverAt.x, y: info.hoverAt.y });
       await sleep(500);
+    } else {
+      // clear any leftover hover so a toolbar from a previous shot doesn't bleed in
+      await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 3, y: 3 });
+      await sleep(200);
     }
     const clip = info.clip ? { ...info.clip, scale: 1 } : undefined;
     const shotRes = await send("Page.captureScreenshot", { format: "png", ...(clip ? { clip } : {}) });
