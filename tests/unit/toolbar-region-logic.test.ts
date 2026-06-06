@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { clickDismissesToolbar } from "../../src/toolbar-region-logic";
 
-// Bug 54 (+ click-boundary follow-up) — the click-away dismiss decision (crop EXEMPT). The live half
+// Bug 62 (+ click-boundary follow-up) — the click-away dismiss decision (crop EXEMPT). The live half
 // (the panel actually closing + persisting ONE source write on click-away, and crop staying open with
 // no write) is the read-DOM-back CDP guard tests/cdp/verify-region-clickaway.mjs (obsidian/CM-coupled,
 // not a vitest unit — Lesson 6).
-describe("clickDismissesToolbar — Bug 54 click-away dismiss decision", () => {
+describe("clickDismissesToolbar — Bug 62 click-away dismiss decision", () => {
   describe("a modal filter/size panel is open → boundary is the SUB-PANEL, not the whole region", () => {
     it("closes when the click lands OUTSIDE the panel — even ON THE IMAGE (the reported bug)", () => {
       // insideRegion true (the image is in the hover region) but insidePanel false → still closes.

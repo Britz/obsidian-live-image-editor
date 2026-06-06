@@ -289,8 +289,9 @@ A bug is **never fixed where it shows**. The path:
   exception, not rule.
 - On a bug: understand it low-level, then **return to the top** (requirements) and
   re-derive top-down to find and fix the real cause — never a one-level patch.
-- After every **larger code change or fix**, **bump the version** (SemVer
-  `<major>.<minor>.<patch>`) and write the matching **changelog** entry before moving on —
+- After every **larger code change or fix**, **bump the version** (patch-only —
+  `<major>.<minor>.<patch>`, never a minor/major jump; see CLAUDE.md) and write the matching
+  **changelog** entry before moving on —
   it is part of finishing the work, not a release-only step. **Documentation-only changes
   do not bump the version.**
 

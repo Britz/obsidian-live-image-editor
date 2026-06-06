@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CLICK-AWAY CLOSES THE SUB-PANEL — crop EXEMPT (Bug 54; D6/F14/AD8; test-plan §3, Lesson 6 — the
+// CLICK-AWAY CLOSES THE SUB-PANEL — crop EXEMPT (Bug 62; D6/F14/AD8; test-plan §3, Lesson 6 — the
 // obsidian/CM-coupled half, not a vitest unit; the pure decision is tests/toolbar-region-logic.test.ts).
 // It drives the REAL panels in the running vault and asserts, by reading the live DOM and the SOURCE
 // back, that an ACTIVE click OUTSIDE the active region:

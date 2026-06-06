@@ -192,7 +192,7 @@ class EmbedWidget extends WidgetType {
     return toolbar;
   }
 
-  // The `<>` toggle (F8/Bug 45): click the link source AWAY (dismiss), click again to bring it
+  // The `<>` toggle (F8/Bug 53): click the link source AWAY (dismiss), click again to bring it
   // back. The icon is the Lucide "code" glyph (`<>`) in BOTH states — the dismissed state shows
   // faint (`is-off`) and the tooltip/aria flips, so the affordance stays honest without changing
   // the icon to an eye.
@@ -290,7 +290,7 @@ export function createLivePreviewExtension(
           // (2) The {…} block — NATIVE editable text, marked. It rides `lie-attr lie-rev-<mode>`
           // (so CSS shows/hides it per mode + the dismiss, F3) AND carries the CM url-string token
           // classes (`cm-string cm-url`, = URL_CLASS) so the revealed block is SYNTAX-HIGHLIGHTED
-          // like a (url) string (Bug 47: the bare-key/inline-widget migration had dropped the
+          // like a (url) string (Bug 55: the bare-key/inline-widget migration had dropped the
           // highlight). Crucially NOT `cm-formatting` — that would make the cm-line match
           // `:has(> .cm-formatting)`, the heuristic that detects Obsidian's OWN native source
           // reveal, and wrongly hide the fake link (regression caught by scripts/verify-reveal.mjs).

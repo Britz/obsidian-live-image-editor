@@ -18,7 +18,7 @@ interface InternalClass {
 // Built-in, toggleable classes (F15): alignment + inline ONLY. Decoration (rounded /
 // shadow / border / circle) ships as INSTALLABLE snippets (F16), not injected here.
 // Alignment must act on the flow participant — the LP overlay `.lie-wrapper` or the
-// reading-view `.image-embed` — via `:has()`, never the img or the box (Bug 10/19).
+// reading-view `.image-embed` — via `:has()`, never the img or the box (Bug 10/27).
 const ALIGN_HOSTS = ".lie-wrapper:has(img.lie-PREFIX), .image-embed:has(img.lie-PREFIX)";
 const host = (cls: string): string => ALIGN_HOSTS.replace(/PREFIX/g, cls);
 
@@ -34,7 +34,7 @@ const DEFAULT_CLASSES: InternalClass[] = [
   {
     // Centre via text-align on a FULL-WIDTH block host (centres the inline-block box
     // inside) — not margin:auto, which Obsidian's `.cm-content > * { margin:0
-    // !important }` beats (Bug 19).
+    // !important }` beats (Bug 27).
     name: "center",
     css: `${host("center")} { float: none; display: block; width: 100%; text-align: center; }`,
   },

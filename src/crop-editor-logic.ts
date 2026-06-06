@@ -35,7 +35,7 @@ export interface Placement {
  * Parse a stored crop placement transform back into the editor's px-state — the INVERSE of
  * `toCropResult` (translate% → px over the cut frame, content-rotate, per-axis scale). Pure so the
  * round-trip is unit-testable: `parsePlacement(toCropResult(state).transform, fw, r)` reproduces the
- * state, i.e. the editor reads back EXACTLY what it commits — no top-left/centre drift (Bug 43 A).
+ * state, i.e. the editor reads back EXACTLY what it commits — no top-left/centre drift (Bug 51 A).
  */
 export function parsePlacement(s: string | undefined, frameW: number, intrinsicRatio: number): Placement {
   const out: Placement = { tx: 0, ty: 0, rotate: 0, scaleX: 1, scaleY: 1 };

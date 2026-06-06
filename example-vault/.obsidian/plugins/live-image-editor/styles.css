@@ -47,7 +47,7 @@
 }
 
 /* A group slot holds both the expanded buttons and a fold-to-submenu trigger; the
-   reflow toggles `.is-folded` to swap them when the bar runs out of room (Bug 29). */
+   reflow toggles `.is-folded` to swap them when the bar runs out of room (Bug 37). */
 .lie-toolbar-group-slot > .lie-toolbar-group-trigger { display: none; }
 .lie-toolbar-group-slot.is-folded > .lie-toolbar-group { display: none; }
 .lie-toolbar-group-slot.is-folded > .lie-toolbar-group-trigger { display: inline-flex; }
@@ -160,7 +160,7 @@
    image puts the <img> directly or inside `.image-wrapper`; a wikilink uses `.image-wrapper` —
    hide both, unscoped. The native embed ELEMENT stays (it loads the file and gives Obsidian's
    cursor-reveal of the source) — only its IMAGE is killed. The edit-block-button is hidden too
-   so the native `<>` block button can't leak (Bug 23). Never hits the plugin's `.lie-wrapper`. */
+   so the native `<>` block button can't leak (Bug 31). Never hits the plugin's `.lie-wrapper`. */
 .cm-content .internal-embed.image-embed > .edit-block-button { display: none; }
 .cm-content .internal-embed.image-embed > img,
 .cm-content .internal-embed.image-embed > .image-wrapper { display: none; }
@@ -335,9 +335,9 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
 /* Normal hover-reveal (D1) — but ONLY while no modal panel is open. The moment a panel opens the bar
    gets `.lie-toolbar-inactive`, and from then on its visibility rides the host's ONE region-hover
    signal alone (the `.lie-region-active` rules below) — never the CSS `:hover`, which would desync
-   from the JS state and flap the bar between greyed and un-greyed (Bug 55). `.lie-region-hover` is the
+   from the JS state and flap the bar between greyed and un-greyed (Bug 63). `.lie-region-hover` is the
    SAME single hover signal for the lightweight body-level palettes (group popup / class dropdown):
-   it keeps the in-chrome bar visible while you hover the palette (Bug 56) WITHOUT greying it. */
+   it keeps the in-chrome bar visible while you hover the palette (Bug 64) WITHOUT greying it. */
 .lie-wrapper:hover .lie-toolbar-in-image:not(.lie-toolbar-inactive),
 .lie-wrapper:focus-within .lie-toolbar-in-image:not(.lie-toolbar-inactive),
 .lie-wrapper.lie-region-hover .lie-toolbar-in-image:not(.lie-toolbar-inactive) {
@@ -547,6 +547,15 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
 }
 .lie-class-dropdown-item:hover { background: var(--background-modifier-hover); }
 .lie-class-dropdown-item.is-active { color: var(--interactive-accent); font-weight: 600; }
+/* Header of the centered multi-image class picker (0.5.2): the "N images" scope label. */
+.lie-class-dropdown-title {
+  padding: 4px 10px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 4px;
+}
 
 /* ---- Shared anchored sub-menu (D6) ------------------------------------ */
 .lie-submenu {
@@ -605,3 +614,53 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
 .lie-size-fields { display: flex; gap: 10px; }
 .lie-size-custom { display: flex; align-items: center; gap: 6px; }
 .lie-size-input { width: 80px; }
+
+/* Settings — version-unsupported warning (RC9/R28: no hardcoded inline styling). */
+.lie-settings-warning { color: var(--text-error); }
+
+/* ---- Settings: CSS-classes section (AB19) ----------------------------------------- */
+/* Groups use Obsidian's NATIVE `.setting-group` > (`.setting-group-search` +) `.setting-items` cards
+   (styled by the app/theme, uniform with the core CSS-snippets & community-plugins pages) — no custom
+   card CSS here. The overview is ONE such group: heading + search + a single list of class rows. */
+.lie-css-disabled { opacity: 0.5; }
+.lie-class-empty { padding: 8px 16px; }
+
+/* Breathing room before the editing-toolbar section (it sat too close to the class list). */
+.lie-et-section { margin-top: 28px; }
+
+/* A native Obsidian "info" callout reused as a section note (admonition). */
+.lie-info-callout { margin: 10px 0 18px; }
+.lie-info-callout .callout-icon { display: inline-flex; align-items: center; }
+.lie-info-callout .callout-icon .svg-icon { width: 16px; height: 16px; }
+
+/* The overview is a `.setting-group` nested in a wrapper div, so Obsidian's native group margin
+   (which only targets direct children of the tab content) doesn't reach it — restore the gap. */
+.lie-class-overview { margin-top: var(--size-4-6); }
+
+/* Class rows: a leading icon + the class name (the source file is the Setting's description). */
+.lie-class-overview .setting-item-name { display: flex; align-items: center; gap: 8px; }
+.lie-class-icon { display: inline-flex; align-items: center; color: var(--text-muted); }
+.lie-class-icon .svg-icon { width: 16px; height: 16px; }
+
+/* Our own bundled classes sort to the top; set them off with an accent-coloured icon + source-file
+   name (standard background, normal class name) — the colour draws the eye and the file name reads as
+   the "why". Status colours (changed/deleted) on the class name itself are untouched. */
+.lie-class-overview .lie-class-ours .lie-class-icon { color: var(--interactive-accent); }
+.lie-class-overview .lie-class-ours .lie-class-file { color: var(--interactive-accent); }
+
+/* Restore the first row's top padding — Obsidian zeroes `:first-child`, which looked cramped under
+   the search box (and made the search seem detached from the list). */
+.lie-class-overview .setting-items > .setting-item:first-child { padding-top: var(--size-4-4); }
+
+/* An orange (warning, not error) note — e.g. an unsupported editing-toolbar version. */
+.lie-version-warning { color: var(--text-warning); }
+
+/* Status: changed = warning orange, deleted = error red (name + its "(…)" tag). */
+.lie-class-deleted { text-decoration: line-through; color: var(--text-error); }
+.lie-class-changed { font-style: italic; color: var(--text-warning); }
+.lie-class-tag { font-weight: normal; color: var(--text-muted); }
+.lie-class-deleted ~ .lie-class-tag { color: var(--text-error); }
+.lie-class-changed ~ .lie-class-tag { color: var(--text-warning); }
+.lie-class-collision { color: var(--text-warning); }
+
+.lie-class-hidden { display: none; }

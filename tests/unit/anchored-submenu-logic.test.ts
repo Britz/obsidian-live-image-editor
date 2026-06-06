@@ -21,7 +21,7 @@ describe("placeSubmenu", () => {
     expect(p.left).toBeLessThan(900); // landed on the left side
   });
 
-  it("does NOT flip left when allowFlip is false — clamps to the right edge (Bug 56)", () => {
+  it("does NOT flip left when allowFlip is false — clamps to the right edge (Bug 64)", () => {
     const p = placeSubmenu(rect({ top: 100, left: 900, right: 1150, bottom: 400, width: 250, height: 300 }),
       { width: 300, height: 300 }, "beside-image", vp, undefined, undefined, false);
     // right edge clamp: viewport 1200 - panel 300 - margin 6 = 894; stays on the right, not over the left.
@@ -34,6 +34,18 @@ describe("placeSubmenu", () => {
       { width: 300, height: 300 }, "beside-image", vp, undefined, undefined, false);
     expect(p.left).toBe(468); // right 460 + gap 8
     expect(p.top).toBe(100);
+  });
+
+  it("centers in the viewport, ignoring the anchor (multi-image panel, 0.5.2)", () => {
+    const p = placeSubmenu(rect({ top: 100, left: 200, right: 260, bottom: 130, width: 60, height: 30 }),
+      { width: 400, height: 200 }, "centered", vp);
+    expect(p.left).toBe((1200 - 400) / 2); // 400
+    expect(p.top).toBe((800 - 200) / 2);   // 300
+  });
+
+  it("clamps a centered panel taller than the viewport to the top margin", () => {
+    const p = placeSubmenu(rect({}), { width: 400, height: 900 }, "centered", vp);
+    expect(p.top).toBe(6); // margin — top stays visible rather than centering off-screen
   });
 });
 

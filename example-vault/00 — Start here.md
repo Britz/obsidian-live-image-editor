@@ -35,6 +35,6 @@ The sample images carry corner labels — **A** top-left, **B** top-right, **C**
 - `images/` — the synthetic samples: `sample-landscape.png` (3:2), `sample-portrait.png` (2:3),
   `sample-square.png` (1:1), and `tiny-24.png` (a 24 px icon, for the too-small-to-hover case).
   Regenerate them with `scripts/generate-samples.sh`.
-- `.obsidian/snippets/` — the bundled decoration snippets (`live-image-editor-examples.css`) and a
+- `.obsidian/snippets/` — the bundled decoration snippets (`live-image-editor.css`) and a
   float helper (`float-images.css`), pre-installed and enabled so [[07 — Classes & snippets]] works
   out of the box.

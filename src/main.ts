@@ -6,7 +6,7 @@ import {
 } from "./transforms";
 import { buildLayers as applyTransformToImage, applyFilterPreview, unwrapBox, BOX_CLASS } from "./render-core";
 import { ImageToolbar, ToolbarItem, ToolbarButton, ToolbarGroup } from "./toolbar";
-import { findImageInSource, findImageInText, findImageInLine, getImageFilename, ImageLocation } from "./image-resolver";
+import { findImageInSource, findImageInText, findImageInLine, firstEmbedInLine, allEmbedsInText, spansOverlappingRanges, getImageFilename, ImageLocation } from "./image-resolver";
 import { CropEditor } from "./crop-editor";
 import { FilterPanel } from "./filter-panel";
 import { AnchoredSubmenu } from "./anchored-submenu";
@@ -25,6 +25,20 @@ import { convertEmbedLine, desiredFormat, LinkFormat } from "./link-format";
 import { writeSource } from "./source-writer";
 import { clickDismissesToolbar } from "./toolbar-region-logic";
 import { couplePaletteToRegion } from "./region-hover";
+import { ensureEditingToolbarButtons } from "./editing-toolbar-integration";
+
+// Shared transform modifiers — used by BOTH the single-image toolbar/command path and the
+// multi-image (selection) command path, so the two never drift (DRY). Rotate/flip/inline are
+// RELATIVE (each image steps from its own current value); `clearTransform` empties everything
+// (the reset modifier, drives both the single reset and the page-/selection-scope reset).
+const ROTATE_CW = (t: ImageTransform): void => setRotation(t, (getRotation(t) + 90) % 360);
+const ROTATE_CCW = (t: ImageTransform): void => setRotation(t, (getRotation(t) - 90 + 360) % 360);
+const TOGGLE_INLINE = (t: ImageTransform): void => { t.inline = !t.inline; };
+const clearTransform = (t: ImageTransform): void => {
+  t.classes = [];
+  t.inline = t.align = t.rotate = t.flipH = t.flipV = undefined;
+  t.transform = t.filter = t.width = t.height = t.aspectRatio = t.box = undefined;
+};
 
 export default class LiveImageEditorPlugin extends Plugin {
   settings: LieSettings = DEFAULT_SETTINGS;
@@ -66,7 +80,11 @@ export default class LiveImageEditorPlugin extends Plugin {
 
     this.registerEvent(this.app.workspace.on("editor-change", () => this.scheduleNormalize()));
 
-    this.app.workspace.onLayoutReady(async () => { await this.refreshSnippets(); });
+    this.app.workspace.onLayoutReady(async () => {
+      await this.refreshSnippets();
+      // Self-heal / migrate the editing-toolbar submenu once both plugins are up (no-op when off).
+      await ensureEditingToolbarButtons(this.app, this.settings.editingToolbarEnabled);
+    });
 
     const snippetsDir = `${this.app.vault.configDir}/snippets/`;
     const onSnippetChange = (path: string): void => {
@@ -128,7 +146,10 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   async refreshSnippets(): Promise<void> {
-    // Only scan snippets ENABLED in Obsidian, not merely present in the folder (Decision 6).
+    // Snippet-class feature off → the dropdown is gone, so the flat list stays empty (no scan).
+    // Already-applied classes still render via Obsidian's own enabled snippet (AB19/Q2).
+    if (!this.settings.cssClassesEnabled) { this.snippetClasses = []; return; }
+    // Only scan snippets ENABLED in Obsidian, not merely present in the folder (Decision 10).
     const enabled = (this.app as unknown as { customCss?: { enabledSnippets?: Set<string> } }).customCss?.enabledSnippets;
     this.snippetClasses = await scanSnippets(this.app.vault, enabled);
   }
@@ -352,13 +373,13 @@ export default class LiveImageEditorPlugin extends Plugin {
   // Every member of the combined active region (D6): with NO panel open, a click on any of these is
   // "inside" and never dismisses the bare toolbar (the image wrapper, the toolbar, a lightweight
   // palette, the crop chrome). `.lie-class-dropdown` is a region member too, so picking a class no
-  // longer dismisses the toolbar out from under the user (Bug 56).
+  // longer dismisses the toolbar out from under the user (Bug 64).
   private static readonly REGION_SELECTOR =
     ".lie-toolbar, .lie-filter-panel, .lie-submenu, .lie-group-popup, .lie-class-dropdown, .lie-cropping, .lie-wrapper";
 
   // While a modal FILTER/SIZE panel is open the click-away boundary SHRINKS to this: the sub-panel
   // itself plus the toolbar chrome docked to it. A click anywhere else — the image INCLUDED — closes+
-  // persists the panel (Bug 54 follow-up). The image is NOT a safe harbor: it fills most of the
+  // persists the panel (Bug 62 follow-up). The image is NOT a safe harbor: it fills most of the
   // canvas, so treating it as "inside" left the panel stuck open when the user clicked the image to
   // dismiss it. (Hover visibility still spans the whole region — that's `REGION_SELECTOR` above.)
   private static readonly PANEL_SELECTOR = ".lie-submenu, .lie-filter-panel, .lie-toolbar";
@@ -380,13 +401,13 @@ export default class LiveImageEditorPlugin extends Plugin {
         insidePanel: !!target.closest(LiveImageEditorPlugin.PANEL_SELECTOR),
         insideRegion: !!target.closest(LiveImageEditorPlugin.REGION_SELECTOR),
       })) {
-        // The click-away CLOSE (Bug 54 + boundary follow-up):
+        // The click-away CLOSE (Bug 62 + boundary follow-up):
         //   • a FILTER/SIZE panel open → a click outside the sub-panel (the image included) closes it
         //     and PERSISTS the working state (auto-persist, one source write);
         //   • no panel → dismiss the bare toolbar only on a click outside the whole region;
         //   • CROP active → `clickDismissesToolbar` returns false, so no stray click can destroy the
         //     in-place session.
-        // Hover-leave only HIDES (the panel stays open, Bug 55); this click path closes.
+        // Hover-leave only HIDES (the panel stays open, Bug 63); this click path closes.
         this.dismissToolbar();
       }
     });
@@ -410,7 +431,7 @@ export default class LiveImageEditorPlugin extends Plugin {
         return;
       }
       // Hover-out dismiss for the floating bar — but never while a panel OR a lightweight palette is
-      // open (the palette is a hover member of the region, D6/Bug 56; it governs its own close-on-leave
+      // open (the palette is a hover member of the region, D6/Bug 64; it governs its own close-on-leave
       // and keeps the bar up until then).
       if (this.hoverShown && !this.filterPanel && !this.submenu && !this.cropEditor &&
           !document.querySelector(".lie-group-popup, .lie-class-dropdown")) {
@@ -521,37 +542,318 @@ export default class LiveImageEditorPlugin extends Plugin {
       b("filters", "sliders-horizontal", "filters", () => this.toggleFilters()),
       b("custom-size", "maximize", "customSize", () => this.customSize()),
       layoutGroup,
-      b("snippets", "chevron-down", "snippets", () => this.addClass()),
+      // The CSS-class dropdown is gated by the snippet-class feature toggle (AB19). Alignment/inline
+      // (the layout group above) are core and stay regardless.
+      ...(this.settings.cssClassesEnabled ? [b("snippets", "chevron-down", "snippets", () => this.addClass())] : []),
       b("export", "download", "export", () => this.exportImage()),
-      b("reset", "undo-2", "reset", () => this.reset()),
+      b("reset", "undo", "reset", () => this.reset()),
     ];
   }
 
   private registerCommands(): void {
+    // Image-specific command actions are MULTI-AWARE (F19, 0.5.2): with ≥2 images inside the
+    // editor selection each runs on all of them in one undo step; otherwise on the single
+    // hover/cursor image. `runTransformCommand` carries the relative/set transform; the
+    // interactive panels (filters/customSize/addClass) and the single-only crop/export each
+    // resolve their own target. The gate (`canRun`) is the shared "is there any target?" check.
+    const single = (run: () => void): void => {
+      const img = this.commandSingleImage();
+      if (img) { this.activeImage = img; run(); }
+    };
     const handler: CommandHandler = {
-      getActiveImage: () => this.activeImage,
-      rotateCw: () => this.rotateCw(),
-      rotateCcw: () => this.rotateCcw(),
-      flipH: () => this.flipH(),
-      flipV: () => this.flipV(),
-      crop: () => this.crop(),
-      toggleFilters: () => this.toggleFilters(),
-      sizeSmall: () => this.applyPreset("small"),
-      sizeMedium: () => this.applyPreset("medium"),
-      sizeLarge: () => this.applyPreset("large"),
-      classLeft: () => this.applyAlignment("left"),
-      classRight: () => this.applyAlignment("right"),
-      classCenter: () => this.applyAlignment("center"),
-      addClass: () => this.addClass(),
-      reset: () => this.reset(),
-      customSize: () => this.customSize(),
-      toggleInline: () => this.toggleInline(),
-      exportImage: () => this.exportImage(),
+      canRun: () => this.commandScope() !== null,
+      rotateCw: () => this.runTransformCommand(ROTATE_CW),
+      rotateCcw: () => this.runTransformCommand(ROTATE_CCW),
+      flipH: () => this.runTransformCommand(toggleFlipH),
+      flipV: () => this.runTransformCommand(toggleFlipV),
+      crop: () => single(() => this.crop()),
+      toggleFilters: () => this.commandFilters(),
+      sizeSmall: () => this.runTransformCommand((t) => setWidthPx(t, this.settings.presetWidths.small)),
+      sizeMedium: () => this.runTransformCommand((t) => setWidthPx(t, this.settings.presetWidths.medium)),
+      sizeLarge: () => this.runTransformCommand((t) => setWidthPx(t, this.settings.presetWidths.large)),
+      classLeft: () => this.commandAlign("left"),
+      classRight: () => this.commandAlign("right"),
+      classCenter: () => this.commandAlign("center"),
+      addClass: () => this.commandAddClass(),
+      reset: () => this.runTransformCommand(clearTransform),
+      customSize: () => this.commandCustomSize(),
+      toggleInline: () => this.runTransformCommand(TOGGLE_INLINE),
+      exportImage: () => single(() => { void this.exportImage(); }),
+      resetAllImages: () => this.resetAllImages(),
     };
     registerCommands(this, handler);
   }
 
-  // Resolve the active image's source location (Bug 48). Prefer the rendered image's ACTUAL
+  // The TARGET image for an image-specific command (F19). Prefer the still-connected hover/click-
+  // active image; otherwise — the command-palette / hotkey case, where opening the palette has
+  // already dismissed the hover state — resolve the image on the editor's CURSOR line. Returns
+  // null when neither yields one (no image in context → the command stays out of the palette).
+  // Editor-only: the cursor is meaningful in source/live-preview, not in reading view.
+  private resolveCommandImage(): HTMLImageElement | null {
+    if (this.activeImage?.isConnected) return this.activeImage;
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view || view.getMode() !== "source") return null;
+    const cursor = view.editor.getCursor();
+    const loc = firstEmbedInLine(view.editor.getLine(cursor.line), cursor.line);
+    return loc ? this.findRenderedImage(loc) : null;
+  }
+
+  // The SCOPE of an image-specific command (0.5.2): if the editor selection covers ≥2 image embeds
+  // the command runs on ALL of them ("multi"); otherwise on the single hover/cursor image. The
+  // toolbar buttons never reach this — they stay single (they call the methods directly).
+  private commandScope():
+    | { kind: "multi"; editor: Editor; locations: ImageLocation[] }
+    | { kind: "single"; img: HTMLImageElement }
+    | null {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (view && view.getMode() === "source") {
+      const locations = this.selectionTargets(view.editor);
+      if (locations.length >= 2) return { kind: "multi", editor: view.editor, locations };
+    }
+    const img = this.resolveCommandImage();
+    return img ? { kind: "single", img } : null;
+  }
+
+  // Every image embed that a NON-EMPTY editor selection overlaps, in source order — the target set
+  // for multi-image commands. Empty selections (bare cursors) are ignored here: a single image with
+  // no range is the "single" scope, handled by `resolveCommandImage`. Multi-cursor is supported (any
+  // non-empty range counts). Offsets are absolute so the overlap test is a simple interval check.
+  private selectionTargets(editor: Editor): ImageLocation[] {
+    const ranges = editor.listSelections()
+      .map((s) => {
+        const a = editor.posToOffset(s.anchor);
+        const h = editor.posToOffset(s.head);
+        return [Math.min(a, h), Math.max(a, h)] as const;
+      })
+      .filter(([lo, hi]) => lo !== hi);
+    if (ranges.length === 0) return [];
+    const embeds = allEmbedsInText(editor.getValue());
+    const spans = embeds.map((e) =>
+      [editor.posToOffset({ line: e.line, ch: e.start }), editor.posToOffset({ line: e.line, ch: e.end })] as const
+    );
+    return spansOverlappingRanges(spans, ranges).map((i) => embeds[i]!);
+  }
+
+  // The single target for an inherently single-image command (crop, export) even when a multi
+  // selection exists: the hover/cursor image, else the first selected image.
+  private commandSingleImage(): HTMLImageElement | null {
+    const scope = this.commandScope();
+    if (!scope) return null;
+    if (scope.kind === "single") return scope.img;
+    return this.resolveCommandImage() ?? this.findRenderedImage(scope.locations[0]!);
+  }
+
+  // Run a transform command over its scope: multi → apply the modifier to every selected image in
+  // one undo step; single → the existing single-image path (live preview + one write).
+  private runTransformCommand(modifier: (t: ImageTransform) => void): void {
+    const scope = this.commandScope();
+    if (!scope) return;
+    if (scope.kind === "multi") { this.modifyTransformMulti(scope.editor, scope.locations, modifier); return; }
+    this.activeImage = scope.img;
+    this.modifyTransform(modifier);
+  }
+
+  // Alignment is the one command whose multi semantics differ from single: a single image TOGGLES
+  // the side (matching the toolbar), but a selection SETS every image to that side (the intuitive
+  // "make all these left" — not a per-image toggle that would scatter the result).
+  private commandAlign(side: Align): void {
+    const scope = this.commandScope();
+    if (!scope) return;
+    if (scope.kind === "multi") { this.modifyTransformMulti(scope.editor, scope.locations, (t) => { t.align = side; }); return; }
+    this.activeImage = scope.img;
+    this.applyAlignment(side);
+  }
+
+  // --- Interactive multi-image commands (0.5.2) ---------------------------------------------------
+  // Filters / custom size / CSS classes act on a SELECTION the same way the single versions act on
+  // one image — only the panel goes STANDALONE (centered, titled "N images", D-decision) and the
+  // preview/commit fan out to every selected image. Single scope → the existing single panels.
+
+  private commandFilters(): void {
+    const scope = this.commandScope();
+    if (!scope) return;
+    if (scope.kind === "single") { this.activeImage = scope.img; this.toggleFilters(); return; }
+    this.openMultiFilters(scope.editor, scope.locations);
+  }
+
+  private commandCustomSize(): void {
+    const scope = this.commandScope();
+    if (!scope) return;
+    if (scope.kind === "single") { this.activeImage = scope.img; this.customSize(); return; }
+    this.openMultiSize(scope.editor, scope.locations);
+  }
+
+  private commandAddClass(): void {
+    const scope = this.commandScope();
+    if (!scope) return;
+    if (scope.kind === "single") { this.activeImage = scope.img; this.addClass(); return; }
+    this.openMultiClass(scope.editor, scope.locations);
+  }
+
+  private multiTitle(n: number): string {
+    return t("multiImages").replace("{n}", String(n));
+  }
+
+  // Line-accurate {location, rendered <img>} pairs for the selected embeds — used to live-preview a
+  // multi panel on EACH image. The DOM image is found by its CM6 source position (`posAtDOM`), so a
+  // file embedded more than once previews on the RIGHT element; basename lookup is the fallback.
+  private renderedPairs(locations: ImageLocation[]): { loc: ImageLocation; img: HTMLImageElement }[] {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    const cm = (view?.editor as unknown as { cm?: EditorView } | undefined)?.cm;
+    const root = view?.contentEl.querySelector(".markdown-source-view");
+    const byLine = new Map<number, HTMLImageElement>();
+    if (cm && root) {
+      for (const wrapper of Array.from(root.querySelectorAll<HTMLElement>(".lie-wrapper"))) {
+        const img = wrapper.querySelector("img");
+        if (!img) continue;
+        try { byLine.set(cm.state.doc.lineAt(cm.posAtDOM(wrapper)).number - 1, img); } catch { /* skip */ }
+      }
+    }
+    const out: { loc: ImageLocation; img: HTMLImageElement }[] = [];
+    for (const loc of locations) {
+      const img = byLine.get(loc.line) ?? this.findRenderedImage(loc);
+      if (img) out.push({ loc, img });
+    }
+    return out;
+  }
+
+  // Centered size panel over a selection: SETS width/height/inline on all (the "make all 400 wide"
+  // case). Preview re-renders each image with the new size while keeping its other transforms;
+  // commit writes all in one undo step; cancel restores each from its source.
+  private openMultiSize(editor: Editor, locations: ImageLocation[]): void {
+    if (this.submenu) { this.closeSubmenu(); return; }
+    const pairs = this.renderedPairs(locations);
+    const first = parseAltText(locations[0]!.params);
+    const state: SizeState = { width: first.width ?? null, height: first.height ?? null, inline: first.inline ?? false };
+    const preview = (s: SizeState): void => {
+      for (const { loc, img } of pairs) {
+        const tr = parseAltText(loc.params);
+        tr.width = s.width ?? undefined;
+        tr.height = s.height ?? undefined;
+        tr.inline = s.inline;
+        applyTransformToImage(img, tr);
+      }
+    };
+    const sizeBody = buildSizeBody({ width: first.width, height: first.height, inline: first.inline }, preview, state, this.settings.presetWidths);
+    const submenu = new AnchoredSubmenu();
+    submenu.open({
+      body: sizeBody.body,
+      placement: "centered",
+      title: this.multiTitle(locations.length),
+      onReset: () => sizeBody.reset(),
+      onCommit: () => this.modifyTransformMulti(editor, locations, (tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; tr.inline = state.inline; }),
+      onCancel: () => { for (const { loc, img } of pairs) applyTransformToImage(img, parseAltText(loc.params)); },
+      onClose: () => { this.submenu = null; },
+    });
+    this.submenu = submenu;
+  }
+
+  // Centered filter panel over a selection: preview fans out to all, commit writes all in one undo
+  // step, cancel restores each. The histogram tracks the first selected image.
+  private openMultiFilters(editor: Editor, locations: ImageLocation[]): void {
+    if (this.filterPanel) { this.closeFilterPanel(); return; }
+    const pairs = this.renderedPairs(locations);
+    const histImg = pairs[0]?.img;
+    if (!histImg) return;
+    const originalFilter = getFilter(parseAltText(locations[0]!.params));
+    const panel = new FilterPanel(histImg, originalFilter, {
+      onPreview: (f: FilterData) => { for (const { img } of pairs) applyFilterPreview(img, f); },
+      onCommit: (f: FilterData) => this.modifyTransformMulti(editor, locations, (tr) => setFilter(tr, Object.keys(f).length ? f : undefined)),
+      onCancel: () => { for (const { loc, img } of pairs) applyTransformToImage(img, parseAltText(loc.params)); },
+      onClose: () => { this.filterPanel = null; },
+    });
+    panel.open(null, null, this.multiTitle(locations.length));
+    this.filterPanel = panel;
+  }
+
+  // Centered class picker over a selection: a class is "active" only when ALL selected images carry
+  // it; clicking SETS it on all that lack it (or, if all already have it, removes it from all). The
+  // write is immediate (one undo step) and the menu closes — no accept/cancel cycle (like single).
+  private openMultiClass(editor: Editor, locations: ImageLocation[]): void {
+    const available = this.snippetClasses.filter((sc) => !this.settings.disabledSnippetClasses.includes(sc.className));
+    if (available.length === 0) { new Notice(t("settingsNoSnippets")); return; }
+    const parsed = locations.map((l) => parseAltText(l.params));
+
+    const menu = document.createElement("div");
+    menu.classList.add("lie-class-dropdown");
+    let detach = (): void => {};
+    const close = (): void => { detach(); menu.remove(); };
+
+    const title = document.createElement("div");
+    title.classList.add("lie-class-dropdown-title");
+    title.textContent = this.multiTitle(locations.length);
+    menu.appendChild(title);
+
+    for (const sc of available) {
+      const allHave = parsed.every((p) => p.classes.includes(sc.className));
+      const item = document.createElement("button");
+      item.classList.add("lie-class-dropdown-item");
+      if (allHave) item.classList.add("is-active");
+      item.textContent = sc.className;
+      item.addEventListener("click", () => {
+        this.modifyTransformMulti(editor, locations, (tr) => {
+          const i = tr.classes.indexOf(sc.className);
+          if (allHave) { if (i >= 0) tr.classes.splice(i, 1); }   // remove from all
+          else if (i < 0) tr.classes.push(sc.className);          // add to those that lack it
+        });
+        close();
+      });
+      menu.appendChild(item);
+    }
+
+    menu.style.position = "fixed";
+    menu.style.top = "50%";
+    menu.style.left = "50%";
+    menu.style.transform = "translate(-50%, -50%)";
+    menu.style.zIndex = "1001";
+    document.body.appendChild(menu);
+
+    const closeHandler = (e: MouseEvent): void => { if (!menu.contains(e.target as Node)) close(); };
+    detach = (): void => document.removeEventListener("mousedown", closeHandler);
+    setTimeout(() => document.addEventListener("mousedown", closeHandler), 0);
+  }
+
+  // Apply `modifier` to several images' `{…}` blocks in ONE transaction (one undo step). Each block
+  // is parsed, modified and re-serialized independently; the changes are non-overlapping so CM6
+  // applies them atomically against the current document. The live-preview StateField rebuilds the
+  // affected widgets on the doc change, so all images repaint without manual DOM work.
+  private modifyTransformMulti(editor: Editor, locations: ImageLocation[], modifier: (t: ImageTransform) => void): void {
+    const changes = locations.map((loc) => {
+      const tr = parseAltText(loc.params);
+      modifier(tr);
+      const params = serializeTransform(tr);
+      return {
+        from: editor.posToOffset({ line: loc.line, ch: loc.headEnd }),
+        to: editor.posToOffset({ line: loc.line, ch: loc.end }),
+        insert: params ? `{${params}}` : "",
+      };
+    });
+    const cm = (editor as unknown as { cm?: EditorView }).cm;
+    if (cm) {
+      writeSource(cm, changes);
+    } else {
+      // Non-CM6 fallback: apply LAST-to-first so earlier offsets stay valid as text shifts.
+      for (const c of changes.slice().reverse()) {
+        editor.replaceRange(c.insert, editor.offsetToPos(c.from), editor.offsetToPos(c.to));
+      }
+    }
+  }
+
+  // Page-scope reset (F19): strip the `{…}` transform block from EVERY image in the active note,
+  // in ONE undo step. Non-destructive like the single-image reset — only the `{…}` block goes;
+  // the embed link and any native `|size` suffix stay. The live-preview StateField rebuilds the
+  // widgets on the doc change, so the images repaint to their original state automatically.
+  private resetAllImages(): void {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view || view.getMode() !== "source") { new Notice(t("resetAllNoEditor")); return; }
+    const editor = view.editor;
+    const edited = allEmbedsInText(editor.getValue()).filter((e) => e.params !== "");
+    if (edited.length === 0) { new Notice(t("resetAllNone")); return; }
+    this.modifyTransformMulti(editor, edited, clearTransform);
+    new Notice(t("resetAllDone").replace("{n}", String(edited.length)));
+  }
+
+  // Resolve the active image's source location (Bug 56). Prefer the rendered image's ACTUAL
   // line, read from its DOM position via CM6 `posAtDOM` (the same line-accurate path the resize
   // handle uses) — so a file embedded more than once resolves to the RIGHT occurrence, not the
   // first basename match. Falls back to the basename scan only when there is no live editor
@@ -571,7 +873,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   // The single image-location lookup every toolbar/menu action shares (DRY). Prefers the LIVE
-  // image's DOM position (line-accurate even after the doc shifts — Bug 48); when the image is
+  // image's DOM position (line-accurate even after the doc shifts — Bug 56); when the image is
   // DETACHED (a panel whose anchor scrolled out of the CM6 viewport mid-edit), it falls back to
   // the location captured at panel-open — NOT a basename scan, which would hit the wrong
   // occurrence of a duplicated image. `notify` shows the user-facing Notices (resolveLocation);
@@ -723,7 +1025,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     const state: SizeState = { width: current.width ?? null, height: current.height ?? null, inline: current.inline ?? false };
 
     // Live preview by RE-RENDERING with the new size (so clearing a field / "Original"
-    // falls back to the intrinsic default rather than collapsing the box — Bug 34).
+    // falls back to the intrinsic default rather than collapsing the box — Bug 42).
     const preview = (s: SizeState): void => {
       const tr = parseAltText(location.params);
       tr.width = s.width ?? undefined;
@@ -838,7 +1140,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     const menu = document.createElement("div");
     menu.classList.add("lie-class-dropdown");
 
-    // The class dropdown is a lightweight palette, like the group popups (Bug 56): it is coupled to
+    // The class dropdown is a lightweight palette, like the group popups (Bug 64): it is coupled to
     // the image + toolbar active region (so hovering it keeps the bar visible, and leaving the region
     // closes it — bar and palette fade together) but it is NOT greyed/modal. `close` is the single
     // teardown for every path (pick a class / click-away / region-leave).

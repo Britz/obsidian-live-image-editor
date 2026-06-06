@@ -7,7 +7,7 @@
 // In Obsidian the user can EDIT their installed copy (and "Reset" restores this shipped version);
 // the runtime always ships THIS default version. Shipping the user's MODIFIED in-vault copy with
 // the runtime is a future extension (see docs/development/issues.md → Planned features).
-export const BUNDLED_SNIPPET_FILE = "live-image-editor-examples.css";
+export const BUNDLED_SNIPPET_FILE = "live-image-editor.css";
 export const BUNDLED_SNIPPET_CSS = `/* Live Image Editor — example image decoration classes.
    Installed from the plugin settings (opt-in). Edit freely; "Reset" in settings
    restores this shipped version. Apply a class in the image's trailing block. */

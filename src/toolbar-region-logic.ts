@@ -2,7 +2,7 @@
 // DOM so they are unit-testable (AD7/Lesson 6); the hover BINDING and the CSS coupling are the impure
 // half (region-hover.ts + styles.css). These are the branch points the event handlers consult.
 
-// Bug 54 (+ click-boundary follow-up) — should an ACTIVE click dismiss/close the open editing UI
+// Bug 62 (+ click-boundary follow-up) — should an ACTIVE click dismiss/close the open editing UI
 // (and PERSIST any open filter/size panel, the auto-persist single source write)? Three rules, in
 // order:
 //   • CROP active → NO click ever dismisses: clicks and drags on the image, the resize/rotate handles
@@ -15,7 +15,7 @@
 //     harbor left the panel stuck open when the user clicked the image to dismiss — the reported bug.)
 //   • Otherwise (bare toolbar, no panel) → dismiss only on a click OUTSIDE the whole active region
 //     (image wrapper / toolbar / palette); a click inside it is part of the interaction.
-// Hover-LEAVE is a SEPARATE path (it only HIDES — the panel stays open, Bug 55); this is the click
+// Hover-LEAVE is a SEPARATE path (it only HIDES — the panel stays open, Bug 63); this is the click
 // path, which closes-and-persists for filter/size.
 export function clickDismissesToolbar(opts: {
   cropActive: boolean;

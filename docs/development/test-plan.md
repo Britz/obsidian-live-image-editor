@@ -48,8 +48,8 @@ above it:
 The pure units live under `tests/unit/*.test.ts`; the CDP checks run via the dev-bridge
 (`AB23` / CLAUDE.md *Live debugging*) against the example vault pages (`example-vault/`), which are
 fixtures exercising each requirement area. The two runnable read-back CDP checks are
-`tests/cdp/verify-write-path.mjs` (the §3 AD1 write-path matrix, the Bug 48 guard) and
-`tests/cdp/verify-crop.mjs` (the Bug 43 crop editor — 20 structural facts read back from the live
+`tests/cdp/verify-write-path.mjs` (the §3 AD1 write-path matrix, the Bug 56 guard) and
+`tests/cdp/verify-crop.mjs` (the Bug 51 crop editor — 20 structural facts read back from the live
 DOM/source in Live Preview **and** reading view: no `document.body` clone, centre origin, handles
 on the inner image, 4 corner + 4 edge + rotate, native handle hidden, no reflow, one undo step per
 session, a width edit preserves the crop) plus `tests/cdp/verify-crop-teardown.mjs` (the crop editor
@@ -57,7 +57,7 @@ fully restores every transient override — esp. the lifted host `contain:paint`
 read back from the live computed style). The crop scripts **self-create** their `_crop-fixture.md`
 (and delete it); the manual crop demo is `example-vault/02 — Crop.md`.
 
-> **The load-bearing rule (the Bug 48 lesson).** A green suite must mean an **edit actually
+> **The load-bearing rule (the Bug 56 lesson).** A green suite must mean an **edit actually
 > reaches the source and re-renders** — not merely that an isolated pure function is correct.
 > The bare-key write path shipped "green" while almost nothing persisted to `{…}`, because of two
 > gaps: (a) `serializeTransform` was unit-tested **in isolation**, but no test drove a toolbar
@@ -89,7 +89,7 @@ Pure box / inner-image geometry; the single source shared by the renderer and th
   filter (fills it); for a quarter-turn the image keeps its own size, centred; for a crop the inner
   is the larger (scaled/translated) original, clipped by the box. Verifies the **box → image**
   direction and that crop is just the case with content beyond the box (`implementation-plan.md`
-  §2.3). *(Pins Bug 17.)*
+  §2.3). *(Pins Bug 25.)*
 - **`rotatedAabb`** — the true rotated bounding box for any angle; the **single source** shared by
   the box-sizing and the canvas export (rendering ≡ export, `AD3`).
 - **`estimatedBlockHeight`** — returns a synchronous, finite height estimate from the stored
@@ -157,8 +157,8 @@ Pure box / inner-image geometry; the single source shared by the renderer and th
   `aspect-ratio` to the cut shape; a legacy `style="transform: rotate(…) scaleX(-1)"` **decomposes**
   into the orientation fields (back-compat) while a legacy crop placement stays whole. `.class`,
   `style=` and the `.lie` marker survive. *(Deferred: `width`/`align` still ride `style=` / a class.)*
-  Verifies the routed-per-layer format and the orientation↔placement split (`AD2`, `AD3`, Bug 42).
-- **Bug 42 regression (orientation never touches the placement)** — `setRotation` on a cropped
+  Verifies the routed-per-layer format and the orientation↔placement split (`AD2`, `AD3`, Bug 50).
+- **Bug 50 regression (orientation never touches the placement)** — `setRotation` on a cropped
   transform sets `rotate` and leaves `transform` (the crop placement) byte-identical; a rotated crop
   round-trips with both the orientation field and the placement intact. Verifies the structural
   pivot that designs out the rotate-a-crop drift.
@@ -184,11 +184,11 @@ Pure box / inner-image geometry; the single source shared by the renderer and th
   `Lesson 5` pitfall is guarded; falls back to leaving the link as-is on any failure
   (`implementation-plan.md` §3.1).
 
-### 2.8 Per-operation persistence (`transforms.ts` + the op layer) — the Bug 48 guard
+### 2.8 Per-operation persistence (`transforms.ts` + the op layer) — the Bug 56 guard
 
 Beyond the isolated round-trip (§2.6): **each** model-mutating operation, applied to a base
 transform, must serialize to a `{…}` that **contains its key/value** — the unit that would have
-caught Bug 48 (only `width` ever emitted). One assertion per op (and each also **round-trips**:
+caught Bug 56 (only `width` ever emitted). One assertion per op (and each also **round-trips**:
 serialize → parse → the op's field is back):
 
 - **`setRotation` (90 / 180 / 270 / free)** → `rotate=` present with the angle; back to 0 → absent.
@@ -200,8 +200,8 @@ serialize → parse → the op's field is back):
 - **inline toggle** → the inline marker; **`addClass`** → the class in `.class`.
 - **crop `toCropResult`** → `transform=` placement (+ `aspect-ratio=` only when shape ≠ original).
 
-Verifies that **every** op persists, not just `width` (`AD1`, `T2.3`; pins **Bug 48**, supports
-**Bug 43**).
+Verifies that **every** op persists, not just `width` (`AD1`, `T2.3`; pins **Bug 56**, supports
+**Bug 51**).
 
 ### 2.9 `image-resolver.ts` — source↔DOM resolution (`AB3`)
 
@@ -237,14 +237,14 @@ run via CDP eval against the example vault (`Lesson 6`, `AD7`).
   and confirm the render reflects the **source**, not a cached state; confirm no second store
   exists (the only mutation path is the source). *Verifies: no stale render survives a mode
   switch or reused embed (`F2`).*
-  - **Write-path persistence matrix (MUST actually run — read the source, never assume; Bug 48).**
+  - **Write-path persistence matrix (MUST actually run — read the source, never assume; Bug 56).**
     In the running vault, perform **each** op and **read the real source line `{…}` back**,
     asserting its key landed — then confirm the re-render reflects it: rotate cw / ccw, flip h / v,
     each filter, align left / center / right, each size preset (icon/small/medium/large/original),
     inline toggle, add-class, crop accept, reset. The native resize handle's `width` **and** every
-    toolbar/menu op must persist. *This is exactly the check Bug 48 slipped through (only `width`,
+    toolbar/menu op must persist. *This is exactly the check Bug 56 slipped through (only `width`,
     via the handle's separate path, persisted) — the CDP step must read the written source, not
-    assume the DOM changed. Pins **Bug 48**.*
+    assume the DOM changed. Pins **Bug 56**.*
 - **AD2 — Declarative per-layer routing, verbatim.** Confirm each datum lands on its layer
   (target, §2.3): `align` / `width` / `aspect-ratio` / `style` / `.class` on the **outer**,
   `rotate` + `flip` on the **inner-frame**, the crop `transform` + `filter` on the **`<img>`** — by
@@ -295,15 +295,15 @@ run via CDP eval against the example vault (`Lesson 6`, `AD7`).
   image + toolbar + panel form one active region (toolbar+panel show/hide together). *Verifies the
   single component, not per-feature reimplementation (`F14`, `D6`); pinned by
   `tests/cdp/verify-submodal-icons.mjs` + `tests/cdp/verify-submodal-region.mjs`.*
-- **D6.2/D6.3/D6.4 — Region visibility coupling (Bugs 54–56).** ONE signal drives toolbar visibility,
+- **D6.2/D6.3/D6.4 — Region visibility coupling (Bugs 62–64).** ONE signal drives toolbar visibility,
   staying-greyed and panel/palette visibility — never the CSS `:hover` competing with the JS region
   state. Confirm: (1) an active click OUTSIDE the region closes+persists filter/size but leaves an
   in-place **crop** session untouched (no write); (2) the bar stays **greyed the whole** time a panel
   is open (shown=opacity 0.4, hidden=0, never un-greyed); (3) the folded-group popup / class dropdown
   keep the bar visible while hovered (NOT greyed) and close together with the bar on region-leave.
   *Pure: `clickDismissesToolbar` (`tests/unit/toolbar-region-logic.test.ts`). CDP:
-  `tests/cdp/verify-region-clickaway.mjs` (Bug 54), the extended `tests/cdp/verify-submodal-region.mjs`
-  (Bug 55), `tests/cdp/verify-popup-region.mjs` (Bug 56). The real-pointer `:hover` travel + the floating
+  `tests/cdp/verify-region-clickaway.mjs` (Bug 62), the extended `tests/cdp/verify-submodal-region.mjs`
+  (Bug 63), `tests/cdp/verify-popup-region.mjs` (Bug 64). The real-pointer `:hover` travel + the floating
   bar are a manual focused-window pass (synthetic events can't drive `:hover` / `pointer-events`).*
 - **AD9 — Platform reuse.** Confirm captions render via Obsidian's `MarkdownRenderer`, resize
   uses the native handle/frame, the column cap reads `--file-line-width`, link conversion calls
@@ -419,20 +419,20 @@ lessons). Pure-logic regressions become **unit** tests (§2); the rest are **CDP
 | Bug 13 | ~~Revealed link editor is borderless~~ — **obsolete**: there is no plugin-owned editable field anymore; editing is native document text (Obsidian's own cursor-reveal), so `D5`'s borderless requirement is satisfied natively | n/a (`D5`) |
 | Bug 14 | No-size image fits the column, no overflow | CDP (`D3`) |
 | Bug 15 | Resize frame hugs the image (zeroed wrapper padding) | CDP (`AD3`) |
-| Bug 16 | Standalone classes reach the img in live preview — **brace-stripping** | **unit** (`live-preview.test.ts`) + CDP (`Lesson 9`) |
-| Bug 17 | Resized crop has no empty band — `innerImageSize` aspect-correct | **unit** (`renderer-logic.test.ts`) + CDP |
-| Bug 18 | Inline mid-text image uses the same widget in inline mode, not native | **unit** (`inlineEmbeds`) + CDP (`F17`, `AD5`) |
+| Bug 24 | Standalone classes reach the img in live preview — **brace-stripping** | **unit** (`live-preview.test.ts`) + CDP (`Lesson 9`) |
+| Bug 25 | Resized crop has no empty band — `innerImageSize` aspect-correct | **unit** (`renderer-logic.test.ts`) + CDP |
+| Bug 26 | Inline mid-text image uses the same widget in inline mode, not native | **unit** (`inlineEmbeds`) + CDP (`F17`, `AD5`) |
 | LP float cluster | `lie-left/right` wraps multi-line via the inline non-BFC widget escaping into `.cm-content` — 0 height desync, 0 click-steal, image clickable (`z-index:1`) | CDP (`AD5`, `F18`) |
 | Tall float | a float taller than ~250px stacks as a non-floated block in **both** views (no LP derender on scroll) | **unit** (`isTallFloat`) + CDP |
 | Bare embed | a bare `![](…)` line renders the plugin's `block:true` widget (a real height, not a blank line), native image CSS-suppressed | CDP (`AD5`, `Lesson 14`) |
 | Inline-icon / tiny toolbar | the floating bar sits truly ABOVE a too-small image (`rect.top − h − gap`, below-fallback near the viewport top); float-out fires by coverage | CDP (`D1.1`) |
-| Bug 42 | rotate/flip of a cropped image rides the inner-frame (centre pivot) and never touches the `<img>` crop placement — no drift; export composes content → orient the same way | **unit** (`transforms` setRotation-on-crop, `crop-editor-logic`) + CDP (`AD3`, the 3-layer geometry) |
-| Bug 48 *(SOLVED — basename-collision in the source resolver; fixed via DOM-position resolution)* | **every** toolbar/menu op persists to `{…}`, not only `width` — the per-op persistence matrix + the read-source-back behaviour check | **unit** (§2.8) + CDP (§3 `AD1` write-path matrix) |
-| Bug 43 *(open)* | crop editor on the **live 3-layer** structure: centre origin, handles on the inner `<img>`, the frame/box stays fixed, the overlay image rotates, a `width` resize **preserves** the crop, and the crop/rotate edits **persist** to `{…}` | **unit** (`toCropResult` / §2.8) + CDP (`AD3`, `D8`) |
+| Bug 50 | rotate/flip of a cropped image rides the inner-frame (centre pivot) and never touches the `<img>` crop placement — no drift; export composes content → orient the same way | **unit** (`transforms` setRotation-on-crop, `crop-editor-logic`) + CDP (`AD3`, the 3-layer geometry) |
+| Bug 56 *(SOLVED — basename-collision in the source resolver; fixed via DOM-position resolution)* | **every** toolbar/menu op persists to `{…}`, not only `width` — the per-op persistence matrix + the read-source-back behaviour check | **unit** (§2.8) + CDP (§3 `AD1` write-path matrix) |
+| Bug 51 *(open)* | crop editor on the **live 3-layer** structure: centre origin, handles on the inner `<img>`, the frame/box stays fixed, the overlay image rotates, a `width` resize **preserves** the crop, and the crop/rotate edits **persist** to `{…}` | **unit** (`toCropResult` / §2.8) + CDP (`AD3`, `D8`) |
 | Crop pan hit-area *(SOLVED)* | the pan grip is the **whole visible image** — the dim ghost img is the pan hit-surface (`pointer-events:auto`), so a drag started **outside** the cut frame pans too, while the handles still win their own hits | CDP (`D8`; `tests/cdp/verify-crop-pan.mjs` — real `elementFromPoint` hit-test) |
-| Bug 45 *(SOLVED)* | the reveal toggle shows the **`<>` (code)** icon, not an eye | CDP (`F8`); `tests/cdp/verify-reveal.mjs` |
-| Bug 46 *(SOLVED)* | a `<>` dismiss hides the **whole** raw embed (fake `![](…)` + `{…}`), not just `{…}`; the dismiss/auto-clear state machine resets only on *leave* (a fresh dismiss survives its own tx) | **unit** (`reduceReveal`, `tests/unit/regressions.test.ts`) + CDP (`F8`, `F3`; `tests/cdp/verify-reveal.mjs`) |
-| Bug 47 *(SOLVED)* | the revealed `{…}` attribute list keeps its **CM syntax highlighting** (URL tokens), via a single `URL_CLASS` mark that carries **no** `cm-formatting` | **unit** (`URL_CLASS` invariant, `tests/unit/regressions.test.ts`) + CDP (`tests/cdp/verify-reveal.mjs`) |
+| Bug 53 *(SOLVED)* | the reveal toggle shows the **`<>` (code)** icon, not an eye | CDP (`F8`); `tests/cdp/verify-reveal.mjs` |
+| Bug 54 *(SOLVED)* | a `<>` dismiss hides the **whole** raw embed (fake `![](…)` + `{…}`), not just `{…}`; the dismiss/auto-clear state machine resets only on *leave* (a fresh dismiss survives its own tx) | **unit** (`reduceReveal`, `tests/unit/regressions.test.ts`) + CDP (`F8`, `F3`; `tests/cdp/verify-reveal.mjs`) |
+| Bug 55 *(SOLVED)* | the revealed `{…}` attribute list keeps its **CM syntax highlighting** (URL tokens), via a single `URL_CLASS` mark that carries **no** `cm-formatting` | **unit** (`URL_CLASS` invariant, `tests/unit/regressions.test.ts`) + CDP (`tests/cdp/verify-reveal.mjs`) |
 
 ### 5.2 Per learned lesson (`T-Ln`)
 

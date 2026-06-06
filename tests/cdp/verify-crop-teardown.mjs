@@ -138,7 +138,7 @@ const EVAL_RUN = `(async () => {
     // 3) Esc (dirty) — the host's own capture-phase keydown path
     await runPath("esc", true, async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
     // 4) context loss (a menu/modal opens) — the MutationObserver path → dismissToolbar → closeCrop.
-    // NOTE: click-away is deliberately NOT a crop teardown path — crop is click-away EXEMPT (Bug 54;
+    // NOTE: click-away is deliberately NOT a crop teardown path — crop is click-away EXEMPT (Bug 62;
     // a stray click must leave the in-place session open), proven by tests/cdp/verify-region-clickaway.mjs.
     // So the dismissToolbar → closeCrop chain is exercised here via the context-loss observer instead.
     await runPath("contextloss_menu", true, async () => {

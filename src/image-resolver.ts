@@ -82,7 +82,7 @@ export function findImageInText(text: string, src: string, occurrence = 0): Imag
   return null;
 }
 
-// Match the embed for `src` on ONE specific line — the disambiguating resolver (Bug 48): the
+// Match the embed for `src` on ONE specific line — the disambiguating resolver (Bug 56): the
 // caller knows the exact line (from the rendered image's DOM position), so a file embedded more
 // than once resolves to the RIGHT occurrence, not merely the first basename match in the note.
 export function findImageInLine(line: string, lineNo: number, src: string): ImageLocation | null {
@@ -90,6 +90,37 @@ export function findImageInLine(line: string, lineNo: number, src: string): Imag
     if (basename(loc.filename) === src) return loc;
   }
   return null;
+}
+
+// The first image embed on a line in column order, or null — the command target resolver for the
+// command palette / hotkeys, where there is no hover: the image on the editor's CURSOR line.
+export function firstEmbedInLine(line: string, lineNo: number): ImageLocation | null {
+  return embedsInLine(line, lineNo)[0] ?? null;
+}
+
+// Every image embed in the note, in source order — the building block of page-scope commands
+// (e.g. "reset all images"), which act on the whole document rather than one image in context.
+export function allEmbedsInText(text: string): ImageLocation[] {
+  const lines = text.split("\n");
+  const out: ImageLocation[] = [];
+  for (let i = 0; i < lines.length; i++) out.push(...embedsInLine(lines[i] ?? "", i));
+  return out;
+}
+
+// The pure core of multi-image selection targeting (0.5.2): the INDICES of `spans` (absolute
+// [from,to) document offsets) that overlap ANY of the `ranges` (non-empty selection ranges). Each
+// index is returned at most once, in input order. Half-open overlap (`from < hi && to > lo`) so a
+// selection that merely abuts an embed's edge (caret right before/after it) does NOT select it.
+export function spansOverlappingRanges(
+  spans: readonly (readonly [number, number])[],
+  ranges: readonly (readonly [number, number])[]
+): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < spans.length; i++) {
+    const [from, to] = spans[i]!;
+    if (ranges.some(([lo, hi]) => from < hi && to > lo)) out.push(i);
+  }
+  return out;
 }
 
 export function getImageFilename(img: HTMLImageElement): string | null {

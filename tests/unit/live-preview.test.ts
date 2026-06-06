@@ -40,7 +40,7 @@ describe("lineDecorations", () => {
     ]);
   });
 
-  it("strips braces so standalone classes survive (regression: .lie-left dropped — Bug 16/Lesson 9)", () => {
+  it("strips braces so standalone classes survive (regression: .lie-left dropped — Bug 24/Lesson 9)", () => {
     const decos = lineDecorations('![](a.png){.lie-left style="width: 180px"}', 0, true);
     expect(decos[0]).toMatchObject({ kind: "widget", params: '.lie-left style="width: 180px"' });
   });

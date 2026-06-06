@@ -3,7 +3,7 @@
 // size, the placement and the viewport, compute a fixed {top,left} that keeps the
 // panel FULLY visible (D9 — never clipped, never scrolled).
 
-export type SubmenuPlacement = "under-toolbar" | "beside-image";
+export type SubmenuPlacement = "under-toolbar" | "beside-image" | "centered";
 
 export interface Rect {
   top: number;
@@ -62,6 +62,17 @@ export function placeSubmenu(
   const maxLeft = viewport.width - panel.width - margin;
   const maxTop = viewport.height - panel.height - margin;
 
+  // Centered ignores the anchor entirely — it sits in the middle of the viewport. Used by the
+  // multi-image panels (0.5.2), which act on a SELECTION rather than one anchored image, so there
+  // is no single element to dock to. Still clamped so a panel taller than the viewport stays
+  // top-visible.
+  if (placement === "centered") {
+    return {
+      top: clamp((viewport.height - panel.height) / 2, margin, maxTop),
+      left: clamp((viewport.width - panel.width) / 2, margin, maxLeft),
+    };
+  }
+
   let top: number;
   let left: number;
 
@@ -77,7 +88,7 @@ export function placeSubmenu(
     left = anchor.right + gap;
     // Flip to the left side when it would overflow the right edge — but only if
     // allowed. The filter panel disables this (allowFlip=false) so it never lands
-    // on the left over the file explorer; it just clamps to the right edge (Bug 56).
+    // on the left over the file explorer; it just clamps to the right edge (Bug 64).
     if (allowFlip && left + panel.width > viewport.width - margin) {
       const leftSide = anchor.left - gap - panel.width;
       if (leftSide >= margin) left = leftSide;

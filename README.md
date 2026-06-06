@@ -153,11 +153,11 @@ release-compliance pass. The only remaining steps are the manual packaging actio
 - **R19 — Sentence case** (PG). Toolbar and panel strings are already sentence case.
 - **R20 — Out-of-vault file writes disclosed** (DP). See [File system access & platform support](#file-system-access--platform-support) below — the export save dialog can write the rendered image anywhere the user chooses, including outside the vault.
 - **R21 — `isDesktopOnly: false` reconciled** (SR). The Electron/Node access (export save dialog, macOS rotate gesture) is dynamic + feature-detected with mobile fallbacks, so the plugin genuinely runs on mobile; `false` is kept and the degradation is documented (code comment in `export.ts` + the platform note below).
-- **R22 — No plugin-name heading** (PG; *Bug 60*). The top-level `<h2>` plugin-name heading in the settings tab was removed.
-- **R23 — `setHeading()`** (PG; *Bug 61*). Section headings use `new Setting(...).setHeading()` instead of raw `<h3>` elements.
-- **R24 — Sentence-case commands** (PG; *Bug 62*). The size/align command names are sentence case (`Size: small`, `Align: left`, …) and routed through i18n.
-- **R25 — Sentence-case headings** (PG; *Bug 63*). The remaining UI headings (`CSS snippets`, `Editing toolbar integration`) are sentence case.
-- **R26 — `normalizePath()`** (PG; *Bug 64*). User-entered (export fallback) and constructed (snippet) paths pass through `normalizePath()`.
+- **R22 — No plugin-name heading** (PG; *Bug 68*). The top-level `<h2>` plugin-name heading in the settings tab was removed.
+- **R23 — `setHeading()`** (PG; *Bug 69*). Section headings use `new Setting(...).setHeading()` instead of raw `<h3>` elements.
+- **R24 — Sentence-case commands** (PG; *Bug 70*). The size/align command names are sentence case (`Size: small`, `Align: left`, …) and routed through i18n.
+- **R25 — Sentence-case headings** (PG; *Bug 71*). The remaining UI headings (`CSS snippets`, `Editing toolbar integration`) are sentence case.
+- **R26 — `normalizePath()`** (PG; *Bug 72*). User-entered (export fallback) and constructed (snippet) paths pass through `normalizePath()`.
 - **R27 — Manifest description** (SR). Leads with an action verb and contains no em-dash or special characters.
 - **R28 — No hardcoded styling** (PG). The one static inline style (the version-warning colour) moved to a `.lie-settings-warning` CSS class; only runtime-computed geometry remains inline.
 - **R29 — Vault API** (PG). `suggestExportPath` uses `Vault.getAbstractFileByPath()` rather than the adapter; the unavoidable `configDir/snippets` adapter calls (config-dir files are not vault `TFile`s) are left as-is.

@@ -4,7 +4,7 @@
 // on the inner-frame (composed about its centre), the crop PLACEMENT (`transform`) + the
 // `filter` act on the <img> verbatim, and the footprint (`width`/`height`/`aspect-ratio`)
 // acts on the outer. Separating orientation from the crop placement is what makes
-// re-orienting an already-cropped image pivot structurally instead of drifting (Bug 42):
+// re-orienting an already-cropped image pivot structurally instead of drifting (Bug 50):
 // the toolbar's rotate/flip set the orientation fields (frame), never the img transform.
 // The target block format (T2.3) is bare keys (`rotate=`/`flip=`/`transform="…"`/`filter="…"`/
 // `aspect-ratio=`); a legacy `style="transform: …"` is still read (back-compat).
@@ -35,8 +35,8 @@ export interface ImageTransform {
   align?: Align;
   // ORIENTATION → the INNER-FRAME (AD3): rotate + flip composed about the frame centre, so
   // re-orienting a cropped image pivots structurally and never touches the crop placement on
-  // the <img> (Bug 42). Stored as the bare keys `rotate=`/`flip=`, never inside the img
-  // transform — that is the separation Bug 42 turns on.
+  // the <img> (Bug 50). Stored as the bare keys `rotate=`/`flip=`, never inside the img
+  // transform — that is the separation Bug 50 turns on.
   rotate?: number;   // degrees (quarter-turns or free)
   flipH?: boolean;
   flipV?: boolean;
@@ -51,7 +51,7 @@ export interface ImageTransform {
   width?: string;
   height?: string;
   aspectRatio?: string;
-  // Any other style declaration → the outer passthrough (routing rule (Decision 5)). Preserved so
+  // Any other style declaration → the outer passthrough (routing rule (Decision 7)). Preserved so
   // hand-authored extras survive.
   box?: Record<string, string>;
 }
@@ -170,7 +170,7 @@ function parseStyle(style: string, result: ImageTransform): void {
       case "width": result.width = value; break;
       case "height": result.height = value; break;
       case "aspect-ratio": result.aspectRatio = value; break;
-      default: (result.box ??= {})[prop] = value; // routing rule (Decision 5)
+      default: (result.box ??= {})[prop] = value; // routing rule (Decision 7)
     }
   }
 }
@@ -242,7 +242,7 @@ function lengthValue(v: string): string {
 // Orientation (rotate/flip) is now a FIELD on the model (routed to the inner-frame),
 // separate from the crop placement `transform` (the img). The toolbar's rotate/flip edit
 // these fields and never the img transform — so re-orienting a cropped image can't drift
-// it (Bug 42). `parseFns`/`fnsToString` remain for parsing the crop placement (isCrop, the
+// it (Bug 50). `parseFns`/`fnsToString` remain for parsing the crop placement (isCrop, the
 // legacy decompose, the crop editor's own reader).
 // ---------------------------------------------------------------------------
 

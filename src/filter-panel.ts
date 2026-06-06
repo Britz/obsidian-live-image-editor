@@ -71,7 +71,11 @@ export class FilterPanel {
   // confirm-cancel / Esc=cancel behaviour as the size & crop menus — only the
   // placement differs (beside the image, because the panel is large, D8). The panel
   // is a toggle and forms one active region with the image+toolbar (D7).
-  open(anchorEl: HTMLElement, toolbarEl?: HTMLElement | null): void {
+  //
+  // `centeredTitle` (0.5.2) switches to the STANDALONE multi-image mode: no anchor/toolbar/hover
+  // region, centered in the viewport, titled "N images" — the preview/commit fan out to all
+  // selected images via the callbacks the owner passes. `anchorEl` may be null in that mode.
+  open(anchorEl: HTMLElement | null, toolbarEl?: HTMLElement | null, centeredTitle?: string): void {
     if (this.submenu) return;
 
     const body = document.createElement("div");
@@ -84,18 +88,18 @@ export class FilterPanel {
     const submenu = new AnchoredSubmenu();
     submenu.open({
       body,
-      placement: "beside-image",
-      anchor: anchorEl,
-      toolbar: toolbarEl ?? null,
-      title: t("filters"),
+      placement: centeredTitle ? "centered" : "beside-image",
+      anchor: centeredTitle ? undefined : anchorEl ?? undefined,
+      toolbar: centeredTitle ? null : toolbarEl ?? null,
+      title: centeredTitle ?? t("filters"),
       rootClass: "lie-filter-panel",
-      allowFlip: false,                  // never flip onto the file explorer (Bug 56)
-      hideWhenAnchorOffscreen: true,     // track the image; hide when it scrolls away
+      allowFlip: false,                          // never flip onto the file explorer (Bug 64)
+      hideWhenAnchorOffscreen: !centeredTitle,   // track the image; centered has no anchor to track
       // Show/hide with the toolbar's hover while staying part of the active region
-      // (D6/D7): the live-preview overlay is the hover region. In reading view there's
-      // no overlay → undefined → the panel stays shown until dismissed.
-      hoverRegion: anchorEl.closest<HTMLElement>(".lie-wrapper") ?? undefined,
-      // Per-panel reset (the SAME shared-host reset as crop/size, F14/Bug 33):
+      // (D6/D7): the live-preview overlay is the hover region. Centered/reading view → no
+      // region → undefined → the panel stays shown until dismissed.
+      hoverRegion: centeredTitle ? undefined : anchorEl?.closest<HTMLElement>(".lie-wrapper") ?? undefined,
+      // Per-panel reset (the SAME shared-host reset as crop/size, F14/Bug 41):
       // clear all filters to default and preview; the panel stays open.
       onReset: () => this.resetFilters(),
       onCommit: () => this.callbacks.onCommit(this.currentFilter()),

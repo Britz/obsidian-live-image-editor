@@ -59,7 +59,7 @@ interface PopupEl extends HTMLElement { _lieDetach?: () => void; }
 
 // A lightweight button-palette popup for a collapsed group (D3). Distinct from the modal
 // AnchoredSubmenu (D8): NOT greyed/modal, no confirm/cancel — clicking a button runs it and closes.
-// It IS coupled to the image + toolbar active region (Bug 56/D6): the popup sits on document.body
+// It IS coupled to the image + toolbar active region (Bug 64/D6): the popup sits on document.body
 // (outside the wrapper's paint box), so without coupling, hovering it would drop the in-chrome bar's
 // `.lie-wrapper:hover` and hide it. `couplePaletteToRegion` keeps the bar visible while the popup is
 // hovered and closes the popup (bar + popup fade together) when the whole region is left. Esc /
@@ -134,7 +134,7 @@ function makeGroupTrigger(group: ToolbarGroup): HTMLButtonElement {
  * cluster. Clusters are joined by dividers. When the bar runs out of horizontal
  * space, `reflowToolbar` first FOLDS groups to their submenu trigger (Layout before
  * Edit) — and only if it still doesn't fit does the `flex-wrap` wrap it AT THE
- * DIVIDERS (Bug 29: fold first, then wrap). An "always" group starts folded.
+ * DIVIDERS (Bug 37: fold first, then wrap). An "always" group starts folded.
  */
 export function buildToolbarElement(items: ToolbarItem[]): HTMLElement {
   const toolbar = document.createElement("div");
@@ -192,7 +192,7 @@ export function buildToolbarElement(items: ToolbarItem[]): HTMLElement {
 // Fold groups to their submenu trigger (lowest fold-priority first) while the toolbar
 // would wrap to more than one row; expand them again when there is room. Pure DOM
 // toggling — the only thing that needs a measurement, since divider-wrapping alone
-// can't decide WHEN to fold (Bug 29).
+// can't decide WHEN to fold (Bug 37).
 export function reflowToolbar(toolbar: HTMLElement): void {
   const slots = Array.from(toolbar.querySelectorAll<HTMLElement>(".lie-toolbar-group-slot"))
     .filter((s) => s.dataset["lieFold"] !== "100"); // "always" groups stay folded

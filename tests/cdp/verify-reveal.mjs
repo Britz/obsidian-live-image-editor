@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// LP REVEAL CLUSTER guard (Bug 45–47) — a runnable, read-the-real-DOM CDP check.
+// LP REVEAL CLUSTER guard (Bug 53–55) — a runnable, read-the-real-DOM CDP check.
 //
-//   Bug 45: the toolbar reveal toggle renders the `<>` (Lucide "code") icon, not an eye.
-//   Bug 46: a `<>` dismiss hides the WHOLE raw embed — the fake `![](…)` link AND the `{…}`.
-//   Bug 47: the revealed `{…}` carries CM URL tokens (syntax highlighted), not plain text.
+//   Bug 53: the toolbar reveal toggle renders the `<>` (Lucide "code") icon, not an eye.
+//   Bug 54: a `<>` dismiss hides the WHOLE raw embed — the fake `![](…)` link AND the `{…}`.
+//   Bug 55: the revealed `{…}` carries CM URL tokens (syntax highlighted), not plain text.
 //
 // Prereqs (CLAUDE.md → Live debugging): a dev build installed in example-vault/ + Obsidian running with
 // the CDP relay. Run from the repo root:  node tests/cdp/verify-reveal.mjs
@@ -87,11 +87,11 @@ const res = run();
 if (res.fatal) { console.error("FATAL:", res.fatal); process.exit(2); }
 
 const checks = [
-  ["Bug 45: reveal icon is `<>` (lucide-code), not an eye", /lucide-code/.test(res.icon || "")],
-  ["Bug 47: revealed {…} is syntax-highlighted (CM url tokens)", res.attrHighlighted === true],
-  ["Bug 46: source revealed before dismiss (fake + attr shown)", res.before?.fake === "inline" && res.before?.attr === "inline"],
-  ["Bug 46: dismiss hides the fake `![](…)` link", res.after?.fake === "none"],
-  ["Bug 46: dismiss hides the `{…}` block", res.after?.attr === "none"],
+  ["Bug 53: reveal icon is `<>` (lucide-code), not an eye", /lucide-code/.test(res.icon || "")],
+  ["Bug 55: revealed {…} is syntax-highlighted (CM url tokens)", res.attrHighlighted === true],
+  ["Bug 54: source revealed before dismiss (fake + attr shown)", res.before?.fake === "inline" && res.before?.attr === "inline"],
+  ["Bug 54: dismiss hides the fake `![](…)` link", res.after?.fake === "none"],
+  ["Bug 54: dismiss hides the `{…}` block", res.after?.attr === "none"],
 ];
 
 let failed = 0;

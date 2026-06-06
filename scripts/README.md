@@ -1,7 +1,8 @@
 # Scripts
 
-Helper scripts for building, installing, debugging and documenting the plugin. They fall into four
-groups: **build & install**, **demo assets**, **docs site**, and **live debugging over CDP**.
+Helper scripts for building, installing, releasing, debugging and documenting the plugin. They fall
+into five groups: **build & install**, **release**, **demo assets**, **docs site**, and **live
+debugging over CDP**.
 
 Each script's own header comment is the authoritative reference; this file is the map. Note **where**
 each one runs — some are container-side, some must run on the **host** (macOS) where Obsidian lives.
@@ -19,6 +20,26 @@ each one runs — some are container-side, some must run on the **host** (macOS)
   container it builds directly. `--dev` produces a debug build (inline source maps, not minified, and
   the in-plugin CDP relay) for DevTools debugging; omit it for a production build. The script can
   lose its `+x` bit on a fresh container — invoke it as `bash scripts/dev-install.sh <vault>`.
+
+## Release
+
+- **`release.sh [<commit-msg> <tag-msg>]`** — cut a release: **builds first** (fail-fast — generates
+  `main.js`), then makes ONE versioned commit, an annotated tag, pushes, creates the GitHub release
+  with `main.js` / `manifest.json` / `styles.css` attached as binaries (Obsidian SR rule), and finally
+  **verifies** it went through (tag on origin, release + all three assets present). The summary shows
+  each asset's size. The **version comes from `package.json`** (the
+  SSOT — never typed); you supply only the commit + tag message (interactively via
+  `bash scripts/release.sh`, or as two args). The version is auto-prepended — commit
+  `chore(release): v<v> — <msg>`, tag message `v<v> - <msg>` — the tag name is bare (e.g. `0.5.0`), and
+  notes = `v<v> - <msg>` + blank line + the matching `## [<v>]` CHANGELOG section. It **refuses to run**
+  unless `package.json` == `manifest.json`, a valid `## [<v>]` CHANGELOG section (newest entry,
+  dated, non-empty) exists, and there is **no existing tag (local/origin) or GitHub release** for the
+  version, and it **summarises
+  everything and waits for an explicit `y`** — anything else aborts with **nothing done** (no build,
+  commit, tag, push, or release; `RELEASE_ASSUME_YES=1` skips only the prompt). The `/release` skill
+  (`.claude/skills/release/`) wraps it: it offers **editable** generated commit/tag messages,
+  summarises, and runs it only after the user explicitly confirms. Run inside the devcontainer (needs
+  the build toolchain + `gh`).
 
 ## Demo assets
 

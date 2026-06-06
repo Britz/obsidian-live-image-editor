@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// §3 AD1 WRITE-PATH MATRIX — the runnable, load-bearing integration check (the Bug 48 guard).
+// §3 AD1 WRITE-PATH MATRIX — the runnable, load-bearing integration check (the Bug 56 guard).
 //
 // It drives EVERY toolbar/menu op in the running vault and READS THE REAL SOURCE `{…}` BACK,
-// asserting the op's key landed — never assuming the DOM changed. It also runs the Bug 48
+// asserting the op's key landed — never assuming the DOM changed. It also runs the Bug 56
 // duplicate-image case: an op on the SECOND embed of a repeated file must write to the SECOND
-// line, not the first basename match. This is exactly the check Bug 48 slipped through (only the
+// line, not the first basename match. This is exactly the check Bug 56 slipped through (only the
 // resize handle's `width`, via its separate posAtDOM path, persisted).
 //
 // Prereqs (CLAUDE.md → Live debugging): a dev build installed in example-vault/ and Obsidian running
@@ -23,7 +23,7 @@ const env = {
 // Two evals: the async RUN stashes its JSON result on `window.__WPM` (the bridge does not capture
 // an async eval's resolved value — it prints `{}` — but side effects persist), then the sync READ
 // returns the stashed string. The fixture has one distinct image (the per-op matrix) + two
-// same-file images (the Bug 48 dup guard); the run drives each op through the real handlers, reads
+// same-file images (the Bug 56 dup guard); the run drives each op through the real handlers, reads
 // the source line back, then deletes the fixture.
 const EVAL_RUN = `(async () => {
   window.__WPM = "";
@@ -71,7 +71,7 @@ const EVAL_RUN = `(async () => {
     op("reset", () => plugin.reset());
     op("rotateCcw", () => plugin.rotateCcw());
 
-    // Bug 48 dup guard: rotate the SECOND landscape (line 10); the SECOND must change, the FIRST (line 7) must not.
+    // Bug 56 dup guard: rotate the SECOND landscape (line 10); the SECOND must change, the FIRST (line 7) must not.
     const dup = {};
     const second = at(10); const img2 = second && second.querySelector("img");
     if (img2) {
@@ -133,9 +133,9 @@ const checks = [
   ["crop persists aspect-ratio=", has(m.crop, "aspect-ratio=")],
   ["reset clears the block", m.reset === "" || m.reset === " "],
   ["rotate ccw persists rotate= (after reset)", has(m.rotateCcw, "rotate=")],
-  // Bug 48: the op on the SECOND duplicate-file image hits the SECOND line, not the first.
-  ["Bug 48: 2nd image op writes the 2nd line", has(res.dup?.second, "rotate=")],
-  ["Bug 48: the 1st image is untouched", !has(res.dup?.first, "{")],
+  // Bug 56: the op on the SECOND duplicate-file image hits the SECOND line, not the first.
+  ["Bug 56: 2nd image op writes the 2nd line", has(res.dup?.second, "rotate=")],
+  ["Bug 56: the 1st image is untouched", !has(res.dup?.first, "{")],
 ];
 
 let failed = 0;

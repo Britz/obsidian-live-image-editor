@@ -57,7 +57,7 @@ export class CropEditor {
 
   // Working state in the PLACEMENT space (mirrors render-core's crop branch). translate is display
   // px over the cut frame (serialized to % by toCropResult), rotate the CONTENT rotate (distinct
-  // from the frame orientation, which the editor leaves alone — Bug 42), scaleX/scaleY the per-axis
+  // from the frame orientation, which the editor leaves alone — Bug 50), scaleX/scaleY the per-axis
   // zoom (corner = both, edge = one).
   private tx = 0;
   private ty = 0;
@@ -272,7 +272,7 @@ export class CropEditor {
   }
 
   // The frame orientation (rotate + flip about the centre) — the SAME string render-core writes,
-  // so the chrome/ghost overlay the live oriented frame. The editor never EDITS it (Bug 42).
+  // so the chrome/ghost overlay the live oriented frame. The editor never EDITS it (Bug 50).
   private orientationTransform(): string {
     const parts = ["translate(-50%, -50%)"];
     if (this.orientDeg) parts.push(`rotate(${this.orientDeg}deg)`);

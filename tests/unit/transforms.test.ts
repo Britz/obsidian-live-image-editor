@@ -130,7 +130,7 @@ describe("rotate / flip helpers (orientation fields → inner-frame)", () => {
     setRotation(t, 0);
     expect(t.rotate).toBeUndefined();
   });
-  it("Bug 42: rotating a CROP never touches the img's crop placement", () => {
+  it("Bug 50: rotating a CROP never touches the img's crop placement", () => {
     const t: ImageTransform = { classes: [], transform: "translate(-10%, -5%) scale(1.5)" };
     setRotation(t, 90);
     expect(t.rotate).toBe(90);                                  // orientation → inner-frame
@@ -233,7 +233,7 @@ describe("round-trips (the canonical block is the lossless single encoding)", ()
     expect(reparsed.width).toBe("320px");
     expect(isCrop(reparsed)).toBe(true);
   });
-  it("preserves a rotated crop (orientation field + crop placement together — Bug 42)", () => {
+  it("preserves a rotated crop (orientation field + crop placement together — Bug 50)", () => {
     const original: ImageTransform = {
       rotate: 90,
       transform: "translate(-25%, -10%) scale(1.8)",
@@ -260,12 +260,12 @@ describe("round-trips (the canonical block is the lossless single encoding)", ()
   });
 });
 
-// §2.8 — Per-operation persistence (the Bug 48 guard). Every model-mutating op, applied to a
+// §2.8 — Per-operation persistence (the Bug 56 guard). Every model-mutating op, applied to a
 // base transform, must SERIALIZE to a {…} that contains its key/value (not just `width`), and
 // round-trip (serialize -> parse -> the field is back). These are the pure half of the guard;
 // the wiring (the op's edit actually reaching the source line) is the §3 AD1 CDP write-path
-// matrix (scripts/verify-write-path.mjs), which is where Bug 48's basename-collision lived.
-describe("per-operation persistence (§2.8 — Bug 48 guard)", () => {
+// matrix (scripts/verify-write-path.mjs), which is where Bug 56's basename-collision lived.
+describe("per-operation persistence (§2.8 — Bug 56 guard)", () => {
   const base = (): ImageTransform => ({ classes: [] });
   const block = (t: ImageTransform): string => serializeTransform(t);
 

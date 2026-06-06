@@ -19,7 +19,7 @@ import { BUNDLED_SNIPPET_CSS } from "./bundled-snippet";
 // On a foreign page the OUTER `.lie-image-area` IS the flow participant (no Obsidian embed
 // wrapper), so alignment floats/centres the outer directly. The marker class rides the img
 // (buildLayers re-derives it from `align`), so `:has(img.lie-…)` matches. margin:auto centres
-// fine here (no `.cm-content > * { margin:0 !important }` to fight, unlike Obsidian — Bug 19).
+// fine here (no `.cm-content > * { margin:0 !important }` to fight, unlike Obsidian — Bug 27).
 const RUNTIME_CSS = `
 .lie-image-area:has(img.lie-left) { float: left; clear: none; margin: 0 1em 0.5em 0; }
 .lie-image-area:has(img.lie-right) { float: right; clear: none; margin: 0 0 0.5em 1em; }

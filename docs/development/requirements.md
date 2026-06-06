@@ -91,26 +91,49 @@ no language or link-format setting of its own.
   - **F16.1 — Bundled snippets are opt-in.** The example snippets can be **installed from the
     settings** and are **not installed by default**. Since they are editable once installed, a
     **reset** restores them to the shipped version.
+  - **F16.2 — Feature master toggle.** The whole snippet/decoration-class feature has a single
+    on/off switch (the toolbar's class picker + the settings overview). Off leaves **alignment /
+    inline** (core layout, F15) and any **already-applied** classes untouched — those still render
+    via Obsidian's own enabled snippet, which the plugin does not inject.
+  - **F16.3 — Class overview with provenance & status.** The discovered classes are presented
+    grouped by **source file**, searchable, each with an enable toggle. Classes from the bundled
+    file are **diffed against the shipped version**: *changed* and *deleted* classes are marked and
+    offer a **per-class restore** (a deleted class still appears so it can be brought back). A class
+    name active in **two** enabled snippets is flagged as a **collision** (last-loaded wins). A class
+    repeated within one file lists once and does not collide with itself.
 - **F17 — Inline (mid-text) images.** An image placed within a line of text (icon-style, via
   the inline class) renders at its intended **inline size** in both views — not Obsidian's
   native full-size inline image.
 - **F18 — Float & text wrap.** Left / right alignment **floats** the image so the surrounding
   text wraps around it — in both reading view and live preview.
 - **F19 — Commands.** Image-context commands for the transforms, sizing, alignment,
-  add-class, reset, inline toggle and export (active only when an image is in context).
-- **F20 — Settings.** General toggles — hover toolbar, captions, and the **default raw-link
-  reveal state** (auto / always, F8; default **auto**); the **preset widths** for small / medium / large (F24);
-  the detected-snippet list with per-class toggles plus **install / reset of the bundled example
-  snippets** (F16.1); and the optional editing-toolbar integration.
+  add-class, reset, inline toggle and export (active only when an image is in context — the
+  hover/click-active image, or, for command-palette/hotkey use where there is no hover, the image
+  on the editor's **cursor line**). **Multi-image:** when the editor selection covers ≥2 image
+  embeds, a command acts on **all** of them in one undo step — rotate/flip are relative (each from
+  its own value), align/size are set; filters/custom-size/add-class open a **standalone centered
+  panel ("N images")** that previews+commits to all; **crop and export stay single-image**. The
+  toolbar buttons are always single (they target the hovered image). Plus **page-scope** commands
+  that act on the whole note regardless of image context — currently **"Reset all images on this
+  page"** (the still-backlogged flatten/export-page commands belong here too).
+- **F20 — Settings.** A **General** group — hover toolbar, captions, the **default raw-link
+  reveal state** (auto / always, F8; default **auto**), the tall-float cap — kept compact; the
+  **preset widths** for small / medium / large (F24); a **CSS-classes** section
+  (the F16 master toggle, a link to Obsidian's snippet management, install/reset of the bundled
+  example snippets (F16.1), and the grouped, searchable class overview (F16.2/F16.3)); and the
+  optional editing-toolbar integration. When **no** CSS snippet is enabled in Obsidian, the
+  CSS-classes section greys out and points the user to Appearance → CSS snippets.
 - **F21 — Localization.** Follows Obsidian's language automatically, reusing the platform's
   own strings where possible, with an English fallback; no language setting of its own.
 - **F22 — Captions.** The image's **alt text** is shown as a caption below the image,
   rendered as Markdown. Toggleable. The alt text stays the single source (no separate caption
   store); the native size suffix is not caption text.
-- **F23 — Editing-toolbar command integration.** On request from the settings, the plugin's
-  image commands (F19) can be **installed into** — and removed from — the separate
-  *editing-toolbar* community plugin's bar, so they appear as buttons there. It is optional and
-  **off by default**, and only offered for tested versions of that plugin (T10).
+- **F23 — Editing-toolbar command integration.** On request from the settings, the plugin's whole
+  image toolbar (F19) is **added to** — and removed from — the separate *editing-toolbar* community
+  plugin as **one submenu** ("Image editing"), not loose buttons. It is optional and **off by
+  default**, and only offered for tested versions of that plugin (T10). The one settings entry adapts
+  to the editing-toolbar's state: not installed → link to the plugin store; installed but disabled →
+  link to plugin settings; enabled → the integration toggle.
 - **F24 — Size presets.** A defined set of one-tap size presets is offered: **icon, small,
   medium, large, original**. *small / medium / large* set the corresponding **preset width**
   (configurable in settings, F20) through the **same width mechanism** as a custom width — not a

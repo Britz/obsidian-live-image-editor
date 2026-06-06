@@ -71,9 +71,9 @@ describe("toCropResult (editor state → placement transform + cut-frame width/a
 });
 
 // The editor reads back EXACTLY what it commits (centre-origin, % baselines preserved) — so the
-// live preview equals the committed render and a release never drifts (Bug 43 A). In-place the
+// live preview equals the committed render and a release never drifts (Bug 51 A). In-place the
 // editor's scale-1 baseline IS the cut-frame width, so parse∘serialize is the identity.
-describe("parsePlacement ∘ toCropResult round-trip (Bug 43 A — no centre/top-left drift)", () => {
+describe("parsePlacement ∘ toCropResult round-trip (Bug 51 A — no centre/top-left drift)", () => {
   const frameW = 200, r = 2; // img display height at width:100% = 100
   const cases = [
     { tx: 50, ty: 25, rotate: 12.3, scaleX: 1.5, scaleY: 1.5 },

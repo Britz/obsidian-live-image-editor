@@ -26,7 +26,7 @@ const numOf = (a: string | undefined): number => parseFloat(a ?? "") || 0;
  * crop/rotate math): FIRST the content (the cut region for a crop, else the full image) with
  * the `filter` baked in at original resolution, THEN the inner-frame ORIENTATION (rotate +
  * flip) about the centre — exactly outer ← frame ← img replayed on the canvas. So a rotated
- * crop exports with the orientation around the preserved cut (Bug 42), not a parallel branch.
+ * crop exports with the orientation around the preserved cut (Bug 50), not a parallel branch.
  */
 export async function renderTransformedImage(
   img: HTMLImageElement,
@@ -224,7 +224,7 @@ export async function saveExport(
   return new Promise<string | null>((resolve) => {
     new ExportPathModal(app, suggestedRel, originalPath, async (rel) => {
       if (!rel) return resolve(null);
-      const safeRel = normalizePath(rel); // user-entered vault path (Bug 64/R26)
+      const safeRel = normalizePath(rel); // user-entered vault path (Bug 72/R26)
       await adapter.writeBinary(safeRel, buffer); // writeBinary overwrites if it exists
       resolve(safeRel);
     }).open();

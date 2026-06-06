@@ -24,7 +24,8 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/link-format.ts` | AB2 Link form & native-size normalization | `parseEmbedLine`<br>`buildEmbed`<br>`convertEmbedLine`<br>`desiredFormat` |
 | `src/image-resolver.ts` | AB3 Source↔DOM mapping (pure — `import type` Editor) | `findImageInSource`<br>`findImageInText` *(occurrence-aware — F2)*<br>`findImageInLine` *(one line, the posAtDOM-disambiguated resolver)*<br>`getImageFilename`<br>`ImageLocation` |
 | `src/source-writer.ts` | AB3 / AD1 edit writer (shared) | `writeSource` *(one isolated CM transaction per edit)*<br>`LIE_USER_EVENT` |
-| `src/snippet-scanner.ts` | AB4 Snippet class discovery | `scanSnippets` *(enabled-only)*<br>`SnippetClass`<br>`installBundledSnippet`<br>`resetBundledSnippet`<br>`isBundledSnippetInstalled` |
+| `src/snippet-scanner.ts` | AB4 Snippet class discovery | `scanSnippets` *(flat, enabled-only — toolbar)*<br>`scanSnippetFiles` *(per-file grouped + our-file status — settings)*<br>`SnippetClass`/`SnippetFile`<br>`installBundledSnippet`<br>`resetBundledSnippet`<br>`restoreBundledClass`<br>`isBundledSnippetInstalled` |
+| `src/snippet-classify.ts` | AB4 (pure logic) | `parseImgRules`<br>`classifyBundledFile` *(unchanged/changed/deleted vs shipped)*<br>`restoreClassInCss`<br>`findCollisions`<br>`ClassEntry`/`ClassStatus` |
 | `src/renderer-logic.ts` | AB5 Geometry (pure) | `boxAspectRatio`<br>`innerImageSize`<br>`rotatedAabb`<br>`estimatedBlockHeight`<br>`isTallFloat`<br>`TALL_FLOAT_THRESHOLD_PX` |
 | `src/render-core.ts` | AB6 Uniform 3-layer box + AB7a core (Obsidian-FREE) | `buildLayers` *(the 3-layer builder, shared by plugin + runtime)*<br>`applyFilterPreview`<br>`unwrapBox`<br>`BOX_CLASS` *(outer)*<br>`FRAME_CLASS` *(inner-frame)*<br>`RENDER_CSS` *(structural layer CSS, the single injected source)*<br>`CLAIM_SELECTOR`/`readTransform` *(identification + attrs→model)* |
 | `src/caption-logic.ts` | AB7 Caption (text, pure) | `captionMarkdown`<br>`captionFromAlt` |
@@ -35,7 +36,7 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/anchored-submenu-logic.ts` | AB11 Sub-menu placement (pure) | `placeSubmenu`<br>`SubmenuPlacement` |
 | `src/anchored-submenu.ts` | AB11 Shared sub-menu host | `AnchoredSubmenu` |
 | `src/region-hover.ts` | AB11a Active-region hover binder (D6.2/D6.4) | `bindRegionHover` *(N members → one grace-bridged, nesting-robust hover signal)*<br>`couplePaletteToRegion` *(body-level palette ↔ region, not greyed)* |
-| `src/toolbar-region-logic.ts` | AB11a Region decisions (pure) | `clickDismissesToolbar` *(click-away closes filter/size; crop exempt — Bug 54)* |
+| `src/toolbar-region-logic.ts` | AB11a Region decisions (pure) | `clickDismissesToolbar` *(click-away closes filter/size; crop exempt — Bug 62)* |
 | `src/crop-editor-logic.ts` | AB12 Crop quantization (pure) | `snapTranslate`<br>`snapAngle`<br>`snapScale`<br>`applyRotateGesture` *(macOS trackpad rotate-gesture delta → snapped content angle)*<br>`parsePlacement` *(round-trip inverse)*<br>`toCropResult` *(placement transform + cut width + aspect-ratio ≠ original)* |
 | `src/crop-editor.ts` | AB12 Crop editor | `CropEditor` |
 | `src/filter-panel.ts` | AB13 Filter panel | `FilterPanel` |
@@ -328,7 +329,7 @@ there is no second crop/rotate/scale implementation. (This collapses the old dup
 - **Native-suppression (live preview)** — static, **UNIFORM** rules hide Obsidian's native image in
   **every** embed: `.cm-content .internal-embed.image-embed > img` and `> .image-wrapper` (covering
   both the Markdown `> img` and the wikilink `.image-wrapper`), plus the native `> .edit-block-button`
-  (so the native `<>` icon never leaks, Bug 23). The rules **never** hit the plugin's own
+  (so the native `<>` icon never leaks, Bug 31). The rules **never** hit the plugin's own
   `.lie-wrapper`. The `{…}` block (real document text) is hidden when the image is rendered and shown
   when the line is active — keyed on `.cm-active` / `.cm-line:has(> .cm-formatting)`.
 - **Reveal-for-looking** — the "fake" raw link + the `{…}` ride on a **mode class**: `lie-rev-auto`
@@ -391,7 +392,12 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   adapter, pattern-matches image classes, filters out `lie-*` and Obsidian-internal classes,
   and re-runs on the file-watcher (F16, T6). The plugin also **ships example decoration snippets**
   it can install into `.obsidian/snippets/` on request (opt-in) and reset to the shipped version;
-  once installed they are discovered like any other snippet (F16.1).
+  once installed they are discovered like any other snippet (F16.1). For the settings overview,
+  `scanSnippetFiles` returns the same enabled-only classes **grouped by file**, folding in the
+  bundled file's diff status; `restoreBundledClass` rewrites one class back to shipped (F16.3). The
+  diff/collision arithmetic lives in the pure **`snippet-classify.ts`** (`parseImgRules`,
+  `classifyBundledFile`, `restoreClassInCss`, `findCollisions`) — no vault/Obsidian imports, so it's
+  unit-tested in `tests/unit/snippet-classify.test.ts`.
 
 ### 3.2 Render core
 
@@ -404,7 +410,7 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   (normal = degenerate transform): the 3-layer outer / inner-frame / `<img>` (§2.3) with
   `overflow:hidden` on the frame; it sizes the **outer** (width attr, else column-capped intrinsic)
   + sets its derived `aspect-ratio`, applies `rotate` + `flip` to the **inner-frame** about its
-  centre (`applyOrientation`, the structural pivot that fixes Bug 42) and the crop `transform` +
+  centre (`applyOrientation`, the structural pivot that fixes Bug 50) and the crop `transform` +
   `filter` to the **`<img>`** (outer → frame → image sizing direction, §2.3); it shapes the frame
   from the base shape (natural ratio, or the cut shape for a crop) + angle (`shapeFrame`/`cropAspect`);
   it re-derives the `lie-left/right/center` marker class from the `align` field, marks a tall float
@@ -565,8 +571,15 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
 
 ### 3.5 Plugin shell
 
-- **`main.ts`** registers both adapters, `registerCommands` (`commands.ts`, `checkCallback`
-  gated on image context), `LieSettingTab` (`settings.ts`), and `StylesInjector`
+- **`main.ts`** registers both adapters, `registerCommands` (`commands.ts`: image-specific
+  commands `checkCallback`-gated via `canRun` on image context — `commandScope` resolves either a
+  multi-image set (`selectionTargets` = embeds the editor selection overlaps, ≥2 ⇒ multi; pure core
+  `spansOverlappingRanges`) or the single hover/cursor image (`resolveCommandImage`). Multi runs go
+  through `modifyTransformMulti` (all `{…}` blocks in one transaction = one undo step); the
+  interactive ones open centered standalone panels (`openMultiSize`/`openMultiFilters`/
+  `openMultiClass`, `placement: "centered"`). Toolbar buttons call the single methods directly.
+  Page-scope commands like `resetAllImages` register as a plain always-visible `callback`),
+  `LieSettingTab` (`settings.ts`), and `StylesInjector`
   (`styles-injector.ts`). `i18n/` follows the Obsidian locale. `editing-toolbar-integration.ts`
   is version-gated and off by default (F23, T10). `dev-bridge.ts` is tree-shaken from production.
 

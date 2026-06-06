@@ -14,7 +14,8 @@ is the build & debug guide only; the [user guide](../user-guide.md) covers usage
 | [architecture.md](architecture.md) | How (concept) | Mid-level decisions (`AD1–AD9`) and building blocks (`AB…`); data flow; the **R0** uniform-rendering model. |
 | [implementation-plan.md](implementation-plan.md) | How (code) | Low-level module map (file → block → exports), per-layer realization, and pitfalls. |
 | [test-plan.md](test-plan.md) | Verification | The test strategy (currently a draft). |
-| [issues.md](issues.md) | Backlog + registry | **Open** items at the top (decisions, verifications, deferred ideas, the DRY/KISS audit, known bugs, housekeeping — with the **[Release-Requirement]** community-directory items sorted into those sections); the **solved/done** registry at the bottom (every resolved defect and lesson with cause + fix, incl. `Lesson 1–16`). |
+| [issues.md](issues.md) | Backlog + lessons | **OPEN** at the top: numbered registry items (`Decision`/`Feature`/`Bug`, sharing the changelog's sequences — each keeps its number when it ships) + an unnumbered **Meta level** (verifications, refactoring, housekeeping, and the hard-won **`Lesson 1–16`**). The solved Bug/Feature/Change/Decision registry lives in [CHANGELOG.md](../../CHANGELOG.md). |
+| [CHANGELOG.md](../../CHANGELOG.md) | Done | The registry of everything shipped: **one numbered list per version**, sorted Decision › Change › Feature › Bug (newest-first), each entry in its own global chronological sequence (numbers never reused). |
 
 The pre-submission **community-directory compliance audit** — the plugin checked against Obsidian's
 Developer policies, Plugin guidelines, and Submission requirements (2026-06-05) — lives in the

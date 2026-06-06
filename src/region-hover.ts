@@ -47,7 +47,7 @@ export function bindRegionHover(
 }
 
 // Couple a lightweight palette (group popup / class dropdown) to the image + toolbar active region
-// (Bug 56 / D6). The palette sits on document.body (outside the `.lie-wrapper` paint box), so hovering
+// (Bug 64 / D6). The palette sits on document.body (outside the `.lie-wrapper` paint box), so hovering
 // it would otherwise drop the in-chrome bar's `.lie-wrapper:hover` and hide it. Mark the wrapper
 // `.lie-region-hover` (the stylesheet keeps the in-chrome bar visible — NOT greyed; palettes are not
 // modal) while the region is hovered, and CLOSE the palette when the WHOLE region is left, so palette

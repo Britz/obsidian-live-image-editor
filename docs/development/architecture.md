@@ -407,9 +407,24 @@ display state — each produces an edit that round-trips through the model layer
 
 - **AB17 — Lifecycle** — registers the two view adapters, commands and settings; owns load/unload.
 - **AB18 — Commands** — image-context commands, active only when an image is in context (F19).
-- **AB19 — Settings** — the general toggles (hover toolbar, captions, default raw-link reveal
-  state), the **preset widths**, the snippet list with per-class toggles plus **install / reset
-  of the bundled example snippets**, and the optional editing-toolbar integration (F20, F16.1).
+- **AB19 — Settings** — a compact **General** group (hover toolbar, captions, default raw-link
+  reveal state, tall-float cap), the **preset widths**, and a **CSS-classes** section
+  driven as a 3-state machine (F20/F16.2): **(A)** no snippet enabled in Obsidian
+  (`customCss.enabledSnippets.size === 0`) → greyed master toggle + a notice/link to Appearance →
+  CSS snippets; **(B)** feature off → just the master toggle; **(C)** feature on → install/reset of
+  the bundled example snippet plus the grouped, searchable class overview. The overview's diff
+  status (changed/deleted) and collision detection are a **pure logic** unit (`snippet-classify.ts`,
+  AB4-adjacent) so they're unit-tested off-Obsidian; the per-file scan and per-class restore are the
+  I/O layer in `snippet-scanner.ts`. Plus the optional editing-toolbar integration (F16.1/F16.3).
+  Related rows are wrapped in Obsidian's **native** card groups (`div.setting-group` → `div.setting-
+  items`, the same structure the core CSS-snippets & community-plugins pages use, styled uniformly by
+  the app/theme — no custom card CSS): the General toggles, the preset widths, the editing-toolbar
+  section, and the class overview. The overview is ONE group like the community-plugins list — a
+  heading with refresh / open-management icons, a native search box, then ALL classes in a single
+  list (a leading `braces` icon per row, the source file as each row's description). Rows are ordered
+  by file with our bundled classes pinned to the top and set off with an accent strip; their
+  changed/deleted status shows warning/error colours; restore is **per-class** only (no whole-file
+  reset).
 - **AB20 — Style injection** — installs the internal prefixed CSS: the alignment/inline classes
   and their `:has()` float routing (a `lie-left/right` float escapes the non-BFC cm-line; `z-index:1`
   keeps the floated image clickable), the box/overflow rules, the **tall-float cap** (a `.lie-tall`

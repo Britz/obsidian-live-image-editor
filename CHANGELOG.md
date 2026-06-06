@@ -2,282 +2,344 @@
 
 All notable changes to this project are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version numbers use
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html) notation but are bumped **patch-only**
+during 0.x (each release `+0.0.1`; no minor/major jumps).
+
+Every entry is numbered in one global per-category sequence — **Decision**, **Change**, **Feature**,
+**Bug** — and split across the version it shipped in. Within a version the list is sorted
+Decision › Change › Feature › Bug, each category newest-first (highest number on top). Numbers are
+never reused. (Open/unsolved items and the hard-won lessons live in `docs/development/issues.md`.)
+
+## [0.5.4] - 2026-06-06
+
+Editing-toolbar integration now actually shows up — as the wanted horizontal icon row.
+
+- **Change 29 — Reset command renamed and re-iconed.** The single-image reset read "Reset all" with
+  an `undo-2` icon — easily confused with the page-scope "Reset all images on this page", and the icon
+  looked like Undo (right next to the real Undo in the editing-toolbar). It's now **"Reset image"**
+  ("Bild zurücksetzen") with an `undo` icon, across the hover toolbar, the editing-toolbar submenu and
+  the command palette. (The sub-panel's own "reset this" button keeps `undo-2`.)
+- **Bug 75 — Editing-toolbar integration showed nothing.** Three causes: the entry used
+  `menuType: "dropdown"` (a popup, not inline icons); it was appended at the *end* of a full top
+  bar where it overflowed off-screen; and the live toolbar was never rebuilt after the settings
+  write. It now injects the full image toolbar as a horizontal icon submenu (`menuType: "submenu"`)
+  near the left edge and forces a rebuild, so it appears immediately; on load it self-heals/migrates
+  an existing entry.
+
+## [0.5.3] - 2026-06-06
+
+CSS-class management: restore now handles commented-out classes, and the bundled example file gets a
+full install / reset / uninstall lifecycle.
+
+- **Change 28 — Settings reuse Obsidian's own terminology.** Feature names (*CSS snippets*,
+  *Appearance*) are pulled from Obsidian's own translations (`i18next`), plus a native info callout
+  explaining the toggles only gate the toolbar picker; the bundled snippet is presented as a built-in
+  CSS snippet, not an "example".
+- **Feature 30 — Bundled-snippet file lifecycle in settings.** The example-snippet entry adapts to
+  the file's state: missing → Install; modified → Reset to shipped (plus Uninstall); unchanged →
+  Uninstall (confirmed first — sterner when the file carries your edits).
+- **Bug 74 — Per-class restore did nothing for a class "deleted" by commenting it out.** The presence
+  check matched the class text *inside* the `/* … */` comment, so it edited the rule in place (still
+  commented) instead of re-adding it; it now judges presence on the comment-stripped CSS.
+
+## [0.5.2] - 2026-06-05
+
+Image commands now act on a whole selection of images at once.
+
+- **Feature 29 — Standalone panels for multi-image filters / custom size / CSS classes.** These open
+  as a centered "N images" panel and apply to every selected image (preview fans out live);
+  crop and export stay single-image.
+- **Feature 28 — Multi-image commands.** When the selection covers two or more images, a command runs
+  on all of them in one undo step (rotate/flip relative per image; align/size set the same value).
+  With no selection it behaves as before on the hover/cursor image; toolbar buttons stay single-image.
+
+## [0.5.1] - 2026-06-05
+
+Commands now actually appear in the command palette, and gain a first page-scope command.
+
+- **Feature 27 — "Reset all images on this page" command.** A page-scope command (always available)
+  that strips every `{…}` transform block in the active note in one undo step. First of the page-scope
+  command category.
+- **Bug 73 — Commands were invisible in the command palette.** Every command self-gated on a *hovered*
+  image via `checkCallback`, which Obsidian hides when false — and opening the palette clears the
+  hover. Image commands now resolve their target from the hovered image **or** the cursor line.
+
+## [0.5.0] - 2026-06-05
+
+Settings-panel rework: the panel is more compact up top and the CSS-classes feature gets a proper
+management surface.
+
+- **Decision 12 — Settings-panel rework forks.** "Obsidian off" = no enabled snippet (greys the master
+  toggle + links to Appearance → CSS snippets); the master toggle gates the decoration-class feature
+  only (alignment/inline stay); restore is per-class plus a whole-file "Reset to shipped".
+- **Change 27 — CSS section reflects Obsidian state.** With no CSS snippet enabled at all, the master
+  toggle greys out and an inline notice + link points to Appearance → CSS snippets.
+- **Change 26 — Native grouped-card settings layout.** Related settings sit in Obsidian's own
+  `setting-group` / `setting-items` cards (uniform with the core snippets & community-plugins pages).
+- **Feature 26 — Editing-toolbar integration.** Adds the whole image toolbar as one submenu
+  (validated against editing-toolbar 4.0.8); the settings entry adapts to not-installed /
+  installed-but-disabled / enabled.
+- **Feature 25 — CSS-classes management surface.** A master toggle plus a plugin-list-style overview
+  (search, per-file rows, bundled classes pinned), changed/deleted detection vs the shipped snippet,
+  per-class restore, and name-collision warnings.
 
 ## [0.4.2] - 2026-06-05
 
-Community-directory release-compliance pass — closes the remaining review-checklist rules
-(R20–R30) so the plugin is ready for submission. No change to image-editing behaviour.
+Community-directory release-compliance pass — closes the remaining review-checklist rules (R20–R30)
+so the plugin is ready for submission. No change to image-editing behaviour.
 
-### Changed
-
-- **Settings tab follows Obsidian's UI guidelines.** Removed the plugin-name top-level heading;
-  section headings now use `setHeading()` instead of raw HTML; the version-warning colour moved
-  from an inline style to a `.lie-settings-warning` CSS class (R22 / R23 / R28).
-- **Command names are sentence case and localized.** The size/align commands read `Size: small`,
-  `Align: left`, … and are routed through i18n (en/de) like the rest (R24). The `CSS snippets` and
-  `Editing toolbar integration` headings are sentence case too (R25).
-- **Manifest description** leads with an action verb and drops the em-dash/special characters (R27).
-
-### Fixed
-
-- **Paths run through `normalizePath()`.** The export fallback's user-entered vault path and the
-  constructed snippet paths are normalized before use (R26).
-- **Prefer the Vault API over the adapter.** `suggestExportPath` probes free filenames via
-  `Vault.getAbstractFileByPath()` rather than `adapter.exists` (R29).
-
-### Documentation
-
-- **README now discloses out-of-vault file writes** (the export save dialog) and documents why
-  `isDesktopOnly` stays `false` — the Electron/Node paths (export dialog, macOS trackpad rotate)
-  are feature-detected with mobile fallbacks (R20 / R21). Verified that every direct
-  `document`/`window` listener is interaction-scoped with matching teardown; plugin-lifetime
-  listeners already use `registerDomEvent` (R30).
+- **Change 25 — Community-directory compliance pass.** UI-guideline settings tab (no plugin-name
+  heading, `setHeading()`, CSS class for the warning colour), sentence-case localized command names,
+  `normalizePath()` on user/constructed paths, the Vault API over the adapter, manifest description,
+  and README disclosures (R20–R30).
+- **Bug 72 — User/constructed paths not run through `normalizePath()`.** The export fallback's vault
+  path and the constructed snippet paths now go through `normalizePath()` (R26).
+- **Bug 71 — Remaining UI headings were Title Case.** "CSS snippets" / "Editing toolbar integration"
+  are sentence case (R25).
+- **Bug 70 — Command names were Title Case and bypassed i18n.** Size/align commands read
+  `Size: small` / `Align: left` and route through en/de (R24).
+- **Bug 69 — Raw HTML section headings instead of `setHeading()`** (R23).
+- **Bug 68 — Plugin-name top-level heading in settings removed** (R22).
 
 ## [0.4.1] - 2026-06-05
 
-### Fixed
-
-- **Clicking outside an open filter/size panel now closes it.** The click-away
-  boundary was the whole image+toolbar region, so clicking the image — which fills
-  most of the canvas — left the panel stuck open. Clicking anywhere outside the
-  sub-panel (the image included) now closes it and saves the change. The crop editor
-  is unchanged: it still ends only via its own toggle / accept / cancel / Esc, so a
-  stray click can't destroy an in-place crop session.
-
-- **The standalone runtime now ships the default image-decoration classes.** The portable
-  runtime (`lie-runtime.js` — used on the docs site and any non-Obsidian page) injected the
-  core transform/filter CSS but not the plugin's bundled decoration snippet (`rounded` /
-  `shadow` / `bordered` / `circle`), so class-styled example images rendered unstyled
-  off-Obsidian. The shipped default snippet was extracted to an Obsidian-free module
-  (`src/bundled-snippet.ts`) shared by the plugin and the runtime, and the runtime now
-  injects it. Carrying a user's *modified* in-vault snippets is tracked as a future feature.
-  (Note: `.bordered` uses an Obsidian theme variable that doesn't resolve off-Obsidian, so
-  that one border may not paint on a foreign page.)
+- **Decision 11 — Docs-site stack: ProperDocs + MaterialX.** Single-version site, native version
+  badge; `mike` and stock MkDocs/mkdocs-material rejected (abandoned / EOL).
+- **Decision 10 — Snippets install/reset.** Install copies shipped CSS without force-overwrite; Reset
+  is per-file to the shipped original; only Obsidian-enabled snippets are scanned/offered.
+- **Change 24 — The standalone runtime now ships the default decoration classes** (`rounded` /
+  `shadow` / `bordered` / `circle`), extracted to the Obsidian-free `src/bundled-snippet.ts` shared by
+  plugin and runtime.
+- **Bug 62 — Click-away now closes an open filter/size panel.** The boundary was the whole
+  image+toolbar region (the image fills the canvas, so it stayed open); it now shrinks to the
+  sub-panel, and clicking anywhere else closes + persists. Crop stays exempt.
 
 ## [0.4.0] - 2026-06-05
 
-A ground-up rework of how images render and how cropping works, a cleaner toolbar /
-panel interaction, a real test suite and refreshed documentation.
+A ground-up rework of how images render and how cropping works, a cleaner toolbar / panel
+interaction, a real test suite and refreshed documentation.
 
-### Added
-
-- **In-place crop with edge handles** — the crop editor now edits the image right
-  where it sits (no jump to a separate overlay), with four corner handles
-  (aspect-locked), four edge handles (single-axis) and a rotate knob. What you see
-  while cropping is exactly what gets committed.
-- **Trackpad rotate gesture (macOS)** — rotate inside the crop editor with a
-  two-finger trackpad twist, in addition to the rotate handle.
-- **Portable runtime** — a tiny standalone script reproduces the rendering on a
-  published page (e.g. MkDocs / Material), so rotate, flip, crop and filters show up
-  outside Obsidian too. Align, width and filter are plain HTML attributes and already
-  render natively without it.
-
-### Changed
-
-- **Uniform rendering model** — every image now renders through the same
-  outer / frame / image structure, so normal, rotated, flipped, cropped, filtered and
-  scaled images all follow one path and look identical in reading view and live
-  preview. Rotating a cropped image no longer drifts out of place.
-- **Cleaner stored format** — transforms are written as short bare keys, e.g.
-  `{rotate=90 flip=horizontal width=300}`, instead of the old `{.lie-img style="…"}`
-  block. Older blocks still parse, and align / width / filter are real HTML attributes
-  so they survive in other renderers.
-- **Toolbar and panel are one region** — while a crop / filter / size panel is open,
-  the toolbar and the panel behave as a single hover region: the toolbar stays (greyed)
-  instead of flickering away as you move onto the panel, and clicking away closes the
-  panel (crop excepted). The accept (✓) / cancel (✗) icons are back; leaving a panel
-  auto-persists as a single undo step, and Esc cancels.
-- **Crop auto-persists** — leaving the crop editor commits the result as one undo step;
-  the per-panel Reset reverts within the session.
-
-### Removed
-
-- **Temperature filter** — the temperature slider was never wired into the panel, so it
-  has been retired. The seven filter sliders and five presets remain.
-
-### Fixed
-
-- A duplicated image (the same file embedded twice) now renders and edits the correct
-  occurrence in both views, instead of always picking up the first one's transform.
-- The "icon" size preset now renders the image inline as an icon, not merely at icon
-  height.
-- A filter-only image is now picked up by the portable runtime on a published page.
-- The crop editor restores all of its temporary state on every exit (commit, Esc or
-  click-away), so paint containment can no longer get stuck after a crop.
-- Crop panning now grabs the whole image, both inside and outside the cut frame.
+- **Decision 9 — Keep the `*-logic.ts` split.** Pure logic stays split from framework-coupled code so
+  it's unit-testable without an obsidian/CM mock.
+- **Decision 8 — Temperature retired.** The virtual-temperature control had no panel row; removed.
+- **Decision 7 — Routing rule.** Image = box; everything routes to the box except `transform`/`filter`
+  (→ the image); alignment/inline → the embed.
+- **Decision 6 — Inline ≠ size; uniform chrome.** Inline and size are orthogonal; no "chrome skipped
+  for inline" special case (R0).
+- **Change 23 — Reveal default = auto** (docs aligned: `alwaysShowLink` off = reveal on hover / active
+  line).
+- **Change 22 — Pure DRY/KISS refactors** — shared `locateActiveImage`, single `nonDefaultFilter`,
+  `BOX_CLASS`, one labelled `textButton`.
+- **Change 21 — Dead-code sweep** — removed `getPreset` / `setPresetWidth` / `parseLocationTransform`
+  and their tests.
+- **Change 20 — Portable bare-key format fulfilled** — one format, three consumers (no-JS fallback,
+  runtime, writer); runtime-only keys degrade to the original image.
+- **Change 19 — Obsidian-free render core extracted** (`render-core.ts`: `buildLayers` + `RENDER_CSS`,
+  injected by both plugin and runtime — one source, identical render).
+- **Change 18 — Temperature filter removed** — the seven sliders + five presets remain.
+- **Change 17 — Toolbar + panel are one active region.** The bar stays (greyed) as you move onto the
+  panel; the accept (✓) / cancel (✗) icons are back, routed through an explicit exit reason.
+- **Change 16 — Auto-persist editing.** Leaving a panel persists once as a single undo step; the
+  per-panel Reset is the only in-session revert.
+- **Change 15 — Crop teardown restores all transient overrides on every exit** (a single
+  `exitCropMode`, no second path).
+- **Change 14 — Crop serialization.** Placement = `transform=`, cut shape = `aspect-ratio=` (stored
+  only when it differs); never a fixed px height.
+- **Change 13 — Box rename.** The uniform image box is `.lie-image-area`, the chrome container
+  `.lie-box`; `lie-rotate-box` retired.
+- **Change 12 — Cleaner stored format.** Short bare keys (`{rotate=90 flip=horizontal width=300}`);
+  align / width / filter are real HTML attributes so they survive in other renderers (old blocks still
+  parse).
+- **Change 11 — Uniform rendering model (R0) + 3-layer DOM.** Every image renders through one
+  outer / frame / image structure, identical in both views.
+- **Change 10 — Ground-up rework landed.** Native CSS storage (`transform`/`filter` verbatim),
+  declarative box→image sizing (no JS measure-retry loop), pure-CSS caption, LP overlay + native edit.
+- **Feature 24 — Portable runtime.** A standalone script reproduces the rendering on a published page
+  (MkDocs/Material); align/width/filter already render natively without it.
+- **Feature 23 — Trackpad rotate gesture (macOS)** — rotate in the crop editor with a two-finger
+  twist.
+- **Feature 22 — In-place crop with edge handles.** Edits the image where it sits — 4 corner
+  (aspect-locked) + 4 edge handles + a rotate knob; what you see is what gets committed.
+- **Bug 64 — Group popups / class dropdown now couple to the active region** (kept visible, not greyed).
+- **Bug 63 — Panel visibility firmly coupled to toolbar visibility** — no un-greyed flash while a
+  panel is open.
+- **Bug 61 — Toolbar ↔ sub-modal are one active region** — the bar no longer drops the instant the
+  pointer leaves the image rect.
+- **Bug 60 — Auto-persist on anchor-disconnect wrote the right occurrence of a duplicated image**
+  (uses the location captured at panel-open, not a basename scan).
+- **Bug 59 — The "icon" size preset now renders the image inline as an icon, not merely at icon
+  height.**
+- **Bug 58 — A filter-only image is now hydrated by the portable runtime** (`[filter]` added to the
+  claim selector).
+- **Bug 57 — Reading-view render of a duplicated image** now resolves the n-th occurrence, not the
+  first.
+- **Bug 56 — Toolbar/menu edits wrote to the WRONG image.** The resolver matched a basename's first
+  occurrence; it now resolves the exact line by DOM position (`posAtDOM`).
+- **Bug 55 — The `{…}` block regained its syntax highlighting** (marked as a `cm-url` string).
+- **Bug 54 — `<>` dismiss hides the whole raw embed** (the fake link and the `{…}`).
+- **Bug 53 — The reveal toggle shows the `<>` glyph again, not an eye icon.**
+- **Bug 52 — Crop pan grabs the whole image** (inside and outside the cut frame).
+- **Bug 51 — Crop editor migrated to the live 3-layer model** — true in-place editing, centre origin,
+  edge handles, width-resize preserves the crop; preview == committed.
+- **Bug 50 — rotate/flip no longer drifts an already-cropped image** (orientation rides the frame about
+  its centre; the crop placement is untouched).
+- **Bug 48 — Reading-view sizing of transformed images** — a transformed box caps to the column and a
+  floated image's wrap text starts at the image top (matches live preview).
+- **Bug 45 — Latent box-selector bug** — `previewSize` queried a non-existent class on rotated images.
+- **Bug 44 — The demo notes migrated to native syntax.**
+- **Bug 43 — Resize handle CSS.**
+- **Bug 42 — Size "Original" / a cleared field no longer collapses the box.**
+- **Bug 41 — The filter panel gained the shared per-panel reset.**
+- **Bug 40 — The crop overlay is exempt from the dismiss handler.**
+- **Bug 39 — The crop committed result equals the framed region.**
+- **Bug 38 — Crop rebuilt: handles scale the inner image toward the frame centre.**
+- **Bug 36 — Toolbar anchored to the image top via the box.**
+- **Bug 35 — Captions below the image — centred, width-limited, Markdown-rendered, pure CSS.**
+- **Bug 34 — Snippet "png" came from a CSS comment** — strip comments + filter file extensions.
+- **Bug 33 — Rotate centred** via a `translate(-50%,-50%)` prepend.
+- **Bug 32 — Reset no longer whites-out the window** — an empty class token in the CM update cycle is
+  guarded.
 
 ## [0.3.0] - 2026-06-04
 
-A live-preview rework: images can float and wrap text, mid-paragraph images become
-editable, and the raw-link reveal is simpler and calmer.
+A live-preview rework: images can float and wrap text, mid-paragraph images become editable, and the
+raw-link reveal is simpler and calmer.
 
-### Added
-
-- **Inline image embeds** — an image placed mid-paragraph (not on its own line) now
-  gets the same toolbar and transforms and flows inline with the surrounding text.
-- **Float & text-wrap in live preview** — left- and right-aligned images now float and
-  let the paragraph wrap around them in live preview, not only in reading view. A tall
-  floated image (taller than roughly 250 px) stacks as a block instead, so it doesn't
-  run off the line.
-- **Native-look resize handle** — the resize corner now matches Obsidian's own native
-  image handle.
-
-### Changed
-
-- **Simpler link reveal** — the `<>` raw-link control is no longer a tri-state
-  ON / OFF / AUTO cycle. The default reveal state (auto on hover / cursor line, or
-  always shown) is a single setting, and the per-image `<>` is now a transient dismiss
-  that auto-clears — calmer, with no mode to remember.
-- **Reveal is now pure-CSS** — the raw `{…}` link shows and hides via CSS keyed on
-  hover and the cursor line, so it no longer fights the editor or churns the undo
-  history while you edit the block.
-- **Column-capped images** — a transformed image never overflows its column; it caps to
-  the text width and stays responsive as the column narrows.
-- **Standalone vs. inline placement** — an image on its own line sits as a block, while
-  an image carrying a `{…}` block stays inline so it can float.
-
-### Fixed
-
-- The editing toolbar now appears on small and inline images, instead of being missing
-  below a size threshold.
-- The floating toolbar sits above very small images rather than covering them, and gets
-  out of the way earlier.
+- **Decision 5 — `RevealMode = auto|always` is not a retired mode cycle.** The two values derive from
+  the global default-state setting; the `<>` dismiss is a separate per-line override.
+- **Decision 4 — The floating toolbar and the in-image toolbar are not a duplicate.** Both build via
+  `buildToolbarElement`; only host + positioning differ.
+- **Decision 3 — Reveal/edit model: overlay + CSS reveal + native edit.** The LP adapter never replaces
+  the line; Obsidian renders its CSS-suppressed native embed and gives the cursor-reveal, the plugin
+  overlays its own image.
+- **Change 9 — Standalone vs. inline placement.** An image on its own line is a block; one carrying a
+  `{…}` block stays inline so it can float.
+- **Change 8 — Column-capped images.** A transformed image never overflows its column; it caps to the
+  text width and stays responsive.
+- **Change 7 — Reveal is now pure-CSS.** The raw `{…}` link shows/hides via CSS keyed on hover and the
+  cursor line, so it no longer fights the editor or churns the undo history.
+- **Change 6 — Link reveal collapsed to two natural modes** (auto / always) from one setting, plus a
+  transient `<>` dismiss that auto-clears — no tri-state cycle to remember.
+- **Change 5 — 2026-06-02 DRY/KISS audit points dissolved** by the rework (no `canvasFilter` table,
+  shared `rotatedAabb`, a single `buildSlider`, pure-CSS caption).
+- **Change 4 — CLAUDE.md slimmed to a lean build/debug guide;** the duplicated
+  requirements/architecture/known-bugs were removed.
+- **Feature 21 — Native-look resize handle** — the resize corner matches Obsidian's native image
+  handle.
+- **Feature 20 — Float & text-wrap in live preview** — left/right-aligned images float and wrap text
+  in LP; a tall float (>~250 px) stacks as a block.
+- **Feature 19 — Inline image embeds** — a mid-paragraph image gets the same toolbar/transforms and
+  flows inline.
+- **Bug 49 — Inline-icon / tiny-image toolbar mis-positioned** — the floating bar now sits above the
+  image and floats out by coverage.
+- **Bug 47 — Tall float (>~250 px) derenders on scroll in LP — capped** (stacks as a block in safe
+  mode, both views).
+- **Bug 46 — Live-preview float breaks CM6 layout — resolved** via an inline non-BFC float-escape
+  widget (multi-line wrap, zero height desync, image stays clickable).
+- **Bug 37 — Toolbar fold-then-wrap** — a measured reflow folds groups to a submenu, then wraps at the
+  dividers.
+- **Bug 31 — No native `<>` edit-block icon leak** — the native edit-block button is suppressed.
+- **Bug 30 — Reveal/edit sit above the image** (the AD5 overlay).
+- **Bug 29 — Reveal toggles work** (the true AD5 overlay model, after a brief mis-build was reverted).
+- **Bug 28 — Scroll jank; image sections rendered very late** — the block widget gained an
+  `estimatedHeight` derived from a pure estimate.
+- **Bug 27 — `lie-center` only centred on hover** — centre via `text-align:center` on a full-width
+  block embed (no `!important` arms race).
+- **Bug 26 — Inline (mid-text) image rendered native & full-size** — now the same widget in an inline
+  mode.
+- **Bug 25 — A resized crop left an empty band** (the caption was pushed below) — the box is
+  aspect-correct when one dimension is given.
+- **Bug 24 — Standalone classes lost in live preview** — the `{…}` braces were passed to the parser,
+  dropping the leading `.class`; strip the braces.
 
 ## [0.2.0] - 2026-06-01
 
-The second release: new captions and a proper export save dialog, a reworked toolbar
-layout, and a round of fixes from in-Obsidian verification of the initial version.
+The second release: new captions and a proper export save dialog, a reworked toolbar layout, and a
+round of fixes from in-Obsidian verification of the initial version.
 
-### Added
-
-- **Image captions** — an optional setting renders the image's alt text as a caption
-  below the image (Markdown supported). Off by default.
-- **Export save dialog** — saving an export now opens the OS-native save dialog at the
-  original file's folder, with the name pre-filled as `{original}-{n}` (next free
-  number). You can keep it, overwrite the original (or any file), or change the name
-  and location entirely; on mobile it falls back to an Obsidian dialog. Nothing is
-  ever overwritten silently.
-- **Per-panel reset** — the size and crop sub-menus each have their own Reset that
-  reverts only that panel's working state and keeps it open, separate from the
-  toolbar's reset-all.
-- **Custom-size height field** — the custom-size sub-menu now has width and height
-  entries side by side (aspect ratio kept).
-
-### Changed
-
-- **Toolbar layout** — the `<>` link-reveal control moved to the far left (with a
-  divider); it was previously at the far right. Buttons are grouped into clusters
-  separated by dividers, and when space is tight the toolbar now wraps to multiple
-  rows at those dividers — keeping each cluster intact — instead of folding the Edit
-  group into a submenu. This works better on mobile. The Layout group stays a single
-  submenu trigger.
-- **AUTO link reveal** — in AUTO mode the link editor now also appears whenever the
-  editor cursor is on the image's line, in addition to on hover.
-- **Export fidelity** — export now renders every transform exactly as displayed:
-  size, rotation, flip, crop and filters, with crop and rotation matching the
-  on-screen result.
-- **Resizing** — uses Obsidian's native corner handle, shown whenever the toolbar is
-  and hidden in crop mode (where it collided with the crop frame's own resizing).
-- **Image spacing** — stacked images now use Obsidian's native 6px vertical spacing.
-
-### Removed
-
-- The `+` / `−` size buttons were dropped from the toolbar; resizing is now via the
-  resize handle and the custom-size sub-menu.
-
-### Fixed
-
-- AUTO link reveal now shows from the first render, instead of only after cycling the
-  `<>` control back around to AUTO.
-- Quarter-turn-rotated images size their reflow box correctly and stay responsive (a
-  single render path, with no competing measurement passes).
-- The filter panel docks beside the image, follows it on scroll and hides when it
-  scrolls offscreen, instead of opening over the file explorer and sticking to the
-  window.
-- The crop editor no longer breaks when the image is dragged inside it.
-- Filter-panel slider rows no longer overlap.
-- The temperature slider's own thumb now stays where you put it instead of snapping
-  back.
-- Alignment classes (left / center / right) now actually float / align the image.
-- The revealed link editor is borderless again — no frame, box-shadow, outline or
-  background.
-- An image with no explicit size no longer overflows its column.
-- The resize / selection frame now hugs the image instead of sitting offset from it.
-- Export no longer fails with "file already exists" (superseded by the new save
-  dialog).
-- The custom-size sub-menu's live preview works on plain (un-rotated, un-cropped)
-  images again, not only on rotated or cropped ones.
-- Resizing an image by height alone now keeps its aspect ratio when exported,
-  instead of stretching it.
-- Removing an alignment or decoration class from an image now takes effect
-  immediately in reading view, instead of the old class lingering until a reload.
-- The crop sub-menu's Reset restores the full image when you re-crop an
-  already-cropped image.
-- Reading-view captions no longer flicker or re-render on every editor update; an
-  unchanged caption is left in place.
-- The filter panel closes itself when its image scrolls out of view (e.g. in live
-  preview), instead of lingering detached.
-- A caption whose wikilink display ends in a size token (`![[img|caption|300]]`)
-  now reads the same in live preview and reading view.
-- Exporting an image whose filename contains a literal `%` no longer fails, and the
-  export-name probe is bounded so it can't spin on a pathological folder.
+- **Change 3 — Image spacing.** Stacked images use Obsidian's native 6px vertical spacing.
+- **Change 2 — AUTO link reveal also appears when the editor cursor is on the image's line,** in
+  addition to on hover.
+- **Change 1 — Export fidelity.** Export renders every transform exactly as displayed — size,
+  rotation, flip, crop and filters.
+- **Feature 18 — Per-panel reset** — the size and crop sub-menus each get their own Reset, separate
+  from the toolbar's reset-all.
+- **Feature 17 — Export save dialog** — saving an export opens the OS-native save dialog at the
+  original's folder, name pre-filled `{original}-{n}`; nothing is ever overwritten silently.
+- **Feature 16 — Image captions** — an optional setting renders the image's alt text as a caption
+  below the image (Markdown supported), off by default.
+- **Bug 23 — A wikilink caption ending in a size token** (`![[img|caption|300]]`) now reads the same in
+  both views.
+- **Bug 22 — Exporting a filename with a literal `%` no longer fails;** the name-probe loop is bounded.
+- **Bug 21 — The filter panel closes itself when its anchor leaves the DOM** (no orphaned panel /
+  leaked listeners).
+- **Bug 20 — Reading-view captions no longer re-render on every editor update** when the text is
+  unchanged.
+- **Bug 19 — The crop sub-menu's Reset restores the full image when re-cropping** an already-cropped
+  image.
+- **Bug 18 — Removing an alignment/decoration class takes effect immediately in reading view** (tracked
+  via `data-lie-classes`, cleared on reset).
+- **Bug 17 — A height-only resize now keeps its aspect ratio when exported** (no stretch).
+- **Bug 16 — The custom-size live preview works on plain (un-rotated/cropped) images again** (the
+  `display:contents` box had swallowed the size).
+- **Bug 15 — The resize / selection frame now hugs the image** instead of sitting offset.
+- **Bug 14 — An image with no explicit size no longer overflows its column.**
+- **Bug 13 — The revealed link editor is borderless again.**
+- **Bug 12 — Export no longer fails with "file already exists"** (superseded by the new save dialog).
+- **Bug 11 — Resize affordance restored** — uses Obsidian's native handle, shown on toolbar hover,
+  hidden in crop.
+- **Bug 10 — Alignment classes (left / center / right) now actually float / align the image.**
+- **Bug 9 — The custom-size sub-menu gained a height field** (width + height side by side).
+- **Bug 8 — The temperature slider's own thumb stays put** (sliders matched by `data-key`).
+- **Bug 7 — Filter-panel slider rows no longer overlap.**
+- **Bug 6 — Toolbar icons grouped with dividers** (and divider-wrapping).
+- **Bug 5 — The `+` / `−` size buttons were dropped** (resize via the handle + custom-size).
+- **Bug 4 — The crop editor no longer breaks when the image is dragged inside it.**
+- **Bug 3 — The filter panel docks beside the image, follows on scroll, hides offscreen.**
+- **Bug 2 — Quarter-turn-rotated images size their reflow box correctly** (a single render path).
+- **Bug 1 — AUTO link reveal now shows from the first render.**
 
 ## [0.1.0] - 2026-06-01
 
-First public release. Non-destructive image editing for Obsidian: a hover toolbar
-lets you crop, rotate, flip, resize and filter images, all live — the original
-file is never modified. Edits are stored in a portable trailing `{…}` attribute
-block, so the same notes still render correctly when published via MkDocs/Material.
+First public release. Non-destructive image editing for Obsidian: a hover toolbar lets you crop,
+rotate, flip, resize and filter images, all live — the original file is never modified. Edits are
+stored in a portable trailing `{…}` attribute block, so the same notes still render correctly when
+published via MkDocs/Material.
 
-### Added
-
-- **Non-destructive editing** — all transforms are written to a trailing
-  `{.lie-img style="…"}` block; the image file, alt text, path and native `|size`
-  are never touched.
-- **Rotate & flip** — quarter-turn rotation (clockwise / counter-clockwise) and
-  horizontal / vertical flip. Rotated images keep the same content width as normal
-  images and reflow correctly.
-- **Crop** — in-place crop editor with a fixed, resizable frame over a movable,
-  rotatable and scalable original. Free rotation snaps to whole pixels and 0.1°
-  steps live during the drag, plus aspect presets 16:9, 4:3 and 1:1.
-- **Resize** — drag the native corner handle (aspect ratio kept) or open the
-  custom-size sub-menu for an exact width / height and the quick sizes
-  small / medium / large / original.
-- **Filters** — brightness, contrast, saturation, hue-rotate, blur, grayscale and
-  sepia sliders plus a temperature approximation, with a live RGB histogram and
-  the presets Sepia, B&W, Vintage, Cool and Warm.
-- **Export** — render all transforms and filters to a new `{original}-edited.{ext}`
-  file via canvas; the original stays untouched.
-- **Preset classes** — built-in toggleable classes for size (small / medium /
-  large), alignment (left / right / center / inline) and decoration (rounded /
-  shadow / border / circle), with a one-click reset.
-- **Vault-snippet classes** — image CSS classes are discovered from
-  `.obsidian/snippets/` and offered in a dropdown; each is individually
-  de-selectable in settings and refreshed on file changes.
-- **Both views** — rotation, flip, filters, crop and sizing render identically in
-  reading view and live preview.
-- **Hover toolbar** — native Lucide icons, grouped Edit and Layout buttons that
-  collapse into an overflow sub-menu when space is tight, and long-press support
-  on mobile.
-- **Anchored sub-menus** — size, crop and filter controls share one component:
-  the toolbar greys out while a panel is open, confirm / cancel are icons, and
-  Esc cancels without committing.
-- **`<>` link reveal** — shows the raw link as editable text above the image and
-  writes edits back live, with a per-image tri-state mode (ON / OFF / AUTO).
-- **Follows Obsidian** — the markdown vs. wikilink form follows Obsidian's central
-  "Use [[Wikilinks]]" setting, and the UI follows Obsidian's locale (English
-  fallback, German included). Conversion between link forms keeps the transform
-  block intact.
-- **Commands** — context-aware commands (active only when an image is in context)
-  for rotate, flip, crop, filters, sizing, alignment, add-class, reset,
-  custom-size, toggle-inline and export.
-- **Settings tab** — toggle the hover toolbar, manage detected snippet classes,
-  and optionally enable the (off-by-default, version-gated) editing-toolbar
-  integration.
-
-[0.4.0]: https://github.com/Britz/obsidian-live-image-editor/compare/0.3.0...0.4.0
-[0.3.0]: https://github.com/Britz/obsidian-live-image-editor/compare/0.2.0...0.3.0
-[0.2.0]: https://github.com/Britz/obsidian-live-image-editor/compare/0.1.0...0.2.0
-[0.1.0]: https://github.com/Britz/obsidian-live-image-editor/releases/tag/0.1.0
+- **Decision 2 — Crop pixel-quantization.** The cut quantizes to whole pixels + fixed angle steps live
+  during the interaction.
+- **Decision 1 — Export resolution.** Export renders from the original image's native resolution;
+  display size never reduces it.
+- **Feature 15 — Settings tab** — toggle the hover toolbar, manage detected snippet classes, optional
+  (off-by-default, version-gated) editing-toolbar integration.
+- **Feature 14 — Commands** — context-aware commands (active only with an image in context) for
+  rotate, flip, crop, filters, sizing, alignment, add-class, reset, custom-size, toggle-inline,
+  export.
+- **Feature 13 — Follows Obsidian** — markdown vs. wikilink form follows the central "Use
+  [[Wikilinks]]" setting; the UI follows Obsidian's locale (English fallback, German included).
+- **Feature 12 — `<>` link reveal** — shows the raw link as editable text above the image and writes
+  edits back live.
+- **Feature 11 — Anchored sub-menus** — size, crop and filter controls share one component: the
+  toolbar greys out, confirm / cancel are icons, Esc cancels.
+- **Feature 10 — Hover toolbar** — native Lucide icons, grouped Edit/Layout buttons that collapse into
+  an overflow sub-menu when space is tight, plus mobile long-press.
+- **Feature 9 — Both views** — rotation, flip, filters, crop and sizing render identically in reading
+  view and live preview.
+- **Feature 8 — Vault-snippet classes** — image CSS classes discovered from `.obsidian/snippets/` and
+  offered in a dropdown; each individually de-selectable, refreshed on file changes.
+- **Feature 7 — Preset classes** — built-in toggleable classes for size, alignment and decoration,
+  with a one-click reset.
+- **Feature 6 — Export** — render all transforms and filters to a new `{original}-edited.{ext}` file
+  via canvas; the original stays untouched.
+- **Feature 5 — Filters** — brightness, contrast, saturation, hue-rotate, blur, grayscale and sepia
+  sliders, a live RGB histogram, and the presets Sepia / B&W / Vintage / Cool / Warm.
+- **Feature 4 — Resize** — drag the native corner handle (aspect kept) or open the custom-size
+  sub-menu for an exact width / height and the quick sizes small / medium / large / original.
+- **Feature 3 — Crop** — an in-place crop editor with a fixed, resizable frame over a movable,
+  rotatable and scalable original; free rotation snaps to whole pixels + 0.1° steps, plus aspect
+  presets 16:9, 4:3, 1:1.
+- **Feature 2 — Rotate & flip** — quarter-turn rotation (CW / CCW) and horizontal / vertical flip;
+  rotated images keep the same content width and reflow correctly.
+- **Feature 1 — Non-destructive editing** — all transforms are written to a trailing `{…}` block; the
+  image file, alt text, path and native `|size` are never touched.

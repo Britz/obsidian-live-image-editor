@@ -1,6 +1,6 @@
 {
   "enabledCssSnippets": [
-    "float-images",
-    "live-image-editor-examples"
+    "live-image-editor",
+    "float-images"
   ]
 }

@@ -72,7 +72,7 @@ const EVAL_RUN = `(async () => {
     // (0) On open: both shown, toolbar greyed + part of the region.
     ok("greyedWhileOpen", toolbar.classList.contains("lie-toolbar-inactive"));
     ok("initBothShown", active() && panelShown());
-    // Bug 55 — while shown, the bar is GREYED (opacity 0.4), NEVER un-greyed (opacity 1). The CSS
+    // Bug 63 — while shown, the bar is GREYED (opacity 0.4), NEVER un-greyed (opacity 1). The CSS
     // hover no longer competes with the JS region state, so a stray real pointer over the wrapper
     // can't flash the bar to full opacity while a panel is open.
     ok("greyedNotFullWhileShown", getComputedStyle(toolbar).opacity === "0.4");
@@ -96,7 +96,7 @@ const EVAL_RUN = `(async () => {
     fire(panel, "mouseleave");
     await sleep(260);                                           // grace elapses
     ok("bothHideOnLeave", !active() && !panelShown());
-    // Bug 55 — the bar stays .lie-toolbar-inactive (greyed) for the WHOLE open duration: leaving
+    // Bug 63 — the bar stays .lie-toolbar-inactive (greyed) for the WHOLE open duration: leaving
     // HIDES it (the CSS renders .lie-toolbar-inactive WITHOUT .lie-region-active at opacity:0) but
     // never un-greys it. There is no "visible & not inactive while open" state — the single region
     // signal drives toolbar visibility AND greyed-bleiben together. Assert the deterministic CLASS
@@ -163,13 +163,13 @@ const c = res.checks ?? {};
 const order = [
   ["toolbar is greyed while the submenu is open", "greyedWhileOpen"],
   ["on open: toolbar + panel both shown (one region)", "initBothShown"],
-  ["shown bar is GREYED (opacity 0.4), never un-greyed (Bug 55)", "greyedNotFullWhileShown"],
+  ["shown bar is GREYED (opacity 0.4), never un-greyed (Bug 63)", "greyedNotFullWhileShown"],
   ["greyed bar is a real hover surface (pointer-events:auto)", "barHoverableWhileActive"],
   ["greyed bar's buttons stay inert (D6 inactive)", "barButtonsInertWhileActive"],
   ["image→panel travel keeps the region (grace bridges the gap)", "graceKeepsDuringTravel"],
   ["arriving on the panel keeps toolbar + panel up", "panelKeepsRegion"],
   ["leaving the whole region hides BOTH together", "bothHideOnLeave"],
-  ["bar stays inactive (greyed) the whole open duration; region dropped when hidden (Bug 55)", "stillInactiveWhileHidden"],
+  ["bar stays inactive (greyed) the whole open duration; region dropped when hidden (Bug 63)", "stillInactiveWhileHidden"],
   ["re-entering via the toolbar brings both back", "toolbarReEntersRegion"],
   ["leaving via the toolbar hides both together", "bothHideAfterToolbar"],
   ["re-entering via the image brings both back", "imageReEntersRegion"],

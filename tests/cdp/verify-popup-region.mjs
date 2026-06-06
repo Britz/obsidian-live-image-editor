@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GROUP POPUP ↔ TOOLBAR = ONE REGION, NOT GREYED (Bug 56; D6; test-plan §3, Lesson 6 — the obsidian/
+// GROUP POPUP ↔ TOOLBAR = ONE REGION, NOT GREYED (Bug 64; D6; test-plan §3, Lesson 6 — the obsidian/
 // CM-coupled half, not a vitest unit). A lightweight group popup (`.lie-group-popup`) sits on
 // document.body, OUTSIDE the `.lie-wrapper` paint box, so without coupling, hovering it drops the
 // in-chrome bar's `.lie-wrapper:hover` and the bar vanishes. This drives the region's hover state

@@ -10,8 +10,9 @@ export interface SubmenuOptions {
   // sits beside the image (D8). Only placement varies — everything else is shared.
   placement: SubmenuPlacement;
   // The element to measure for placement: the toolbar (under-toolbar) or the
-  // image (beside-image).
-  anchor: HTMLElement;
+  // image (beside-image). OMITTED for `centered` (no single element to dock to —
+  // the multi-image panels act on a selection, 0.5.2).
+  anchor?: HTMLElement;
   // The editing toolbar to grey out + disable while the sub-menu is open (D8).
   toolbar?: HTMLElement | null;
   // Header label (defaults to none → no title text, just the icon actions).
@@ -35,11 +36,11 @@ export interface SubmenuOptions {
   rootClass?: string;
   // Beside-image only: allow flipping to the left of the anchor when it would
   // overflow the right edge. The filter panel sets this false so it never lands on
-  // the left over the file explorer (Bug 56). Defaults to true.
+  // the left over the file explorer (Bug 64). Defaults to true.
   allowFlip?: boolean;
   // Hide (instead of clamp-sticking) when the anchor scrolls out of view, and
   // re-show when it returns — so the panel tracks the image and disappears with it
-  // rather than clinging to a corner (Bug 56).
+  // rather than clinging to a corner (Bug 64).
   hideWhenAnchorOffscreen?: boolean;
   // Bind the panel's visibility to hover (D6/D7/B4): the panel is visible only
   // while the pointer is over this region (the image+toolbar) OR over the panel
@@ -140,6 +141,13 @@ export class AnchoredSubmenu {
 
   private updateVisibility(): void {
     if (!this.el || !this.opts) return;
+    // Centered (multi-image) panels have NO anchor — they float in the viewport centre and stay
+    // shown until accept/cancel/click-away, so skip the anchor-bound visibility/offscreen logic.
+    if (!this.opts.anchor) {
+      this.el.style.display = "";
+      this.place();
+      return;
+    }
     // The anchor was removed from the DOM (e.g. the live-preview widget that owns it
     // was destroyed when its image scrolled out of the CM6 viewport). Self-close so
     // the panel doesn't linger orphaned against a detached anchor, leaking its hover
@@ -159,10 +167,10 @@ export class AnchoredSubmenu {
 
   private place(): void {
     if (!this.el || !this.opts) return;
-    const a = this.opts.anchor.getBoundingClientRect();
-    const anchorRect: Rect = {
-      top: a.top, left: a.left, right: a.right, bottom: a.bottom, width: a.width, height: a.height,
-    };
+    const a = this.opts.anchor?.getBoundingClientRect();
+    const anchorRect: Rect = a
+      ? { top: a.top, left: a.left, right: a.right, bottom: a.bottom, width: a.width, height: a.height }
+      : { top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 }; // centered ignores the anchor
     const { top, left } = placeSubmenu(
       anchorRect,
       { width: this.el.offsetWidth, height: this.el.offsetHeight },

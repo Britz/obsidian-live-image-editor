@@ -28,7 +28,7 @@ inside Obsidian.
 
 -   :material-cog-outline: **[Development docs](development/README.md)**
 
-    Requirements, architecture, the implementation plan, tests and the bug & lesson registry.
+    Requirements, architecture, the implementation plan, tests, and the open-items + lessons backlog.
 
 -   :material-github: **[Source on GitHub](https://github.com/Britz/obsidian-live-image-editor)**
 

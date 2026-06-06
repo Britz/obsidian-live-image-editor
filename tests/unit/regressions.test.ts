@@ -5,7 +5,7 @@ import { parseAltText, serializeTransform, setWidthPx, isCrop } from "../../src/
 
 // Regression registry (test-plan §5.1). Each fixed bug is pinned at the level that catches it.
 //
-// Bug 48 (the bare-key WRITE PATH) is FIXED and guarded HERE in the suite by the §2.8 per-op
+// Bug 56 (the bare-key WRITE PATH) is FIXED and guarded HERE in the suite by the §2.8 per-op
 // persistence units (tests/transforms.test.ts → "per-operation persistence") AND, at the
 // integration level, by the runnable write-path matrix `scripts/verify-write-path.mjs` (the
 // read-source-back CDP check, including the duplicate-image case that exposed the root cause:
@@ -24,7 +24,7 @@ import { parseAltText, serializeTransform, setWidthPx, isCrop } from "../../src/
 // The bugs below are FIXED; each is pinned at the level that catches it — the PURE, autonomously-
 // verifiable half as a vitest unit here, the obsidian/CM-coupled (DOM/interactive) half as a
 // read-the-real-DOM CDP script (Lesson 6), never assumed.
-// Bug 43 — crop editor migrated to the live 3-layer model. The PURE, autonomously-verifiable half:
+// Bug 51 — crop editor migrated to the live 3-layer model. The PURE, autonomously-verifiable half:
 //   • A (no centre/top-left drift): the parse∘serialize round-trip in tests/crop-editor-logic.test.ts.
 //   • Edge handles (D8 single-axis): the scale(sx, sy) serialization, same file.
 //   • G (a width resize PRESERVES the crop): the two width-write paths below.
@@ -38,7 +38,7 @@ import { parseAltText, serializeTransform, setWidthPx, isCrop } from "../../src/
 // started OUTSIDE the cut frame pans too (real `elementFromPoint` hit-test), while the handles still
 // win their own hits. Plus the manual drag-haptics checklist — the editor is obsidian/layout-coupled,
 // so these are CDP scripts, not vitest units (Lesson 6, like verify-write-path.mjs).
-describe("Bug 43 G — a width edit preserves the crop (both write paths keep transform=/aspect-ratio=)", () => {
+describe("Bug 51 G — a width edit preserves the crop (both write paths keep transform=/aspect-ratio=)", () => {
   // A cropped embed: placement on the <img>, the cut shape as aspect-ratio, the cut-frame width.
   const cropped = `![a](b.png){transform="translate(10%, 5%) rotate(0deg) scale(1.2)" aspect-ratio=4/3 width=200}`;
 
@@ -66,15 +66,15 @@ describe("Bug 43 G — a width edit preserves the crop (both write paths keep tr
   });
 });
 
-// Bug 45–47 — the LP reveal / source-rendering cluster — SOLVED (see issues.md → "Resolved by the
+// Bug 53–55 — the LP reveal / source-rendering cluster — SOLVED (see issues.md → "Resolved by the
 // LP reveal cluster fix"). The LIVE-DOM facts are obsidian/CM-coupled and pinned by the read-the-
-// real-DOM CDP guard `scripts/verify-reveal.mjs` (Bug 45: the toolbar reveal SVG is `lucide-code`,
-// not an eye; Bug 46: a `<>` dismiss computes `display:none` on BOTH `.lie-fake-link` AND
-// `.lie-attr`; Bug 47: the revealed `{…}` carries `cm-url` tokens) — structural checks, not vitest
+// real-DOM CDP guard `scripts/verify-reveal.mjs` (Bug 53: the toolbar reveal SVG is `lucide-code`,
+// not an eye; Bug 54: a `<>` dismiss computes `display:none` on BOTH `.lie-fake-link` AND
+// `.lie-attr`; Bug 55: the revealed `{…}` carries `cm-url` tokens) — structural checks, not vitest
 // units (Lesson 6, like verify-write-path/verify-crop). What IS purely verifiable is pinned below: the
 // Bug-46 dismiss/auto-clear STATE MACHINE (`reduceReveal`) and the Bug-47 highlight CLASS invariant.
 
-describe("Bug 46 — the `<>` dismiss / auto-clear state machine (reduceReveal — auto mode is default)", () => {
+describe("Bug 54 — the `<>` dismiss / auto-clear state machine (reduceReveal — auto mode is default)", () => {
   const base = (over: Partial<RevealEvents> = {}): RevealEvents =>
     ({ remap: null, toggles: [], hovers: [], activeLineFrom: -1, alwaysShow: false, ...over });
   const st = (dismissed: number[] = [], hoveredLine: number | null = null): RevealState =>
@@ -126,7 +126,7 @@ describe("Bug 46 — the `<>` dismiss / auto-clear state machine (reduceReveal �
   });
 });
 
-describe("Bug 47 — the revealed {…} highlight CLASS invariant (live DOM = verify-reveal.mjs)", () => {
+describe("Bug 55 — the revealed {…} highlight CLASS invariant (live DOM = verify-reveal.mjs)", () => {
   // The LP build() marks the whole {…} with `lie-attr lie-rev-<mode> ${URL_CLASS}`. The highlight
   // rides URL_CLASS; the at-origin constraint is that it must NOT carry cm-formatting.
   it("URL_CLASS highlights like a url string (carries cm-url) so the {…} is not plain text", () => {
