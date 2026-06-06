@@ -26,16 +26,72 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  border: none;
+  box-sizing: border-box;
+  /* Transparent 1px border in the base box so the a11y "outlines" setting (Feature 2)
+     can colour it in without shifting layout (the 28px box already includes it). */
+  border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
   color: var(--text-normal);
   cursor: pointer;
   transition: background 0.15s ease;
 }
-.lie-toolbar-btn:hover { background: var(--background-modifier-hover); }
-.lie-toolbar-btn:active { background: var(--background-modifier-active-hover); }
+/* Obsidian styles a raw <button> via `button:not(.clickable-icon)` (its own background + the
+   `--input-shadow` frame: an inset 1px ring), which OUT-specifies our single-class flat rule — so even
+   `background: transparent` lost and a 1px shadow ring showed (Bug 85). Repeating the class (0,2,0 >
+   0,1,1) kills the native button background + shadow; hover/active are bumped to match so they still win. */
+.lie-toolbar-btn.lie-toolbar-btn { background: transparent; box-shadow: none; }
+.lie-toolbar-btn.lie-toolbar-btn:hover { background: var(--background-modifier-hover); }
+.lie-toolbar-btn.lie-toolbar-btn:active { background: var(--background-modifier-active-hover); }
 .lie-toolbar-btn svg { width: 16px; height: 16px; }
+
+/* ---- Hover micro-animations (Feature 1) ------------------------------------
+   Ported from the icon-design prototype, where the icon was an <iconify-icon>;
+   here Obsidian's setIcon injects an inline <svg>, so the selectors target
+   `.lie-toolbar-btn svg`. The default is a gentle scale on hover; per-icon
+   keyframes (keyed off `data-anim`, set in toolbar.ts) give each its character.
+   The reduced-motion guard at the bottom disables ALL of it. */
+.lie-toolbar-btn svg { transform-origin: center; transition: transform 0.18s ease; }
+.lie-toolbar-btn:hover svg { transform: scale(1.12); }
+
+.lie-toolbar-btn[data-anim="cw"]:hover svg { transform: rotate(90deg); }
+.lie-toolbar-btn[data-anim="ccw"]:hover svg { transform: rotate(-90deg); }
+.lie-toolbar-btn[data-anim="flip-h"]:hover svg { transform: scaleX(-1); }
+.lie-toolbar-btn[data-anim="flip-v"]:hover svg { transform: scaleY(-1); }
+.lie-toolbar-btn[data-anim="grow"]:hover svg { transform: scale(1.22); }
+.lie-toolbar-btn[data-anim="snap"]:hover svg { animation: lie-snap 0.3s ease; }
+.lie-toolbar-btn[data-anim="wiggle"]:hover svg { animation: lie-wiggle 0.4s ease; }
+.lie-toolbar-btn[data-anim="down"]:hover svg { animation: lie-down 0.45s ease; }
+.lie-toolbar-btn[data-anim="align-l"]:hover svg { transform: translateX(-2.5px); }
+.lie-toolbar-btn[data-anim="align-r"]:hover svg { transform: translateX(2.5px); }
+.lie-toolbar-btn[data-anim="align-c"]:hover svg { animation: lie-center 0.4s ease; }
+.lie-toolbar-btn[data-anim="wrap"]:hover svg { animation: lie-wrap 0.5s ease; }
+.lie-toolbar-btn[data-anim="resize"]:hover svg { animation: lie-resize 0.55s ease; }
+.lie-toolbar-btn[data-anim="pop"]:hover svg { animation: lie-pop 0.4s ease; }
+.lie-toolbar-btn[data-anim="quote"]:hover svg { animation: lie-quote 0.5s ease; }
+
+@keyframes lie-snap { 0% { transform: scale(1); } 45% { transform: scale(0.8); } 100% { transform: scale(1); } }
+@keyframes lie-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
+@keyframes lie-down { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+@keyframes lie-center { 0% { transform: translateX(-2.5px); } 50% { transform: translateX(2.5px); } 100% { transform: translateX(0); } }
+@keyframes lie-wrap { 0% { transform: translateX(0); } 40% { transform: translateX(2.5px); } 65% { transform: translate(2.5px, 2px); } 100% { transform: translateX(0); } }
+@keyframes lie-resize { 0% { transform: scale(1); } 30% { transform: scale(1.3, 1); } 60% { transform: scale(1, 1.3); } 100% { transform: scale(1.12); } }
+@keyframes lie-pop { 0% { transform: scale(0.9); } 55% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes lie-quote { 0% { transform: translateX(0); } 50% { transform: translateX(3px); } 72% { transform: translateX(3px); } 88% { transform: translateX(-0.8px); } 100% { transform: translateX(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lie-toolbar-btn svg, .lie-toolbar-btn:hover svg { transition: none; animation: none; transform: none; }
+}
+
+/* ---- Button outlines (Feature 2, A11y) -------------------------------------
+   Flat/borderless by default (the base .lie-toolbar-btn carries a TRANSPARENT 1px
+   border so colouring it never shifts layout). "Always" forces visible outlines;
+   the media query restores them on accessibility signals UNLESS the user chose
+   "never". */
+body.lie-btn-outline-always .lie-toolbar-btn { border-color: var(--background-modifier-border); }
+@media (prefers-contrast: more), (forced-colors: active) {
+  body:not(.lie-btn-outline-never) .lie-toolbar-btn { border-color: var(--background-modifier-border); }
+}
 
 /* Non-breaking clusters separated by dividers; the toolbar wraps AT THE DIVIDERS
    when space is tight (D2 — mobile-friendly), each cluster intact. */
@@ -410,15 +466,16 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
   inset: 0;
   margin: auto;
   transform-origin: center;
-  border: 2px solid #fff;     /* the white resize frame ON the original image */
+  border: 2px dashed var(--interactive-accent);  /* crop frame — dashed + accent, theme-adaptive (Bug 66) */
   box-sizing: border-box;
 }
 .lie-crop-handle {
   position: absolute;
   width: 12px;
   height: 12px;
-  background: #fff;
+  background: var(--interactive-accent);
   border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--background-primary);  /* contrast ring so the accent reads on any image (Bug 66) */
   pointer-events: auto;
 }
 /* corner handles — aspect-locked scale */
@@ -438,8 +495,9 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
   transform: translateX(-50%);
   width: 16px;
   height: 16px;
-  border: 2px solid #fff;
+  border: 2px solid var(--interactive-accent);
   border-radius: 50%;
+  background: var(--background-primary);  /* filled knob so the accent ring + center read on any image (Bug 66) */
   cursor: crosshair;
   pointer-events: auto;
 }
@@ -450,7 +508,7 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
   left: 50%;
   width: 1px;
   height: 10px;
-  background: #fff;
+  background: var(--interactive-accent);
   transform: translateX(-50%);
 }
 .lie-crop-presets { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -522,18 +580,30 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- Class dropdown --------------------------------------------------- */
-.lie-class-dropdown {
-  background: var(--background-secondary);
+/* ---- Class panel (Bug 88) --------------------------------------------- */
+/* A proper sub-panel via the shared AnchoredSubmenu (like the filter panel): docked beside the
+   image, top-anchored to the toolbar, pane-bound flip. The `.lie-submenu` base supplies the chrome,
+   header and accept/cancel; these rules size it and style the search box + scrollable class list. */
+.lie-class-panel { width: 220px; max-width: 320px; }
+.lie-class-body { display: flex; flex-direction: column; gap: 8px; }
+.lie-class-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  padding: 4px;
-  max-height: 200px;
-  overflow-y: auto;
-  min-width: 120px;
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 12px;
 }
-.lie-class-dropdown-item {
+.lie-class-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.lie-class-item {
   display: block;
   width: 100%;
   padding: 6px 10px;
@@ -545,16 +615,13 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
   font-size: 12px;
   cursor: pointer;
 }
-.lie-class-dropdown-item:hover { background: var(--background-modifier-hover); }
-.lie-class-dropdown-item.is-active { color: var(--interactive-accent); font-weight: 600; }
-/* Header of the centered multi-image class picker (0.5.2): the "N images" scope label. */
-.lie-class-dropdown-title {
-  padding: 4px 10px 6px;
-  font-size: 11px;
-  font-weight: 600;
+.lie-class-item:hover { background: var(--background-modifier-hover); }
+.lie-class-item.is-active { color: var(--interactive-accent); font-weight: 600; }
+.lie-class-empty {
+  padding: 8px 10px;
+  font-size: 12px;
   color: var(--text-muted);
-  border-bottom: 1px solid var(--background-modifier-border);
-  margin-bottom: 4px;
+  text-align: center;
 }
 
 /* ---- Shared anchored sub-menu (D6) ------------------------------------ */
@@ -617,6 +684,7 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
 
 /* Settings — version-unsupported warning (RC9/R28: no hardcoded inline styling). */
 .lie-settings-warning { color: var(--text-error); }
+
 
 /* ---- Settings: CSS-classes section (AB19) ----------------------------------------- */
 /* Groups use Obsidian's NATIVE `.setting-group` > (`.setting-group-search` +) `.setting-items` cards

@@ -41,7 +41,9 @@ no language or link-format setting of its own.
 - **F7 — Toolbar activation.** The editing chrome appears for an image that is **selected**
   (tap or click — on any platform, mobile or desktop) and on **hover** wherever the
   environment supports hovering (a desktop pointer, or a pen that reports hover). There is no
-  explicit platform-specific trigger.
+  explicit platform-specific trigger. The chrome is **editor-only** (source / Live Preview): a click in
+  **Reading view opens no toolbar** — reading view is read-only and every edit writes Markdown, so
+  editing needs the editor (Decision 22).
 - **F8 — Raw-link reveal.** A control **shows / hides** the raw link of the image. The reveal
   is triggered **either from the toolbar** (its `<>` reveal control) **or by the editor cursor**
   moving onto the image's line. The reveal is **not persisted** per image; the general
@@ -67,8 +69,11 @@ no language or link-format setting of its own.
   (desktop) at the original file's folder with a free name pre-filled; the user may keep it,
   overwrite, or relocate. It never overwrites silently, and falls back to an in-app dialog where no
   native one is reachable (mobile).
-- **F14 — Shared editing sub-menu.** Crop, Filters, Export and Resize all open through **one
-  shared host element** — a modular component, not reimplemented per feature. While a panel is open
+- **F14 — Shared editing sub-menu.** Crop, Filters and Resize all open through **one
+  shared host element** (`AnchoredSubmenu`) — a modular component, not reimplemented per feature.
+  **Export is not one of these live panels:** it raises the **OS-native save dialog** on desktop
+  (`@electron/remote` `showSaveDialog`) and an **Obsidian vault-path modal** on mobile
+  (`adapter.writeBinary`), then writes the file directly (F13). While a panel is open
   the working state is a **live preview** only (no source write). The host carries three icon
   actions: a per-panel **reset**, a **cancel** (✗) and an **accept** (✓). **Accept** — and every
   other way of **leaving** the panel (Enter / click-away / dismiss / context loss) — persists the
@@ -117,7 +122,8 @@ no language or link-format setting of its own.
   that act on the whole note regardless of image context — currently **"Reset all images on this
   page"** (the still-backlogged flatten/export-page commands belong here too).
 - **F20 — Settings.** A **General** group — hover toolbar, captions, the **default raw-link
-  reveal state** (auto / always, F8; default **auto**), the tall-float cap — kept compact; the
+  reveal state** (auto / always, F8; default **auto**), the **button-outlines** A11y mode
+  (auto / always / never, D14), the tall-float cap — kept compact; the
   **preset widths** for small / medium / large (F24); a **CSS-classes** section
   (the F16 master toggle, a link to Obsidian's snippet management, install/reset of the bundled
   example snippets (F16.1), and the grouped, searchable class overview (F16.2/F16.3)); and the
@@ -149,6 +155,11 @@ no language or link-format setting of its own.
   **degrade to the original, untransformed image** — inert but still visible (the `style="filter:…"`
   escape is the faithful alternative for a filter). This is the baseline that the storage
   and rendering choices (T2, T3) must satisfy.
+- **F26 — Replace image / Replace all.** Swap the underlying image for a different file
+  **non-destructively**: only the embed's link target changes — the trailing `{…}` attribute block
+  and the caption (alt text) are **kept** — so the new image inherits the existing transforms. A
+  single-image **Replace** and a note-wide **Replace all** (every occurrence of the same image)
+  are offered.
 
 ---
 
@@ -206,11 +217,15 @@ no language or link-format setting of its own.
 - **D7 — Filter panel.** A narrow panel docked **beside the image, on whichever side (left or
   right) has more room within the canvas**, with a live histogram at the top and vertical
   sliders grouped by purpose. The panel **tracks the image and hides when the image scrolls
-  out of view**.
+  out of view**. The "more room" side is a **guarded flip measured within the editor pane**
+  (`.markdown-source-view` / `.markdown-reading-view`, excluding the sidebar), flipping only when
+  the panel fits there — so it never spills over the file explorer (Bug 77).
 - **D8 — In-place crop.** Activating crop keeps the image's exact size and position — **no
   jump or reflow** — and overlays the current state. Outside the frame is dimmed, inside is
-  full opacity. The original has corner (aspect-locked), edge (single-axis) and rotate
-  handles, plus scroll / pinch to scale. The cut window and the footprint **box stay fixed**
+  full opacity. The original has **corner** (aspect-locked, keeps the ratio), **edge** (single-axis)
+  and **rotate** handles, plus scroll / pinch to scale; each corner/edge handle reshapes the cut window
+  **from its own side** — only the grabbed corner/edge moves, the opposite side stays anchored
+  (Decision 24). *(The current build still stretches the whole image on an axis instead — Bug 80.)* The cut window and the footprint **box stay fixed**
   during the session — the cut **shape** changes only via the aspect presets, and the box
   **size** is changed *outside* crop (the native resize handle D4 / the resize menu F24).
   *(Realized in place on the live 3-layer DOM — no clone; the frame/area `overflow:hidden` and
@@ -226,6 +241,20 @@ no language or link-format setting of its own.
   rendering.
 - **D11 — No disruption.** Toolbar edits and resizes never jump the scroll position and never
   move the editor cursor.
+- **D12 — Icon set & brand.** The toolbar and editing-toolbar submenu use a **coherent, redesigned
+  native-Lucide icon set** (e.g. filter `blend`, custom-size `image-upscale`, export `image-down`,
+  CSS-classes `braces`, inline/block `wrap-text`, reset `eraser`, reset-all `copy-x`, layout
+  `text-quote`), with documented fallbacks for the newer glyphs. The plugin carries a **brand /
+  plugin icon** (a filled mark — spark over two bracketed mountains) used as the editing-toolbar
+  submenu icon, the README and the docs logo/favicon (NOT a settings-tab header — that would violate R22).
+- **D13 — Hover micro-animations.** Toolbar icons play **subtle hover/click micro-interactions**
+  (e.g. rotate eases its turn, flip tips, crop snaps, reset/eraser wiggles, export bounces). They
+  are **gated by `prefers-reduced-motion`** — when the user prefers reduced motion they are
+  suppressed.
+- **D14 — Button outlines (A11y).** A **"Button outlines"** accessibility setting controls visible
+  outlines around the toolbar's icon buttons with three modes — **Auto / Always / Never**. **Auto**
+  follows the platform: outlines appear when `prefers-contrast` (high contrast) or `forced-colors`
+  is active, and are otherwise off. (Surfaced in Settings, F20.)
 
 ---
 
@@ -251,9 +280,11 @@ no language or link-format setting of its own.
     inner crop placement — pan / zoom / optional content-rotate), `filter="<CSS filter>"`,
     `aspect-ratio=<ratio>` (the footprint shape, stored **only** for a deliberate crop shape ≠
     original, AD6/T11), plus `.class` (built-in / vault-snippet / decoration classes, F16) and a
-    `style="…"` power-user escape. An optional bare `.lie` is an explicit claim marker. **Never**
-    write `width=` and `height=` together (that distorts the image); a `height` is reached only
-    through `style="…"`. The bare keys carry a small, deliberately accepted collision risk (the
+    `style="…"` power-user escape. An optional bare `.lie` is an explicit claim marker. **Presets
+    and `auto` sizing never co-emit `width=` and `height=`** (a derived height would distort the
+    image); the **explicit custom-size path** (D6.1/F24), where the user types both fields, **may**
+    emit both — a fixed width **and** height is deliberately non-responsive user intent, not a
+    derived value. The bare keys carry a small, deliberately accepted collision risk (the
     brevity trade-off). The same grammar is the single format read by all consumers (T3).
 - **T3 — Portable rendering.** The stored markup must still render the image *with* its
   transforms in a compatible static-site theme **without** the plugin (the same notes are

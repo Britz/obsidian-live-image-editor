@@ -21,7 +21,7 @@ Start here: hover the image, hit the crop icon, and try **pan / zoom / rotate / 
 The corner labels (**A**–**D**) and the **TOP** marker make it easy to read exactly how the content
 moves behind the cut as you drag and zoom.
 
-![](images/sample-landscape.png){width=420}
+![](images/sample-landscape.png)
 
 ## An existing crop (re-open it)
 

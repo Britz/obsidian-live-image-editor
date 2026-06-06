@@ -23,6 +23,11 @@ export interface CommandHandler {
   customSize(): void;
   toggleInline(): void;
   exportImage(): void;
+  // Replace the underlying file of THIS embed (single) / every occurrence of its source in the note
+  // (all). Both are image-specific (they need a target image in context); "all" then fans out from
+  // that image's source. Non-destructive — only the Markdown link target changes.
+  replaceImage(): void;
+  replaceAllImages(): void;
   // Page-scope (NOT image-specific): acts on every image in the active note.
   resetAllImages(): void;
 }
@@ -57,6 +62,8 @@ export function registerCommands(plugin: Plugin, handler: CommandHandler): void 
     { id: "custom-size", name: t("customSize"), action: () => handler.customSize() },
     { id: "toggle-inline", name: t("inlineBlock"), action: () => handler.toggleInline() },
     { id: "export", name: t("export"), action: () => handler.exportImage() },
+    { id: "replace-image", name: t("replaceImage"), action: () => handler.replaceImage() },
+    { id: "replace-all-images", name: t("replaceAll"), action: () => handler.replaceAllImages() },
     { id: "reset-all-images", name: t("cmdResetAllImages"), action: () => handler.resetAllImages(), imageSpecific: false },
   ];
 

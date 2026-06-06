@@ -1,3 +1,9 @@
+---
+hide:
+  - navigation
+  - toc
+---
+
 # Live Image Editor
 
 Non-destructive image editing for **[Obsidian](https://obsidian.md)** — rotate, flip, crop (with

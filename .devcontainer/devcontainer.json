@@ -23,7 +23,8 @@
         "ms-python.debugpy",
         "EditorConfig.EditorConfig",
         "DavidAnson.vscode-markdownlint",
-        "eamodio.gitlens"
+        "eamodio.gitlens",
+        "ms-vscode.live-server"
       ]
     }
   }

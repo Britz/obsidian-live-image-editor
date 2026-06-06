@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boxAspectRatio, innerImageSize, rotatedAabb, estimatedBlockHeight, isTallFloat, TALL_FLOAT_THRESHOLD_PX } from "../../src/renderer-logic";
+import { boxAspectRatio, innerImageSize, rotatedAabb, nativeBoxWidth, estimatedBlockHeight, isTallFloat, TALL_FLOAT_THRESHOLD_PX } from "../../src/renderer-logic";
 
 const round = (v: number) => Math.round(v);
 
@@ -45,6 +45,30 @@ describe("rotatedAabb (export output sizing at original resolution)", () => {
     const b = rotatedAabb(100, 100, 45);
     expect(round(b.w)).toBe(141); // 100·(cos45+sin45) ≈ 141.42
     expect(round(b.h)).toBe(141);
+  });
+});
+
+describe("nativeBoxWidth (no-explicit-width native cap — Bug 78/79; cropped OR not, one decision)", () => {
+  // The no-width box (a non-cropped image, OR a cropped image whose width was removed) must fall
+  // back to the ORIGINAL intrinsic dimension on the rotation-correct axis — never an empty/0-width
+  // box (Bug 78). buildLayers routes BOTH branches through this so a cleared/native-default image
+  // (Bug 79: clearStaleTransform re-renders to the empty transform instead of unwrapping) sizes
+  // identically to a freshly rendered native image.
+  it("caps on the ORIGINAL WIDTH at 0° / 180° (axis unswapped)", () => {
+    expect(nativeBoxWidth(400, 600, 0)).toBe(400);
+    expect(nativeBoxWidth(400, 600, 180)).toBe(400);
+  });
+  it("caps on the ORIGINAL HEIGHT at 90° / 270° (rotated bounding box swaps the axis)", () => {
+    expect(nativeBoxWidth(400, 600, 90)).toBe(600);
+    expect(nativeBoxWidth(400, 600, 270)).toBe(600);
+  });
+  it("is always a positive width (never 0 → the box can't collapse, Bug 78)", () => {
+    for (const deg of [0, 90, 180, 270, 45, 137]) {
+      expect(nativeBoxWidth(800, 450, deg)).toBeGreaterThan(0);
+    }
+  });
+  it("is the true rotated AABB width for a free angle (matches rotatedAabb)", () => {
+    expect(nativeBoxWidth(100, 100, 45)).toBe(Math.round(rotatedAabb(100, 100, 45).w));
   });
 });
 

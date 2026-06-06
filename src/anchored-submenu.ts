@@ -1,6 +1,6 @@
 import { setIcon } from "obsidian";
 import { t } from "./i18n";
-import { placeSubmenu, SubmenuPlacement, Rect, SubmenuExit, submenuExitEffect } from "./anchored-submenu-logic";
+import { placeSubmenu, SubmenuPlacement, Rect, ContentBound, SubmenuExit, submenuExitEffect } from "./anchored-submenu-logic";
 import { bindRegionHover } from "./region-hover";
 
 export interface SubmenuOptions {
@@ -34,10 +34,16 @@ export interface SubmenuOptions {
   onClose?: () => void;
   // Extra class on the root, e.g. to widen the filter panel.
   rootClass?: string;
-  // Beside-image only: allow flipping to the left of the anchor when it would
-  // overflow the right edge. The filter panel sets this false so it never lands on
-  // the left over the file explorer (Bug 64). Defaults to true.
+  // Beside-image only: allow flipping to the side of the anchor with MORE room when
+  // the panel fits there (D7/Bug 77). Defaults to true. The flip's "room" is measured
+  // within `contentBound` (below) when given, so a left flip never lands over the file
+  // explorer (the Bug-64 guard); pass false to disable flipping entirely.
   allowFlip?: boolean;
+  // Beside-image only: the horizontal bound the side-of-more-room flip is measured
+  // against (Bug 77) — the editor content pane, EXCLUDING the left sidebar. Evaluated
+  // live on every reposition (the pane moves on resize / sidebar toggle). Returning
+  // null (pane not found) falls back to the viewport. Omitted ⇒ viewport (unchanged).
+  contentBound?: () => ContentBound | null;
   // Hide (instead of clamp-sticking) when the anchor scrolls out of view, and
   // re-show when it returns — so the panel tracks the image and disappears with it
   // rather than clinging to a corner (Bug 64).
@@ -178,7 +184,11 @@ export class AnchoredSubmenu {
       { width: window.innerWidth, height: window.innerHeight },
       undefined,
       undefined,
-      this.opts.allowFlip ?? true
+      this.opts.allowFlip ?? true,
+      this.opts.contentBound?.() ?? undefined,
+      // beside-image: align the panel's TOP to the toolbar (a sticky reference just above the image),
+      // so the panel + toolbar share a top edge; it only slides up on a window-bottom overflow (Bug 87).
+      this.toolbar?.getBoundingClientRect().top
     );
     this.el.style.top = `${top}px`;
     this.el.style.left = `${left}px`;

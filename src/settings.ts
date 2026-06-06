@@ -79,6 +79,11 @@ export interface LieSettings {
   // non-floated block (in both views) so it can't derender on scroll in Live Preview.
   // Off = always wrap (permissive), accepting the LP-only disappear glitch.
   tallFloatSafe: boolean;
+  // A11y: visible outlines on the (flat-by-default) toolbar buttons (Feature 2). "auto" follows the
+  // OS/Obsidian accessibility signal (prefers-contrast / forced-colors — the closest web-detectable
+  // proxy for the macOS/iOS "Button Shapes" flag, which is NOT exposed to web content); "always"
+  // forces outlines; "never" suppresses them even under high contrast.
+  buttonOutlines: "auto" | "always" | "never";
 }
 
 export const DEFAULT_SETTINGS: LieSettings = {
@@ -91,6 +96,7 @@ export const DEFAULT_SETTINGS: LieSettings = {
   cssClassesEnabled: true, // preserve the prior always-on behaviour
   editingToolbarEnabled: false,
   tallFloatSafe: true, // on by default = safe (stack tall floats); off = permissive float
+  buttonOutlines: "auto", // follow the OS/Obsidian accessibility signal by default
 };
 
 export class LieSettingTab extends PluginSettingTab {
@@ -161,6 +167,19 @@ export class LieSettingTab extends PluginSettingTab {
       .setDesc(t("settingsTallFloatDesc"))
       .addToggle((tg) => tg.setValue(this.plugin.settings.tallFloatSafe)
         .onChange(async (v) => { this.plugin.settings.tallFloatSafe = v; await this.plugin.saveSettings(); }));
+
+    new Setting(items)
+      .setName(t("settingsButtonOutlines"))
+      .setDesc(t("settingsButtonOutlinesDesc"))
+      .addDropdown((dd) => dd
+        .addOption("auto", t("settingsButtonOutlinesAuto"))
+        .addOption("always", t("settingsButtonOutlinesAlways"))
+        .addOption("never", t("settingsButtonOutlinesNever"))
+        .setValue(this.plugin.settings.buttonOutlines)
+        .onChange(async (v) => {
+          this.plugin.settings.buttonOutlines = v as LieSettings["buttonOutlines"];
+          await this.plugin.saveSettings();
+        }));
   }
 
   // ── Size presets — Small / Medium / Large rows in one card (F24) ───────────────────────────

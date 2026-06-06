@@ -11,6 +11,136 @@ Every entry is numbered in one global per-category sequence — **Decision**, **
 Decision › Change › Feature › Bug, each category newest-first (highest number on top). Numbers are
 never reused. (Open/unsolved items and the hard-won lessons live in `docs/development/issues.md`.)
 
+## [0.6.0] - 2026-06-06
+
+A visual-identity milestone: a refreshed icon set, a new brand mark, hover micro-animations, replace
+and accessibility features, plus a batch of resolved design decisions. This is a **deliberate minor
+bump** (0.5.4 → 0.6.0) — a one-off user decision for this milestone that overrides the project's
+usual patch-only policy.
+
+- **Decision 24 — Crop edge/corner handles should reshape the window from the grabbed side.** D8
+  clarified: the grabbed corner/edge moves while the opposite side stays anchored — **corners** keep
+  the aspect ratio (aspect-locked), **edges** are single-axis. The current code stretches the whole
+  image instead, recorded as **Bug 80** (deferred — to be batched with future crop-component work).
+- **Decision 23 — The filter histogram should reflect the LIVE filter (and the panel works on `filter=`).**
+  The panel reads/writes the inner-image `filter=` attribute (a `{style="filter:…"}` on the outer box is
+  an expert edge case the editor doesn't author — and the export doesn't bake it, Bug 82). The histogram,
+  though, currently samples the ORIGINAL image — `updateHistogram` draws the img with no `ctx.filter`, so
+  the CSS filter (a render effect, not pixel data) never reaches `getImageData` and the chart never changes
+  as you tune the filter. That's wrong — it should track the live-filtered result → **Bug 83**.
+- **Decision 22 — A Reading-view click opens no toolbar — confirmed intended.** Reading view is
+  read-only; editing needs the source / Live-Preview editor (the click handler is scoped to
+  `.markdown-source-view`). Pinned in F7 so it isn't read as a gap.
+- **Decision 21 — Wikilinks DO carry a caption; link-form parsing must split caption vs. size.** A
+  wikilink alias is the markdown-alt equivalent, and `|size` (now incl. `auto` and `WxH`, optionally
+  alongside a delimited caption) shares that slot. On md→wiki the native size folds into the `{…}`
+  block 1-to-1 (not the pipe) and the caption is preserved; the old code dropped the alias caption —
+  fixed as **Bug 81**.
+- **Decision 20 — Shared sub-menu host (`AnchoredSubmenu`) API documented as shipped.** No behaviour
+  change: the placement modes (under-toolbar / beside-image / centered), `allowFlip` + the pane-bound,
+  the body-builder contract and the ✓/✗/Esc + auto-persist lifecycle are now spelled out in D6/F14.
+- **Decision 19 — `reset()` vs. `clearStaleTransform` both broke the R0 invariant.** Verdict: both
+  were wrong. The 3-layer DOM — wrapper (size/ratio/layout) → inner frame (rotate/flip) → img
+  (filter/crop) — is **always** present and at least parametrized with native defaults; the box is
+  never empty (or the image vanishes) and the img is never bare (never without a box), only the
+  parametrization varies. So `reset()` must not leave an empty box (→ Bug 78 facet) and
+  `clearStaleTransform` must not unwrap to a bare img (→ Bug 79).
+- **Decision 18 — T2.3 "never width + height together" vs. custom-size emitting both.** Resolved by
+  making T2.3 precise rather than changing code. Explicit width + height from the custom-size path is
+  allowed (D6.1/F24); the old "height → aspect-ratio for responsive" idea is moot there because a
+  fixed px width sits alongside the height. T2.3 now reads: presets / auto never co-emit width +
+  height; the explicit custom-size path may.
+- **Decision 17 — Filter panel always-right vs. D7 "the side with more room".** Closed: D7 as written
+  is the wanted behaviour. The panel hard-coded `allowFlip: false`, contradicting D7 — recorded as
+  Bug 77 rather than reworded.
+- **Decision 16 — `data-` prefix on write.** Closed: keep bare keys, by design. Pandoc prepends
+  `data-` itself (HTML5-conformant), the brace-stripper likewise; `data-` inside `{…}` would be long,
+  unreadable and glightbox-incompatible. **Verified** the standalone runtime reads both spellings
+  (bare and `data-`) via `render-core.ts` and shared `runtime.ts` — requirement already met, no bug.
+- **Decision 15 — F14 listing Export among the live panels.** Reworded: Crop / Filter / Resize use the
+  AnchoredSubmenu, but Export is the native OS save dialog (desktop, `@electron/remote`) / a vault-path
+  modal (mobile, `adapter.writeBinary`) — Export is **not** a live panel.
+- **Decision 14 — Enter = accept globally while a panel is open.** Closed by design — confirmed it
+  feels right and fits the modal / active-region model (panel = focus, Enter ↔ ✓, Esc ↔ ✗).
+- **Decision 13 — Residual display-mode coupling (AD3).** Closed by design. Alignment necessarily
+  couples `display` (center = block + centred, inline = inline) and the explicit px width keeps the
+  footprint identical; documented in AD3 as intended, no refactor.
+- **Change 32 — Hover micro-animations.** Subtle CSS micro-interactions on icon hover/click —
+  rotate-cw winds up, flip tips over, crop snaps, the eraser wiggles, image-down bounces — all gated
+  by `prefers-reduced-motion`. The reset (`eraser`) and reset-all (`copy-x`) share the wiggle so they
+  read as one reset family.
+- **Change 31 — New brand / plugin icon.** A filled mark: a large spark (replacing the sun) over two
+  mountains — left with a plateau (clipped peak, gentle slope), right taller and clipped at the edge,
+  slightly tilted with corner brackets. Wired centrally from `docs/img/logo.svg` (fixed colour) and
+  `src/brand-icon.ts` (`addIcon`, currentColor) into the editing-toolbar submenu, the README, MkDocs
+  (logo + favicon) and the docs index. (No settings-tab header — that would re-introduce the R22
+  plugin-name heading the project removed in Bug 68. No settings-sidebar nav icon either: community
+  plugins conventionally don't carry one, so adding it would stand out rather than fit in.)
+- **Change 30 — Icon redesign across the toolbar and editing-toolbar.** A refreshed Lucide set: filter
+  `sliders-horizontal → blend`, custom-size `maximize → image-upscale`, export `download → image-down`,
+  CSS-classes `chevron-down → braces`, inline/block `gallery-horizontal-end → wrap-text`, the layout
+  trigger `layout-list → text-quote`, and reset / reset-all to `eraser` / `copy-x`. Newer glyphs carry
+  fallbacks (image-upscale → maximize, image-down → download, wrap-text → align-justify, eraser →
+  x-circle).
+- **Feature 36 — "Button outlines" accessibility setting (Auto / Always / Never).** Controls the icon
+  button outlines; **Auto** keys off `prefers-contrast` / `forced-colors`.
+- **Feature 35 — Replace image / Replace all.** Swap the underlying image file for another — a single
+  embed, plus an "all occurrences / whole note" variant; the `replace` / `replace-all` icons mirror the
+  reset / reset-all naming. Available as a command and in the editing-toolbar.
+- **Bug 88 — The CSS-classes picker was a bare absolute-positioned dropdown, not a panel.** It was
+  hand-built chrome (a positioned menu / a centered multi-image list), so it shared none of the panel
+  lifecycle. It is now a proper `AnchoredSubmenu` subpanel (`ClassPanel`, mirroring `FilterPanel`):
+  a search box on top + a scrollable class list below, `beside-image` placement with the toolbar-top
+  anchor (Bug 87) and pane-bound flip (Bug 77), the greyed toolbar, and accept/cancel/Esc + auto-persist.
+  Toggling still writes immediately (the old semantics); multi-image opens the same panel centered and
+  re-resolves locations live per toggle. Search lives in a pure `filterClasses` (8 new unit tests).
+- **Bug 87 — Filter panel opened too high / could overlap the window top.** In `beside-image` placement
+  the panel's top was the IMAGE top, then clamped to the panel height — so a tall panel (histogram +
+  presets + sliders) got shoved UP, above the image and even off the window near the top edge. It now
+  anchors its top to the **toolbar** (a fixed reference just above the image, so the two share a top edge)
+  via a new `topAnchorTop` arg to `placeSubmenu`; it slides up ONLY on a window-bottom overflow and snaps
+  back on the next reposition (sticky at toolbar height) — no scrolling, the panel stays whole. Only the
+  filter panel uses `beside-image`; size/crop (`under-toolbar`) + the centered multi-image panel are unaffected.
+- **Bug 85 — Toolbar buttons showed Obsidian's default button frame (a 1px shadow ring + white fill).**
+  Obsidian styles a raw `<button>` via `button:not(.clickable-icon)` (its background + the `--input-shadow`
+  inset ring), which out-specified our single-class `.lie-toolbar-btn` flat rule — so even `background:
+  transparent` lost and a frame showed. The flat-button rules now repeat the class
+  (`.lie-toolbar-btn.lie-toolbar-btn`, specificity 0,2,0 > 0,1,1) to kill the native background + shadow,
+  with hover/active bumped to match — the buttons read flat again, as the preview always did.
+- **Bug 83 — The filter histogram never changed as you tuned the filter.** `updateHistogram` drew the
+  `<img>` to a sampling canvas with no `ctx.filter`, so the CSS filter (a render effect, not pixel data)
+  never reached `getImageData` — the chart always showed the ORIGINAL image (pointless feedback). It now
+  sets the working filter on the sampling context (`tempCtx.filter = filterToCss(currentFilter())`) before
+  `drawImage`, so the RGB histogram tracks the sliders live (Decision 23). (The crop half — the histogram
+  should also reflect the cut region — is tracked as Bug 84.)
+- **Bug 81 — Link-form conversion dropped the wikilink caption and mis-routed the native size.** The
+  parser hardcoded `caption: ""` for wikilinks and read only a numeric tail as size; conversion put the
+  size in the pipe and dropped the caption. Now one shared `splitTail` parses the alias/alt into a caption and a size — the size
+  grammar follows the `obsidian_image_caption` convention (`WxH` with `auto`, e.g.
+  `autox200`), and a quoted (`"…"`) caption may sit alongside it. md→wiki folds the native size into the
+  `{…}` block 1-to-1 (never the pipe) and preserves the caption; captions, Replace and the conversion all
+  share the one parser. (The caption delimiter `"` is hardcoded for now — a candidate future setting.)
+- **Bug 79 — `clearStaleTransform` stripped the 3-layer box.** It called `unwrapBox`, violating the R0
+  invariant "the DOM structure is always present, only the parameters change" (Decision 19). It now
+  falls back to native default parameters — the box and the img wrapper stay — instead of unwrapping to
+  a bare img; likely shares a root cause with Bug 78.
+- **Bug 78 — A cropped image without a `width` vanished** instead of falling back to native sizing.
+  Removing the width of a cropped image collapsed the box. The outer box now follows the same rules as
+  any image — max document width, capped to the original intrinsic size (height or width depending on
+  the box rotation), aspect-ratio derived natively. Crop is not a special case: it only affects the
+  inner `<img>`, never the box-sizing rules (AD3/R0). The no-width cropped path is now routed through
+  the same native sizing path in `buildLayers`.
+- **Bug 77 — The filter panel always docked on the right, not the side with more room (D7).** The
+  guided flip was re-enabled: `placeSubmenu` takes an optional pane bound (default = viewport, so other
+  callers are unchanged), and in beside-image mode it now decides right/left by space within the editor
+  pane (`.markdown-source-view` / `.markdown-reading-view`, sidebar excluded), flipping only if the
+  panel fits there — so it never spills over the file explorer (the Bug-56 concern is preserved).
+- **Bug 66 — Crop handles were hardcoded white (`#fff`), invisible in light mode.** The crop frame, the
+  corner/edge handle squares and the rotate knob + stem are now `var(--interactive-accent)` (theme-
+  adaptive, so they read in light *and* dark); the frame is **dashed** to signal the crop layer (distinct
+  from the solid native resize handle), and the squares carry a `--background-primary` contrast ring so
+  they stay legible on any image.
+
 ## [0.5.4] - 2026-06-06
 
 Editing-toolbar integration now actually shows up — as the wanted horizontal icon row.
@@ -89,18 +219,18 @@ management surface.
 Community-directory release-compliance pass — closes the remaining review-checklist rules (R20–R30)
 so the plugin is ready for submission. No change to image-editing behaviour.
 
-- **Change 25 — Community-directory compliance pass.** UI-guideline settings tab (no plugin-name
+- **Change 25 — [Release-Requirement] Community-directory compliance pass.** UI-guideline settings tab (no plugin-name
   heading, `setHeading()`, CSS class for the warning colour), sentence-case localized command names,
   `normalizePath()` on user/constructed paths, the Vault API over the adapter, manifest description,
   and README disclosures (R20–R30).
-- **Bug 72 — User/constructed paths not run through `normalizePath()`.** The export fallback's vault
+- **Bug 72 — [Release-Requirement] User/constructed paths not run through `normalizePath()`.** The export fallback's vault
   path and the constructed snippet paths now go through `normalizePath()` (R26).
-- **Bug 71 — Remaining UI headings were Title Case.** "CSS snippets" / "Editing toolbar integration"
+- **Bug 71 — [Release-Requirement] Remaining UI headings were Title Case.** "CSS snippets" / "Editing toolbar integration"
   are sentence case (R25).
-- **Bug 70 — Command names were Title Case and bypassed i18n.** Size/align commands read
+- **Bug 70 — [Release-Requirement] Command names were Title Case and bypassed i18n.** Size/align commands read
   `Size: small` / `Align: left` and route through en/de (R24).
-- **Bug 69 — Raw HTML section headings instead of `setHeading()`** (R23).
-- **Bug 68 — Plugin-name top-level heading in settings removed** (R22).
+- **Bug 69 — [Release-Requirement] Raw HTML section headings instead of `setHeading()`** (R23).
+- **Bug 68 — [Release-Requirement] Plugin-name top-level heading in settings removed** (R22).
 
 ## [0.4.1] - 2026-06-05
 

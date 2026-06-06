@@ -210,6 +210,12 @@ architecture and implementation plan.
   for the requirements — what each verifies, and a regression test for every fixed bug.
 - **Does not belong:** implementation detail beyond what is being verified.
 
+> The [`release-compliance.md`](release-compliance.md) artifact sits **parallel to the test
+> plan** — the test plan verifies *behaviour* (does it do the right thing), release compliance
+> verifies *shippability* (may it be submitted). It carries the community-directory release
+> requirements: the `R1–R30` audit against Obsidian's Developer policies, Plugin guidelines and
+> Submission requirements, plus the manual submission checklist.
+
 **Basic rule:** each artifact is **derived from the one above** and is reasoned about at its
 own altitude. A concept's boundaries are enforced both ways: code internals are not dragged
 up into the requirements or architecture (except where the framework forces it, below), and

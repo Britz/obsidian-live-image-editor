@@ -1,5 +1,6 @@
 import { App } from "obsidian";
 import { t } from "./i18n";
+import { BRAND_ICON_ID } from "./brand-icon";
 
 // Optional integration with the community "editing-toolbar" plugin (T7/F12). It is
 // OFF by default, version-gated (only versions we've validated; others warn). It adds the full image
@@ -31,7 +32,7 @@ const SUBMENU_ID = `SubmenuCommands-${PLUGIN_ID}`;
 // toolbar's bar and its menu-structure editor — same spirit as our prefixed CSS classes.
 const SUBMENU_NAME = "Live Editing Toolbar";
 // Icon for the submenu's own button in editing-toolbar's bar/editor.
-const SUBMENU_ICON = "image";
+const SUBMENU_ICON = BRAND_ICON_ID;
 // editing-toolbar reads this off the menu entry; "submenu" => inline horizontal icon buttons.
 const SUBMENU_TYPE = "submenu";
 const SUBMENU_COMMANDS: { id: string; icon: string; nameKey: Parameters<typeof t>[0] }[] = [
@@ -40,18 +41,20 @@ const SUBMENU_COMMANDS: { id: string; icon: string; nameKey: Parameters<typeof t
   { id: "flip-h", icon: "flip-horizontal", nameKey: "flipH" },
   { id: "flip-v", icon: "flip-vertical", nameKey: "flipV" },
   { id: "crop", icon: "crop", nameKey: "crop" },
-  { id: "filters", icon: "sliders-horizontal", nameKey: "filters" },
-  { id: "custom-size", icon: "maximize", nameKey: "customSize" },
+  { id: "filters", icon: "blend", nameKey: "filters" },
+  { id: "custom-size", icon: "image-upscale", nameKey: "customSize" },
   { id: "class-left", icon: "align-left", nameKey: "alignLeft" },
   { id: "class-center", icon: "align-center", nameKey: "alignCenter" },
   { id: "class-right", icon: "align-right", nameKey: "alignRight" },
-  { id: "toggle-inline", icon: "gallery-horizontal-end", nameKey: "inlineBlock" },
-  { id: "add-class", icon: "chevron-down", nameKey: "snippets" },
-  { id: "export", icon: "download", nameKey: "export" },
+  { id: "toggle-inline", icon: "wrap-text", nameKey: "inlineBlock" },
+  { id: "add-class", icon: "braces", nameKey: "snippets" },
+  { id: "export", icon: "image-down", nameKey: "export" },
+  { id: "replace-image", icon: "replace", nameKey: "replaceImage" },
+  { id: "replace-all-images", icon: "replace-all", nameKey: "replaceAll" },
   // `undo` (not `undo-2`): this is the whole-image reset, kept visually distinct from the panel's
   // "reset this" button (which uses undo-2). Its label is "Reset image" — i.e. all edits on THIS
   // image, not the page-scope "reset all images".
-  { id: "reset", icon: "undo", nameKey: "reset" },
+  { id: "reset", icon: "eraser", nameKey: "reset" },
 ];
 
 interface MenuCommand {

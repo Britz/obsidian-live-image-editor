@@ -24,6 +24,16 @@ export interface Viewport {
   height: number;
 }
 
+// Horizontal bound for the `beside-image` side-of-more-room decision (Bug 77). The flip
+// must measure room within the EDITOR CONTENT PANE, not the whole viewport, so the panel
+// can dock left of the image only when there is room left of it INSIDE the pane — never
+// over the file-explorer / left sidebar (the Bug-64 guard). Defaults to the full viewport
+// `[0, width]` when omitted, leaving every existing caller unchanged.
+export interface ContentBound {
+  left: number;
+  right: number;
+}
+
 export interface Placement {
   top: number;
   left: number;
@@ -45,7 +55,13 @@ function clamp(v: number, min: number, max: number): number {
  * - `under-toolbar`: hangs directly below the anchor (the toolbar), left-aligned;
  *   flips above the anchor if it would overflow the bottom edge.
  * - `beside-image`: docks to the right of the anchor (the image), top-aligned;
- *   flips to the left side if it would overflow the right edge.
+ *   flips to whichever side has MORE room within `content` (D7/Bug 77) — but only
+ *   when the panel actually fits on that side, and only when `allowFlip` is set.
+ *
+ * `content` bounds the side-of-more-room measurement to the editor content pane
+ * (defaulting to the full viewport): room right = `content.right − anchor.right`,
+ * room left = `anchor.left − content.left`. This keeps a left flip inside the pane
+ * so it never lands over the file explorer / left sidebar (the Bug-64 guard).
  *
  * Both axes are then clamped into the viewport (minus a small margin) so nothing
  * is ever clipped.
@@ -57,7 +73,9 @@ export function placeSubmenu(
   viewport: Viewport,
   gap: number = SUBMENU_GAP,
   margin: number = SUBMENU_MARGIN,
-  allowFlip: boolean = true
+  allowFlip: boolean = true,
+  content?: ContentBound,
+  topAnchorTop?: number
 ): Placement {
   const maxLeft = viewport.width - panel.width - margin;
   const maxTop = viewport.height - panel.height - margin;
@@ -85,15 +103,27 @@ export function placeSubmenu(
     }
     left = anchor.left;
   } else {
-    left = anchor.right + gap;
-    // Flip to the left side when it would overflow the right edge — but only if
-    // allowed. The filter panel disables this (allowFlip=false) so it never lands
-    // on the left over the file explorer; it just clamps to the right edge (Bug 64).
-    if (allowFlip && left + panel.width > viewport.width - margin) {
+    // beside-image: dock on whichever side has MORE room within the content bound
+    // (D7/Bug 77). `content` defaults to the full viewport, so callers that pass no
+    // bound keep the old viewport-relative behaviour. Measuring within the editor
+    // pane is what keeps a left flip off the file explorer (the Bug-64 guard).
+    const bound = content ?? { left: 0, right: viewport.width };
+    left = anchor.right + gap; // default: right of the image
+    if (allowFlip) {
+      const roomRight = bound.right - anchor.right;
+      const roomLeft = anchor.left - bound.left;
       const leftSide = anchor.left - gap - panel.width;
-      if (leftSide >= margin) left = leftSide;
+      // Flip left only when the left side has more room AND the panel actually fits
+      // there within the pane (so it never overhangs the sidebar). Otherwise stay
+      // right; the on-screen clamp below pins it to the right edge if it overflows.
+      const fitsLeft = leftSide >= bound.left && leftSide >= margin;
+      if (roomLeft > roomRight && fitsLeft) left = leftSide;
     }
-    top = anchor.top;
+    // Vertical: align to the TOOLBAR's top when given (a fixed reference just above the image, so the
+    // panel and the toolbar share a top edge) — else the image's top. The bottom clamp below slides it
+    // UP only when it would overflow the window bottom; on the next reposition it snaps back to this top
+    // (sticky at toolbar height, the slide-up is temporary). (Bug 87.)
+    top = topAnchorTop ?? anchor.top;
   }
 
   return {

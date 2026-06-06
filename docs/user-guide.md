@@ -1,3 +1,8 @@
+---
+hide:
+  - navigation
+---
+
 # Live Image Editor — User Guide
 
 Live Image Editor lets you rotate, flip, crop, resize, filter, align and export images **right in

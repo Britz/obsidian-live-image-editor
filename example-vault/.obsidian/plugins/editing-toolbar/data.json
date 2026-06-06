@@ -16,7 +16,7 @@
     {
       "id": "SubmenuCommands-live-image-editor",
       "name": "Live Editing Toolbar",
-      "icon": "image",
+      "icon": "live-image-editor",
       "menuType": "submenu",
       "SubmenuCommands": [
         {
@@ -47,12 +47,12 @@
         {
           "id": "live-image-editor:filters",
           "name": "Filter",
-          "icon": "sliders-horizontal"
+          "icon": "blend"
         },
         {
           "id": "live-image-editor:custom-size",
           "name": "Eigene Größe",
-          "icon": "maximize"
+          "icon": "image-upscale"
         },
         {
           "id": "live-image-editor:class-left",
@@ -72,22 +72,32 @@
         {
           "id": "live-image-editor:toggle-inline",
           "name": "Inline/Block umschalten",
-          "icon": "gallery-horizontal-end"
+          "icon": "wrap-text"
         },
         {
           "id": "live-image-editor:add-class",
           "name": "CSS-Klassen",
-          "icon": "chevron-down"
+          "icon": "braces"
         },
         {
           "id": "live-image-editor:export",
           "name": "Als Bild exportieren",
-          "icon": "download"
+          "icon": "image-down"
+        },
+        {
+          "id": "live-image-editor:replace-image",
+          "name": "Bild ersetzen …",
+          "icon": "replace"
+        },
+        {
+          "id": "live-image-editor:replace-all-images",
+          "name": "Alle Vorkommen dieses Bildes ersetzen …",
+          "icon": "replace-all"
         },
         {
           "id": "live-image-editor:reset",
           "name": "Bild zurücksetzen",
-          "icon": "undo"
+          "icon": "eraser"
         }
       ]
     },

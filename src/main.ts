@@ -1,14 +1,16 @@
-import { Plugin, MarkdownView, MarkdownPostProcessorContext, Notice, Editor, TFile } from "obsidian";
+import { Plugin, MarkdownView, MarkdownPostProcessorContext, Notice, Editor, TFile, addIcon } from "obsidian";
 import {
   ImageTransform, Align, FilterData, parseAltText, serializeTransform,
   getRotation, setRotation, toggleFlipH, toggleFlipV, getFilter, setFilter,
   setWidthPx, PresetKey,
 } from "./transforms";
-import { buildLayers as applyTransformToImage, applyFilterPreview, unwrapBox, BOX_CLASS } from "./render-core";
+import { buildLayers as applyTransformToImage, applyFilterPreview, BOX_CLASS } from "./render-core";
 import { ImageToolbar, ToolbarItem, ToolbarButton, ToolbarGroup } from "./toolbar";
-import { findImageInSource, findImageInText, findImageInLine, firstEmbedInLine, allEmbedsInText, spansOverlappingRanges, getImageFilename, ImageLocation } from "./image-resolver";
+import { BRAND_ICON_ID, BRAND_ICON_SVG } from "./brand-icon";
+import { findImageInSource, findImageInText, findImageInLine, firstEmbedInLine, allEmbedsInText, spansOverlappingRanges, getImageFilename, basename, ImageLocation } from "./image-resolver";
 import { CropEditor } from "./crop-editor";
 import { FilterPanel } from "./filter-panel";
+import { ClassPanel } from "./class-panel";
 import { AnchoredSubmenu } from "./anchored-submenu";
 import { buildSizeBody, SizeState } from "./size-submenu";
 import { renderTransformedImage, suggestExportPath, saveExport } from "./export";
@@ -22,9 +24,10 @@ import { Prec } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { setLocale, detectLocale, t } from "./i18n";
 import { convertEmbedLine, desiredFormat, LinkFormat } from "./link-format";
+import { replaceEmbedTarget, planReplaceAll } from "./replace-logic";
+import { ImagePickerModal } from "./replace-picker";
 import { writeSource } from "./source-writer";
 import { clickDismissesToolbar } from "./toolbar-region-logic";
-import { couplePaletteToRegion } from "./region-hover";
 import { ensureEditingToolbarButtons } from "./editing-toolbar-integration";
 
 // Shared transform modifiers — used by BOTH the single-image toolbar/command path and the
@@ -48,14 +51,17 @@ export default class LiveImageEditorPlugin extends Plugin {
   private activeImage: HTMLImageElement | null = null;
   private hoverShown = false; // true when the floating toolbar was opened by hover (so it dismisses on hover-out)
   private filterPanel: FilterPanel | null = null;
+  private classPanel: ClassPanel | null = null;
   private submenu: AnchoredSubmenu | null = null;
   private cropEditor: CropEditor | null = null;
 
   async onload(): Promise<void> {
+    addIcon(BRAND_ICON_ID, BRAND_ICON_SVG); // brand mark — usable via setIcon (editing-toolbar submenu, settings)
     await this.loadSettings();
     this.initLocale();
     this.stylesInjector.inject(this.settings.disabledInternalClasses, this.settings.presetWidths);
     this.applyTallFloatClass();
+    this.applyButtonOutlines();
 
     this.addSettingTab(new LieSettingTab(this.app, this));
     this.registerMarkdownPostProcessor(this.postProcessor.bind(this));
@@ -105,11 +111,12 @@ export default class LiveImageEditorPlugin extends Plugin {
     // is going away). Every USER-facing leave persists (auto-persist, AD8); unload is the one
     // silent teardown.
     this.closeFilterPanel(false);
+    this.closeClassPanel(false);
     this.closeSubmenu(false);
     this.closeCrop(false);
     this.toolbar.hide();
     this.stylesInjector.remove();
-    document.body.classList.remove("lie-safe-tall-float");
+    document.body.classList.remove("lie-safe-tall-float", "lie-btn-outline-always", "lie-btn-outline-never");
   }
 
   async loadSettings(): Promise<void> {
@@ -121,6 +128,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     await this.saveData(this.settings);
     this.stylesInjector.inject(this.settings.disabledInternalClasses, this.settings.presetWidths);
     this.applyTallFloatClass();
+    this.applyButtonOutlines();
     this.initLocale();
     this.refreshLivePreviewDecorations();
     this.reconcileFromSource();
@@ -130,6 +138,14 @@ export default class LiveImageEditorPlugin extends Plugin {
   // as blocks (safe) or let them float (permissive). Governs Live Preview and Reading view alike.
   private applyTallFloatClass(): void {
     document.body.classList.toggle("lie-safe-tall-float", this.settings.tallFloatSafe);
+  }
+
+  // Button-outline a11y setting (Feature 2): the stylesheet keys "always"/"never" off a body class;
+  // "auto" sets neither, leaving the media-query rule (prefers-contrast / forced-colors) in charge.
+  private applyButtonOutlines(): void {
+    const mode = this.settings.buttonOutlines;
+    document.body.classList.toggle("lie-btn-outline-always", mode === "always");
+    document.body.classList.toggle("lie-btn-outline-never", mode === "never");
   }
 
   private refreshLivePreviewDecorations(): void {
@@ -347,14 +363,16 @@ export default class LiveImageEditorPlugin extends Plugin {
     window.requestAnimationFrame(run);
   }
 
+  // A reused (Obsidian-cached) embed whose source no longer carries a {…} block must return to
+  // its NATIVE-default state. Per the R0/AD3 invariant the box is NEVER emptied to a naked img:
+  // we re-render the 3-layer box with an EMPTY transform — exactly what reset() does — so the
+  // image keeps its uniform wrapper and shows at its native (column-capped) size (Bug 79). The
+  // old `unwrapBox` here stripped the box, leaving a naked img (invariant violation) and was
+  // unique to this path; nothing else unwraps, so dropping it is safe.
   private clearStaleTransform(img: HTMLImageElement | null): void {
     if (!img) return;
-    const ours = img.classList.contains("lie-inline") ||
-      (img.parentElement?.classList.contains(BOX_CLASS) ?? false);
-    if (ours) {
-      applyTransformToImage(img, { classes: [] });
-      unwrapBox(img);
-    }
+    const ours = img.classList.contains("lie-inline") || !!img.closest(`.${BOX_CLASS}`);
+    if (ours) applyTransformToImage(img, { classes: [] });
   }
 
   private findBlockTextNode(anchor: Element): Text | null {
@@ -371,11 +389,12 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   // Every member of the combined active region (D6): with NO panel open, a click on any of these is
-  // "inside" and never dismisses the bare toolbar (the image wrapper, the toolbar, a lightweight
-  // palette, the crop chrome). `.lie-class-dropdown` is a region member too, so picking a class no
-  // longer dismisses the toolbar out from under the user (Bug 64).
+  // "inside" and never dismisses the bare toolbar (the image wrapper, the toolbar, the sub-panels,
+  // a lightweight palette, the crop chrome). The class panel (`.lie-class-panel`, a `.lie-submenu`)
+  // is a region member too, so picking a class no longer dismisses the toolbar out from under the
+  // user (Bug 64 / Bug 88).
   private static readonly REGION_SELECTOR =
-    ".lie-toolbar, .lie-filter-panel, .lie-submenu, .lie-group-popup, .lie-class-dropdown, .lie-cropping, .lie-wrapper";
+    ".lie-toolbar, .lie-filter-panel, .lie-class-panel, .lie-submenu, .lie-group-popup, .lie-cropping, .lie-wrapper";
 
   // While a modal FILTER/SIZE panel is open the click-away boundary SHRINKS to this: the sub-panel
   // itself plus the toolbar chrome docked to it. A click anywhere else — the image INCLUDED — closes+
@@ -387,7 +406,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   private registerImageSelectionHandler(): void {
     this.registerDomEvent(document, "click", (evt: MouseEvent) => {
       const target = evt.target as HTMLElement;
-      const panelOpen = !!this.filterPanel || !!this.submenu;
+      const panelOpen = !!this.filterPanel || !!this.classPanel || !!this.submenu;
       // Re-select an image on click ONLY when the bar is "bare" — no modal panel open, not cropping.
       // While a filter/size panel is open an image click is an OUTSIDE-THE-PANEL click → it must
       // CLOSE+persist the panel (handled below), not re-select. Crop owns its clicks entirely — the
@@ -420,7 +439,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.registerDomEvent(document, "mouseover", (evt: MouseEvent) => {
       const target = evt.target;
       if (!(target instanceof HTMLElement)) return;
-      if (target.closest(".lie-toolbar, .lie-group-popup, .lie-class-dropdown, .lie-submenu, .lie-filter-panel, .lie-cropping")) return;
+      if (target.closest(".lie-toolbar, .lie-group-popup, .lie-class-panel, .lie-submenu, .lie-filter-panel, .lie-cropping")) return;
       const floatWrap = target.closest<HTMLElement>(".markdown-source-view .lie-wrapper.lie-float");
       if (floatWrap) {
         const img = floatWrap.querySelector("img");
@@ -430,11 +449,11 @@ export default class LiveImageEditorPlugin extends Plugin {
         }
         return;
       }
-      // Hover-out dismiss for the floating bar — but never while a panel OR a lightweight palette is
-      // open (the palette is a hover member of the region, D6/Bug 64; it governs its own close-on-leave
-      // and keeps the bar up until then).
-      if (this.hoverShown && !this.filterPanel && !this.submenu && !this.cropEditor &&
-          !document.querySelector(".lie-group-popup, .lie-class-dropdown")) {
+      // Hover-out dismiss for the floating bar — but never while a sub-panel OR a lightweight palette
+      // is open (the panel/palette is a hover member of the region, D6/Bug 64; the host governs its
+      // own close-on-leave and keeps the bar up until then).
+      if (this.hoverShown && !this.filterPanel && !this.classPanel && !this.submenu && !this.cropEditor &&
+          !document.querySelector(".lie-group-popup")) {
         this.dismissToolbar();
       }
     });
@@ -461,7 +480,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   private registerToolbarDismissHandlers(): void {
     const overlaySelector = ".modal-container, .menu, .prompt, .suggestion-container";
     const observer = new MutationObserver((mutations) => {
-      if (!this.toolbar.isVisible() && !this.filterPanel && !this.submenu && !this.cropEditor) return;
+      if (!this.toolbar.isVisible() && !this.filterPanel && !this.classPanel && !this.submenu && !this.cropEditor) return;
       for (const mutation of mutations) {
         for (const node of Array.from(mutation.addedNodes)) {
           if (node instanceof HTMLElement && node.matches(overlaySelector)) { this.dismissToolbar(); return; }
@@ -473,7 +492,7 @@ export default class LiveImageEditorPlugin extends Plugin {
 
     this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
       if (evt.key !== "Escape") return;
-      if (this.filterPanel || this.submenu || this.cropEditor) return;
+      if (this.filterPanel || this.classPanel || this.submenu || this.cropEditor) return;
       this.dismissToolbar();
     });
     this.registerDomEvent(window, "blur", () => this.dismissToolbar());
@@ -481,6 +500,7 @@ export default class LiveImageEditorPlugin extends Plugin {
 
   private dismissToolbar(): void {
     this.closeFilterPanel();
+    this.closeClassPanel();
     this.closeSubmenu();
     this.closeCrop();
     this.toolbar.hide();
@@ -492,6 +512,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     if (!this.settings.showToolbar) return;
     if (img !== this.activeImage) {
       this.closeFilterPanel();
+      this.closeClassPanel();
       this.closeSubmenu();
       this.closeCrop();
     }
@@ -528,25 +549,25 @@ export default class LiveImageEditorPlugin extends Plugin {
       ],
     };
     const layoutGroup: ToolbarGroup = {
-      kind: "group", id: "layout", icon: "layout-list", titleKey: "layout", collapse: "auto",
+      kind: "group", id: "layout", icon: "text-quote", titleKey: "layout", collapse: "auto",
       buttons: [
         b("align-left", "align-left", "alignLeft", () => this.applyAlignment("left")),
         b("align-center", "align-center", "alignCenter", () => this.applyAlignment("center")),
         b("align-right", "align-right", "alignRight", () => this.applyAlignment("right")),
-        b("inline", "gallery-horizontal-end", "inlineBlock", () => this.toggleInline()),
+        b("inline", "wrap-text", "inlineBlock", () => this.toggleInline()),
       ],
     };
 
     return [
       editGroup,
-      b("filters", "sliders-horizontal", "filters", () => this.toggleFilters()),
-      b("custom-size", "maximize", "customSize", () => this.customSize()),
+      b("filters", "blend", "filters", () => this.toggleFilters()),
+      b("custom-size", "image-upscale", "customSize", () => this.customSize()),
       layoutGroup,
       // The CSS-class dropdown is gated by the snippet-class feature toggle (AB19). Alignment/inline
       // (the layout group above) are core and stay regardless.
-      ...(this.settings.cssClassesEnabled ? [b("snippets", "chevron-down", "snippets", () => this.addClass())] : []),
-      b("export", "download", "export", () => this.exportImage()),
-      b("reset", "undo", "reset", () => this.reset()),
+      ...(this.settings.cssClassesEnabled ? [b("snippets", "braces", "snippets", () => this.addClass())] : []),
+      b("export", "image-down", "export", () => this.exportImage()),
+      b("reset", "eraser", "reset", () => this.reset()),
     ];
   }
 
@@ -579,6 +600,8 @@ export default class LiveImageEditorPlugin extends Plugin {
       customSize: () => this.commandCustomSize(),
       toggleInline: () => this.runTransformCommand(TOGGLE_INLINE),
       exportImage: () => single(() => { void this.exportImage(); }),
+      replaceImage: () => single(() => this.replaceImage()),
+      replaceAllImages: () => single(() => this.replaceAllImages()),
       resetAllImages: () => this.resetAllImages(),
     };
     registerCommands(this, handler);
@@ -766,51 +789,45 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.filterPanel = panel;
   }
 
-  // Centered class picker over a selection: a class is "active" only when ALL selected images carry
-  // it; clicking SETS it on all that lack it (or, if all already have it, removes it from all). The
-  // write is immediate (one undo step) and the menu closes — no accept/cancel cycle (like single).
+  // Centered class picker over a selection (Bug 88): the SAME sub-panel as single (search + scrollable
+  // list) in the standalone centered mode. A class is "active" only when ALL selected images carry it;
+  // clicking SETS it on all that lack it (or, if all already have it, removes it from all), in one undo
+  // step. The panel stays open (toggle several); the active marks re-read the live source each time.
   private openMultiClass(editor: Editor, locations: ImageLocation[]): void {
-    const available = this.snippetClasses.filter((sc) => !this.settings.disabledSnippetClasses.includes(sc.className));
+    if (this.classPanel) { this.closeClassPanel(); return; }
+    const available = this.snippetClasses
+      .filter((sc) => !this.settings.disabledSnippetClasses.includes(sc.className))
+      .map((sc) => sc.className);
     if (available.length === 0) { new Notice(t("settingsNoSnippets")); return; }
-    const parsed = locations.map((l) => parseAltText(l.params));
 
-    const menu = document.createElement("div");
-    menu.classList.add("lie-class-dropdown");
-    let detach = (): void => {};
-    const close = (): void => { detach(); menu.remove(); };
+    const lines = new Set(locations.map((l) => l.line));
+    // Re-resolve the selected embeds from the LIVE editor by line on every read/write — a toggle
+    // rewrites the source, so the open-time `locations[].params` go stale; line numbers stay put
+    // (edits never add/remove lines). Used both for the active marks AND the next toggle's write so
+    // repeated toggles accumulate against the current document.
+    const liveLocations = (): ImageLocation[] =>
+      allEmbedsInText(editor.getValue()).filter((e) => lines.has(e.line));
+    // The classes ALL selected images share — the centered panel's "applied" set (active marks).
+    const sharedClasses = (): string[] => {
+      const parsed = liveLocations().map((e) => parseAltText(e.params));
+      if (parsed.length === 0) return [];
+      return available.filter((cls) => parsed.every((p) => p.classes.includes(cls)));
+    };
 
-    const title = document.createElement("div");
-    title.classList.add("lie-class-dropdown-title");
-    title.textContent = this.multiTitle(locations.length);
-    menu.appendChild(title);
-
-    for (const sc of available) {
-      const allHave = parsed.every((p) => p.classes.includes(sc.className));
-      const item = document.createElement("button");
-      item.classList.add("lie-class-dropdown-item");
-      if (allHave) item.classList.add("is-active");
-      item.textContent = sc.className;
-      item.addEventListener("click", () => {
-        this.modifyTransformMulti(editor, locations, (tr) => {
-          const i = tr.classes.indexOf(sc.className);
+    const panel = new ClassPanel(available, {
+      appliedClasses: sharedClasses,
+      onToggle: (className: string) => {
+        const allHave = sharedClasses().includes(className);
+        this.modifyTransformMulti(editor, liveLocations(), (tr) => {
+          const i = tr.classes.indexOf(className);
           if (allHave) { if (i >= 0) tr.classes.splice(i, 1); }   // remove from all
-          else if (i < 0) tr.classes.push(sc.className);          // add to those that lack it
+          else if (i < 0) tr.classes.push(className);             // add to those that lack it
         });
-        close();
-      });
-      menu.appendChild(item);
-    }
-
-    menu.style.position = "fixed";
-    menu.style.top = "50%";
-    menu.style.left = "50%";
-    menu.style.transform = "translate(-50%, -50%)";
-    menu.style.zIndex = "1001";
-    document.body.appendChild(menu);
-
-    const closeHandler = (e: MouseEvent): void => { if (!menu.contains(e.target as Node)) close(); };
-    detach = (): void => document.removeEventListener("mousedown", closeHandler);
-    setTimeout(() => document.addEventListener("mousedown", closeHandler), 0);
+      },
+      onClose: () => { this.classPanel = null; },
+    });
+    panel.open(null, null, this.multiTitle(locations.length));
+    this.classPanel = panel;
   }
 
   // Apply `modifier` to several images' `{…}` blocks in ONE transaction (one undo step). Each block
@@ -1124,10 +1141,17 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.filterPanel?.close(persist);
   }
 
+  // Open the CSS-classes sub-panel (Bug 88) for the active image, through the SHARED AnchoredSubmenu
+  // host — docked beside the image exactly like the filter panel (toolbar-top anchor, pane-bound
+  // flip, greyed toolbar, hover region). Toggle: open while one is up closes it. Each row toggles
+  // the class with the existing immediate write (`applyClass`); the panel re-reads the source so its
+  // active marks track the live state. Disabled snippet classes are filtered out (unchanged).
   private addClass(): void {
+    if (this.classPanel) { this.closeClassPanel(); return; }
     if (!this.activeImage) return;
     const availableClasses = this.snippetClasses
-      .filter((sc) => !this.settings.disabledSnippetClasses.includes(sc.className));
+      .filter((sc) => !this.settings.disabledSnippetClasses.includes(sc.className))
+      .map((sc) => sc.className);
     if (availableClasses.length === 0) {
       new Notice(t("settingsNoSnippets"));
       return;
@@ -1135,46 +1159,24 @@ export default class LiveImageEditorPlugin extends Plugin {
 
     const resolved = this.locateActiveImage();
     if (!resolved) return;
-    const current = parseAltText(resolved.location.params);
+    const img = this.activeImage;
 
-    const menu = document.createElement("div");
-    menu.classList.add("lie-class-dropdown");
+    const panel = new ClassPanel(availableClasses, {
+      // Read the applied classes FRESHLY from source each refresh so the active marks track the
+      // live document after every toggle (the toggle is an immediate write).
+      appliedClasses: () => {
+        const loc = this.locateActiveImage();
+        return loc ? parseAltText(loc.location.params).classes : [];
+      },
+      onToggle: (className: string) => this.applyClass(className),
+      onClose: () => { this.classPanel = null; },
+    });
+    panel.open(img, this.activeToolbarEl());
+    this.classPanel = panel;
+  }
 
-    // The class dropdown is a lightweight palette, like the group popups (Bug 64): it is coupled to
-    // the image + toolbar active region (so hovering it keeps the bar visible, and leaving the region
-    // closes it — bar and palette fade together) but it is NOT greyed/modal. `close` is the single
-    // teardown for every path (pick a class / click-away / region-leave).
-    let detach = (): void => {};
-    const close = (): void => { detach(); menu.remove(); };
-
-    for (const sc of availableClasses) {
-      const item = document.createElement("button");
-      item.classList.add("lie-class-dropdown-item");
-      if (current.classes.includes(sc.className)) item.classList.add("is-active");
-      item.textContent = sc.className;
-      item.addEventListener("click", () => { this.applyClass(sc.className); close(); });
-      menu.appendChild(item);
-    }
-
-    const rect = this.activeImage.getBoundingClientRect();
-    menu.style.position = "fixed";
-    menu.style.top = `${rect.top - 8}px`;
-    menu.style.left = `${rect.left + rect.width / 2}px`;
-    menu.style.transform = "translate(-50%, -100%)";
-    menu.style.zIndex = "1001";
-    document.body.appendChild(menu);
-
-    const unbindRegion = couplePaletteToRegion(menu, {
-      wrapper: this.activeImage.closest<HTMLElement>(".lie-wrapper"),
-      toolbar: this.activeToolbarEl(),
-    }, close);
-
-    const closeHandler = (e: MouseEvent): void => { if (!menu.contains(e.target as Node)) close(); };
-    detach = (): void => {
-      unbindRegion();
-      document.removeEventListener("mousedown", closeHandler);
-    };
-    setTimeout(() => document.addEventListener("mousedown", closeHandler), 0);
+  private closeClassPanel(persist = true): void {
+    this.classPanel?.close(persist);
   }
 
   private async exportImage(): Promise<void> {
@@ -1198,6 +1200,93 @@ export default class LiveImageEditorPlugin extends Plugin {
     } catch (e) {
       new Notice(`Export failed: ${e}`);
     }
+  }
+
+  // --- Replace image / Replace all (Feature 3) ----------------------------------------------------
+  // Swap the underlying image FILE of an embed for another, non-destructively: the markdown source is
+  // rewritten to point at the chosen file while the trailing {…} transform block is kept (the edits
+  // survive — the user can Reset). The original image file is never touched. The right occurrence is
+  // resolved by DOM position (locateActiveImage / the same path crop/export use), NOT a basename scan
+  // (Bug 33). The link form (wikilink vs markdown) follows Obsidian's central "Use [[Wikilinks]]".
+
+  // Whether the vault is configured for markdown (vs wiki) links right now.
+  private useMarkdownLinks(): boolean {
+    return !!(this.app.vault as unknown as { getConfig?: (k: string) => unknown }).getConfig?.("useMarkdownLinks");
+  }
+
+  // The link token for `file` in the desired form (the wikilink inner text, or the md `(path)`
+  // contents), via Obsidian's own generator so encoding/relative-vs-shortest matches the vault's
+  // settings. Falls back to the vault-relative path when the generator's shape is unexpected (T12).
+  private replacementPathToken(file: TFile, desired: LinkFormat): string {
+    const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
+    try {
+      const link = this.app.fileManager.generateMarkdownLink(file, sourcePath); // never an alias arg (Lesson 5)
+      if (desired === "wiki") {
+        const m = link.match(/^!?\[\[([^\]|]+)/);
+        if (m?.[1]) return m[1];
+      } else {
+        const m = link.match(/\]\(([^)]+)\)/);
+        if (m?.[1]) return m[1];
+      }
+    } catch { /* fall through to the vault path */ }
+    return file.path;
+  }
+
+  // "Replace image" (single, F19-style image-specific): pick a vault image, rewrite THIS embed's
+  // target to it, keeping the {…} block. One undo step. The rewrite goes through the pure logic
+  // (`replaceEmbedTarget`) so it carries the block/native-size exactly; we then write back the single
+  // embed slice for that line (start→end) via the shared isolated writer.
+  private replaceImage(): void {
+    const resolved = this.locateActiveImage({ notify: true });
+    if (!resolved) return;
+    const { editor, location } = resolved;
+    this.pickImage((file) => {
+      const desired = desiredFormat(this.useMarkdownLinks());
+      const token = this.replacementPathToken(file, desired);
+      const rewritten = replaceEmbedTarget(editor.getValue(), location, token, desired === "wiki");
+      const origLine = editor.getLine(location.line);
+      const newLine = rewritten.split("\n")[location.line] ?? "";
+      // The embed slice grew/shrank by the path-length delta; its NEW end = old end + that delta.
+      const newEnd = location.end + (newLine.length - origLine.length);
+      const insert = newLine.slice(location.start, newEnd);
+      const from = editor.posToOffset({ line: location.line, ch: location.start });
+      const to = editor.posToOffset({ line: location.line, ch: location.end });
+      this.writeToSource(editor, from, to, insert);
+      new Notice(t("replaceDone"));
+    });
+  }
+
+  // "Replace all" (every occurrence of the SAME currently-targeted source in the active note): a
+  // find-and-replace of that one source, each occurrence keeping its own {…} block. One undo step.
+  private replaceAllImages(): void {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view || view.getMode() !== "source") { new Notice(t("resetAllNoEditor")); return; }
+    const editor = view.editor;
+    const resolved = this.locateActiveImage({ notify: true });
+    if (!resolved) return;
+    const targetBasename = basename(resolved.location.filename);
+    this.pickImage((file) => {
+      const desired = desiredFormat(this.useMarkdownLinks());
+      const token = this.replacementPathToken(file, desired);
+      const changes = planReplaceAll(
+        allEmbedsInText(editor.getValue()),
+        targetBasename,
+        token,
+        desired === "wiki",
+        basename,
+        (line, ch) => editor.posToOffset({ line, ch })
+      );
+      if (changes.length === 0) return;
+      const cm = (editor as unknown as { cm?: EditorView }).cm;
+      if (cm) writeSource(cm, changes);
+      else for (const c of changes.slice().reverse()) editor.replaceRange(c.insert, editor.offsetToPos(c.from), editor.offsetToPos(c.to));
+      new Notice(t("replaceAllDone").replace("{n}", String(changes.length)));
+    });
+  }
+
+  // Open the vault image picker; run `then` with the chosen file (or no-op on cancel).
+  private pickImage(then: (file: TFile) => void): void {
+    new ImagePickerModal(this.app, (file) => { if (file) then(file); }).open();
   }
 
   private hasTransforms(t: ImageTransform): boolean {

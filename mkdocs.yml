@@ -24,12 +24,13 @@ hooks:
 
 theme:
   name: materialx          # MaterialX — the maintained fork of mkdocs-material (was: material)
+  logo: img/logo.svg       # our brand mark (colour) — reads on the default light header
+  favicon: img/logo.svg    # colour mark for the browser tab
   language: en
   font:
     text: Inter           # Obsidian's UI font
     code: JetBrains Mono
   icon:
-    logo: material/image-edit-outline
     repo: fontawesome/brands/github
   palette:
     # Light — Obsidian's accent purple (fine-tuned in assets/extra.css).

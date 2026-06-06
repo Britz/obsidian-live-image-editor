@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { rewriteWidth, reduceReveal, URL_CLASS, URL_BRACE_CLASS } from "../../src/live-preview-logic";
 import type { RevealState, RevealEvents } from "../../src/live-preview-logic";
-import { parseAltText, serializeTransform, setWidthPx, isCrop } from "../../src/transforms";
+import { parseAltText, serializeTransform, setWidthPx, isCrop, getRotation } from "../../src/transforms";
+import { nativeBoxWidth } from "../../src/renderer-logic";
 
 // Regression registry (test-plan §5.1). Each fixed bug is pinned at the level that catches it.
 //
@@ -63,6 +64,42 @@ describe("Bug 51 G — a width edit preserves the crop (both write paths keep tr
     expect(round.aspectRatio).toBe("4/3");
     expect(round.width).toBe("320px");
     expect(isCrop(round)).toBe(true);
+  });
+});
+
+// Bug 78/79 — the R0/AD3 box-sizing invariant (the box is NEVER emptied to a naked img; the
+// no-explicit-width case is ALWAYS routed through the native box-sizing cap, cropped or not).
+//   • Bug 79 (clearStaleTransform): a reused embed whose source dropped its {…} re-renders the
+//     3-layer box with the EMPTY transform (== reset()) instead of unwrapping to a naked img.
+//     The DOM half (box survives, no naked img) is obsidian/cache-coupled → not a vitest unit
+//     (Lesson 6); the PURE crux is that the cleared image then sizes through the SAME native cap
+//     as a fresh native image — `nativeBoxWidth` (the non-crop branch's default width).
+//   • Bug 78 (cropped, width removed): the no-width cropped box must NOT collapse to 0 — it falls
+//     back to the SAME native cap, so the no-width decision is identical for cropped and non-cropped.
+describe("Bug 78/79 — no-explicit-width box sizing is the native cap (cropped OR not, one decision)", () => {
+  // A cropped embed whose width has been REMOVED: placement on the <img> + cut shape, NO width.
+  const croppedNoWidth = `![a](b.png){transform="translate(10%, 5%) scale(1.2)" aspect-ratio=4/3}`;
+  // A plain native-default image (what clearStaleTransform re-renders to: the empty transform).
+  const nativeDefault = `![a](b.png)`;
+
+  it("a cropped image with NO width is still a crop but carries no width source → must use the cap", () => {
+    const t = parseAltText(croppedNoWidth.match(/\{([^}]*)\}/)![1]!);
+    expect(isCrop(t)).toBe(true);
+    expect(t.width).toBeUndefined();              // nothing to size the box from → would collapse (Bug 78)
+    // The fallback the renderer applies is the native cap on the rotation-correct axis.
+    expect(nativeBoxWidth(800, 600, getRotation(t))).toBe(800);   // 0° → original width
+  });
+
+  it("the native-default image (Bug 79 cleared state) routes through the SAME cap", () => {
+    const t = parseAltText(nativeDefault.replace(/^!\[a\]\(b\.png\)/, "") || "");
+    expect(t.width).toBeUndefined();
+    expect(isCrop(t)).toBe(false);
+    expect(nativeBoxWidth(800, 600, getRotation(t))).toBe(800);   // identical decision, no special case
+  });
+
+  it("a no-width box quarter-turned caps on the ORIGINAL HEIGHT (axis swap survives the crop path)", () => {
+    expect(nativeBoxWidth(800, 600, 90)).toBe(600);
+    expect(nativeBoxWidth(800, 600, 270)).toBe(600);
   });
 });
 

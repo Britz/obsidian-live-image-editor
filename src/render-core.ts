@@ -2,7 +2,7 @@ import {
   ImageTransform, Align, FilterData, MARKER_CLASS, INLINE_CLASS,
   getRotation, isCrop, filterToCss, getWidthPx, getHeightPx,
 } from "./transforms";
-import { boxAspectRatio, innerImageSize, rotatedAabb, isTallFloat } from "./renderer-logic";
+import { boxAspectRatio, innerImageSize, rotatedAabb, nativeBoxWidth, isTallFloat } from "./renderer-logic";
 
 // The Obsidian-FREE render core (AB7a). It builds the uniform 3-layer image structure and
 // carries the structural render CSS as a STRING — the SINGLE source injected by BOTH the
@@ -124,6 +124,18 @@ function sizeLayers(img: HTMLImageElement, outer: HTMLElement, frame: HTMLElemen
     const cutW = getWidthPx(t);
     if (cutW) outer.style.width = `${Math.round(rotatedAabb(cutW, cutW / cut, deg).w)}px`;
     else if (t.width) outer.style.width = t.width;
+    else {
+      // No explicit width (cropped, width removed): route through the SAME native box-sizing
+      // path as a non-crop image — the box must NOT collapse to 0 just because its content is
+      // absolutely positioned (Bug 78). The footprint shape stays the CUT shape (set above); the
+      // box width falls back to the ORIGINAL intrinsic dimension on the rotation-correct axis
+      // (`rotatedAabb` swaps to the original HEIGHT for a 90°/270° box), column-capped by the
+      // `max-width:100%` rule. Needs the natural size — wait for it (the crop transform is
+      // already applied above, so the live image is correct while we resolve the cap).
+      whenNatural(img, (nw, nh) => {
+        outer.style.width = `${nativeBoxWidth(nw, nh, deg)}px`;
+      });
+    }
     return;
   }
 
@@ -140,26 +152,35 @@ function sizeLayers(img: HTMLImageElement, outer: HTMLElement, frame: HTMLElemen
   img.style.width = "100%";
   img.style.height = "100%";
 
-  const apply = (): boolean => {
-    const nw = img.naturalWidth, nh = img.naturalHeight;
-    if (!nw || !nh) return false;
-    shapeFrame(outer, frame, nw / nh, deg);
-    // A default width only when NEITHER dimension is set — the box shows at the image's
-    // natural (rotated) size, column-capped.
-    if (!t.width && !t.height) outer.style.width = `${Math.round(rotatedAabb(nw, nh, deg).w)}px`;
-    return true;
-  };
-
-  if (apply()) return;
-  // Intrinsic size not known yet: give the outer a PROVISIONAL aspect-ratio so it can't
-  // collapse to 0 height; the frame fills it until the real ratio lands.
+  // Give the outer a PROVISIONAL aspect-ratio up front so it can't collapse to 0 height while the
+  // intrinsic ratio is still unknown; the frame fills it until the real ratio lands.
   outer.style.setProperty("--lie-auto-aspect", t.aspectRatio || "1");
   frame.style.width = "100%";
   frame.style.height = "100%";
-  const onLoad = (): void => { apply(); };
-  img.addEventListener("load", onLoad, { once: true });
+
+  whenNatural(img, (nw, nh) => {
+    shapeFrame(outer, frame, nw / nh, deg);
+    // A default width only when NEITHER dimension is set — the box shows at the image's
+    // natural (rotated) size, column-capped (the SAME native cap the no-width crop path uses).
+    if (!t.width && !t.height) outer.style.width = `${nativeBoxWidth(nw, nh, deg)}px`;
+  });
+}
+
+// Run `cb` with the image's intrinsic dimensions once they're known: synchronously if the image
+// is already decoded, otherwise on load and via a short poll (a cached/backgrounded image may
+// never fire `load`). Bails if the image leaves the document. Pure-ish DOM glue shared by the
+// crop and non-crop sizing paths so the no-explicit-width native cap is derived identically.
+function whenNatural(img: HTMLImageElement, cb: (nw: number, nh: number) => void): void {
+  const tryApply = (): boolean => {
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    if (!nw || !nh) return false;
+    cb(nw, nh);
+    return true;
+  };
+  if (tryApply()) return;
+  img.addEventListener("load", () => { tryApply(); }, { once: true });
   let tries = 0;
-  const poll = (): void => { if (apply() || ++tries > 20 || !img.isConnected) return; window.setTimeout(poll, 50); };
+  const poll = (): void => { if (tryApply() || ++tries > 20 || !img.isConnected) return; window.setTimeout(poll, 50); };
   window.setTimeout(poll, 0);
 }
 
@@ -228,25 +249,6 @@ function resetLieState(img: HTMLImageElement): void {
       el.removeAttribute("style");
       el = el.parentElement;
     } else break;
-  }
-}
-
-// Remove the wrapping layers entirely (when an image leaves our control — a cached
-// reading-view embed whose source no longer has a {…} block). Handles the 3-layer structure
-// and a legacy 2-layer (`.lie-image-area > img`) reused DOM.
-export function unwrapBox(img: HTMLImageElement): void {
-  const parent = img.parentElement;
-  if (!parent) return;
-  if (parent.classList.contains(FRAME_CLASS)) {
-    const outer = parent.parentElement;
-    const top = outer?.classList.contains(BOX_CLASS) ? outer : parent;
-    top.parentElement?.insertBefore(img, top);
-    top.remove();
-    return;
-  }
-  if (parent.classList.contains(BOX_CLASS)) { // legacy 2-layer
-    parent.parentElement?.insertBefore(img, parent);
-    parent.remove();
   }
 }
 

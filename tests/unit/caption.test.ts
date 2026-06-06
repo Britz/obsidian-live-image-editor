@@ -46,6 +46,22 @@ describe("captionMarkdown (alt text → caption, from an embed string)", () => {
   it("does not treat a pipe inside the caption as a size", () => {
     expect(captionMarkdown("![a | b](cat.png)")).toBe("a | b");
   });
+
+  it("extracts a quoted caption alongside a whitespace-separated size (Bug 81)", () => {
+    expect(captionMarkdown('!["I can caption anything!" 100x150](cat.png)')).toBe("I can caption anything!");
+    expect(captionMarkdown('![[cat.png|50x50 "Look at my caption ma!"]]')).toBe("Look at my caption ma!");
+  });
+
+  it("strips a whitespace-separated native size from an unquoted caption (Bug 81)", () => {
+    expect(captionMarkdown("![A caption 300](cat.png)")).toBe("A caption");
+    expect(captionMarkdown("![[cat.png|A caption 300]]")).toBe("A caption");
+  });
+
+  it("rejects an auto / WxH size-only alt as a caption (Bug 81)", () => {
+    expect(captionMarkdown("![autox200](cat.png)")).toBe("");
+    expect(captionMarkdown("![[cat.png|50xauto]]")).toBe("");
+    expect(captionMarkdown("![[cat.png|auto]]")).toBe("");
+  });
 });
 
 describe("captionFromAlt (reading view: img.alt → caption)", () => {
@@ -65,5 +81,12 @@ describe("captionFromAlt (reading view: img.alt → caption)", () => {
 
   it("returns empty for empty alt", () => {
     expect(captionFromAlt("")).toBe("");
+  });
+
+  it("handles the Bug 81 grammar (quoted caption, whitespace size, auto)", () => {
+    expect(captionFromAlt('100x150 "I can caption anything!"')).toBe("I can caption anything!");
+    expect(captionFromAlt("A photo 640x480")).toBe("A photo");
+    expect(captionFromAlt("autox200")).toBe("");
+    expect(captionFromAlt("50xauto")).toBe("");
   });
 });

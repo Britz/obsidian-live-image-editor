@@ -111,6 +111,21 @@ current code and are restated here as architecture, not invented anew.
   layers `.lie-image-area` (outer) → `.lie-frame` (inner-frame) → `<img>`, upgrading a reused legacy
   2-layer DOM.)*
 
+  - **The R0 box invariant (Decision 19).** The 3-layer DOM is **invariant** — the box is **never
+    empty** and the `<img>` is **never naked**. Whatever the parameters, the outer always carries at
+    least the **native defaults** (`max-width:100%`, capped at the rotation-correct intrinsic
+    dimension — the height or width axis chosen by the box angle — with the aspect-ratio derived
+    natively), and the `<img>` is **always boxed** inside the inner-frame. Only the
+    **parameterization** changes across normal / rotated / cropped / filtered / resized images; the
+    structure does not. **Crop only affects the inner `<img>`** (its placement `transform`) — it is
+    never a special case for the box's sizing rules. So `reset()` falls back to the native-default
+    parameters rather than leaving an empty box, and `clearStaleTransform` re-parameterizes rather
+    than un-wrapping to a naked image (the two ways the invariant was previously broken).
+  - **The display-mode residual is by design (Decision 13).** Alignment necessarily varies the box's
+    `display`: a centered image is a centered **block**, an inline image is **inline**. This residual
+    coupling is intentional and harmless — the explicit px `width` makes the flow footprint identical
+    either way, so no refactor is warranted.
+
 - **AD4 — Two view adapters, one render core.** *(T4, F4)* Reading view (a Markdown
   post-processor) and live preview (a CodeMirror-6 extension) are separate **only** because
   Obsidian renders the two modes through different machinery. Everything below the adapter —
@@ -408,7 +423,8 @@ display state — each produces an edit that round-trips through the model layer
 - **AB17 — Lifecycle** — registers the two view adapters, commands and settings; owns load/unload.
 - **AB18 — Commands** — image-context commands, active only when an image is in context (F19).
 - **AB19 — Settings** — a compact **General** group (hover toolbar, captions, default raw-link
-  reveal state, tall-float cap), the **preset widths**, and a **CSS-classes** section
+  reveal state, tall-float cap, the a11y **button-outline** mode — Auto/Always/Never, AB20), the
+  **preset widths**, and a **CSS-classes** section
   driven as a 3-state machine (F20/F16.2): **(A)** no snippet enabled in Obsidian
   (`customCss.enabledSnippets.size === 0`) → greyed master toggle + a notice/link to Appearance →
   CSS snippets; **(B)** feature off → just the master toggle; **(C)** feature on → install/reset of
@@ -433,14 +449,21 @@ display state — each produces an edit that round-trips through the model layer
   CSS** (AD5): the rule that hides Obsidian's native image **uniformly in every embed** (never the
   plugin's own `.lie-wrapper`), and the
   hover/`.cm-active`-keyed rules — plus the `<>`-toggle class and the global default-state class — that
-  hide the `{…}` and the fake raw link when rendered and reveal them otherwise. It carries **no**
+  hide the `{…}` and the fake raw link when rendered and reveal them otherwise. It also carries the **a11y
+  button-outline** rules: a setting (AB19) draws visible outlines on the toolbar/chrome buttons in
+  three modes — *Auto* (outlines only when the platform signals a need, via `prefers-contrast` /
+  `forced-colors`), *Always*, or *Never*. It carries **no**
   transform/filter rules — `rotate`/`flip`/`transform`/`filter` are applied as inline CSS on their
   layer by the render core / runtime (AD2/AD3), not by injected class rules — and **no** decoration
   classes (shipped as snippets, F16).
 - **AB21 — Localization** — follows Obsidian's locale, reusing platform strings, English fallback
   (F21, AD9).
 - **AB22 — Editing-toolbar integration** — installs/removes the plugin's commands into the
-  separate editing-toolbar plugin's bar; optional, off by default, version-gated (F23, T10).
+  separate editing-toolbar plugin's bar; optional, off by default, version-gated (F23, T10). The
+  plugin's **brand icon** is registered once via Obsidian's `addIcon` (`src/brand-icon.ts`,
+  `currentColor`) so it is a first-class glyph reusable by name — used by this submenu (NOT a
+  settings-tab header, which would re-add the R22 plugin-name heading); the same artwork ships as
+  `docs/img/logo.svg` (fixed colour) for the README, docs and favicon.
 - **AB23 — Dev bridge** — CDP relay, dev builds only, tree-shaken from production.
 
 ---

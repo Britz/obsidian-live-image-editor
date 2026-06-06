@@ -8,17 +8,26 @@ export interface ImageLocation {
   isWikiLink: boolean;
   filename: string; // path as written in the embed (preserved)
   params: string;   // content of the {…} transform block, "" if none
+  // The raw alt/alias the embed carries: the Markdown alt (`![ALT](path)`) or the wikilink alias
+  // after the first pipe (`![[path|ALIAS]]`, "" if none). It mixes caption + native `|size`; the
+  // caption/size split is caption-logic's job. Surfaced so a "Replace image" swap can preserve it.
+  alt: string;
 }
 
 // Transforms are stored in a trailing {…} attribute block so the link itself —
 // caption (markdown alt) and native size (wikilink pipe) — stays untouched:
 //   ![caption](path){rotate=90}
 //   ![[image.png|300]]{rotate=90}
+// The first capture is the link payload (wikilink: `path|alias`; markdown: the alt — its `(path)`
+// follows separately), the third is the {…} block; the markdown path is its own group (group 1's
+// `(\([^)]+\))` is the `(path)`, group 2 the path).
 const WIKI_EMBED = /!\[\[([^\]]+?)\]\](\{([^}]*)\})?/g;
-const MD_EMBED = /!\[[^\]]*\]\(([^)]+)\)(\{([^}]*)\})?/g;
+const MD_EMBED = /!\[([^\]]*)\]\(([^)]+)\)(\{([^}]*)\})?/g;
 
-function basename(path: string): string {
-  // For wikilinks the inner text may carry a |size/|alt suffix.
+// The comparable basename of a written link token (the wikilink inner text or the md path), used to
+// match a rendered image against its source embed — and to find every occurrence of the same target
+// for "Replace all" (Feature 3). For wikilinks the inner text may carry a |size/|alt suffix.
+export function basename(path: string): string {
   const file = path.split("|")[0] ?? path;
   try {
     return decodeURIComponent(file).split(/[/\\]/).pop() ?? file;
@@ -32,24 +41,30 @@ function basename(path: string): string {
 // link `](…)`), so the union never double-counts; sorting by column gives true source order.
 function embedsInLine(line: string, lineNo: number): ImageLocation[] {
   const out: ImageLocation[] = [];
-  for (const { regex, isWiki } of [
-    { regex: WIKI_EMBED, isWiki: true },
-    { regex: MD_EMBED, isWiki: false },
+  // The group layouts differ: WIKI captures the `path|alias` payload in group 1 (its alias is the
+  // alt, after the first pipe) and the {…} block in group 2; MD captures the alt in group 1, the
+  // `(path)` in group 2 and the {…} block in group 3. `block` is the index of the `{…}` group.
+  for (const { regex, isWiki, block } of [
+    { regex: WIKI_EMBED, isWiki: true, block: 2 },
+    { regex: MD_EMBED, isWiki: false, block: 3 },
   ]) {
     regex.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = regex.exec(line)) !== null) {
-      const path = m[1] ?? "";
-      const block = m[2] ?? "";
+      const path = isWiki ? (m[1] ?? "") : (m[2] ?? "");
+      // WIKI alt = alias after the first pipe of the payload; MD alt = group 1.
+      const alt = isWiki ? (m[1]?.split("|").slice(1).join("|") ?? "") : (m[1] ?? "");
+      const blockText = m[block] ?? "";
       const end = m.index + m[0].length;
       out.push({
         line: lineNo,
         start: m.index,
-        headEnd: end - block.length,
+        headEnd: end - blockText.length,
         end,
         isWikiLink: isWiki,
         filename: path,
-        params: m[3] ?? "",
+        params: m[block + 1] ?? "",
+        alt,
       });
     }
   }

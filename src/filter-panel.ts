@@ -1,6 +1,7 @@
-import { FilterData, getFilterDefaults, nonDefaultFilter } from "./transforms";
+import { FilterData, getFilterDefaults, nonDefaultFilter, filterToCss } from "./transforms";
 import { t, TranslationKey } from "./i18n";
 import { AnchoredSubmenu } from "./anchored-submenu";
+import { ContentBound } from "./anchored-submenu-logic";
 import { textButton } from "./ui";
 
 export interface FilterPanelCallbacks {
@@ -93,7 +94,12 @@ export class FilterPanel {
       toolbar: centeredTitle ? null : toolbarEl ?? null,
       title: centeredTitle ?? t("filters"),
       rootClass: "lie-filter-panel",
-      allowFlip: false,                          // never flip onto the file explorer (Bug 64)
+      // Dock on whichever side of the image has more room (D7) — but measured WITHIN the
+      // editor content pane, so a left flip never lands over the file explorer / left
+      // sidebar (the Bug-64 guard, re-armed as Bug 77). Centered mode has no anchor, so
+      // flipping is moot there.
+      allowFlip: !centeredTitle,
+      contentBound: centeredTitle ? undefined : () => this.editorPaneBound(anchorEl),
       hideWhenAnchorOffscreen: !centeredTitle,   // track the image; centered has no anchor to track
       // Show/hide with the toolbar's hover while staying part of the active region
       // (D6/D7): the live-preview overlay is the hover region. Centered/reading view → no
@@ -121,6 +127,20 @@ export class FilterPanel {
   // The non-default working values, ready to persist (shares the "≠ default" predicate).
   private currentFilter(): FilterData {
     return nonDefaultFilter(this.values);
+  }
+
+  // The horizontal bound the side-of-more-room flip is measured against (Bug 77/D7): the
+  // editor content pane that holds the image — `.markdown-source-view` (live preview) or
+  // `.markdown-reading-view` (reading view). Both are the leaf's content area and EXCLUDE
+  // the left sidebar (file explorer), so a left flip stays inside the pane and never lands
+  // over it (the Bug-64 guard). Evaluated live each reposition (the pane moves when the
+  // sidebar is toggled or the window resizes). Null ⇒ pane not found ⇒ the host falls back
+  // to the viewport, i.e. the previous right-clamp-only behaviour.
+  private editorPaneBound(anchorEl: HTMLElement | null): ContentBound | null {
+    const pane = anchorEl?.closest<HTMLElement>(".markdown-source-view, .markdown-reading-view");
+    if (!pane) return null;
+    const r = pane.getBoundingClientRect();
+    return { left: r.left, right: r.right };
   }
 
   private buildHistogram(): HTMLElement {
@@ -285,6 +305,10 @@ export class FilterPanel {
     const h = Math.min(this.img.naturalHeight, 200);
     tempCanvas.width = w;
     tempCanvas.height = h;
+    // Sample the LIVE-filtered result, not the raw image: a CSS filter on the <img> is a render
+    // effect and never reaches getImageData, so apply the working filter to the sampling context
+    // (canvas `filter`) before drawing — the histogram then tracks the sliders (Bug 83).
+    tempCtx.filter = filterToCss(this.currentFilter()) || "none";
     tempCtx.drawImage(this.img, 0, 0, w, h);
 
     let imageData: ImageData;

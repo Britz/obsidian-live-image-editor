@@ -14,15 +14,16 @@ is the build & debug guide only; the [user guide](../user-guide.md) covers usage
 | [architecture.md](architecture.md) | How (concept) | Mid-level decisions (`AD1–AD9`) and building blocks (`AB…`); data flow; the **R0** uniform-rendering model. |
 | [implementation-plan.md](implementation-plan.md) | How (code) | Low-level module map (file → block → exports), per-layer realization, and pitfalls. |
 | [test-plan.md](test-plan.md) | Verification | The test strategy (currently a draft). |
+| [release-compliance.md](release-compliance.md) | Shippability | The **community-directory submission gate**, parallel to the test plan (test plan = behaviour, this = shippability): the `R1–R30` audit against Obsidian's Developer policies / Plugin guidelines / Submission requirements, plus the manual submission checklist. |
 | [issues.md](issues.md) | Backlog + lessons | **OPEN** at the top: numbered registry items (`Decision`/`Feature`/`Bug`, sharing the changelog's sequences — each keeps its number when it ships) + an unnumbered **Meta level** (verifications, refactoring, housekeeping, and the hard-won **`Lesson 1–16`**). The solved Bug/Feature/Change/Decision registry lives in [CHANGELOG.md](../../CHANGELOG.md). |
 | [CHANGELOG.md](../../CHANGELOG.md) | Done | The registry of everything shipped: **one numbered list per version**, sorted Decision › Change › Feature › Bug (newest-first), each entry in its own global chronological sequence (numbers never reused). |
 
 The pre-submission **community-directory compliance audit** — the plugin checked against Obsidian's
-Developer policies, Plugin guidelines, and Submission requirements (2026-06-05) — lives in the
-top-level [README → Release compliance](https://github.com/Britz/obsidian-live-image-editor/blob/main/README.md#release-compliance): the full pass/fail
-record (rules `R1–R30`, with sources) plus the manual submission checklist. Its open `R…` rules link
-into the matching task-type sections of `issues.md`, where each is an actionable
-**[Release-Requirement]** item (the former standalone `rc-issues.md`'s `RC1–RC11`).
+Developer policies, Plugin guidelines, and Submission requirements (2026-06-05) — lives in
+[release-compliance.md](release-compliance.md): the full pass/fail record (rules `R1–R30`, with
+sources) plus the manual submission checklist (the former standalone `rc-issues.md`'s `RC1–RC11`).
+Its open `R…` rules link into the matching task-type sections of `issues.md`, where each is an
+actionable **[Release-Requirement]** item.
 
 ## Conventions
 

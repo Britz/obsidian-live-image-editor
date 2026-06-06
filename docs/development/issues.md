@@ -34,63 +34,11 @@ Numbered registry items — each will move to the changelog keeping its number o
 
 ### Open decisions (Decision)
 
-- [ ] **Decision 13 — Display-mode residual (AD3, minor).** The uniform box computes to `display:block` on a plain
-      page vs `inline-block` where an alignment class is present — harmless given the explicit px
-      width, but a residual special case worth tidying.
-- [ ] **Decision 14 — Enter=accept is captured globally while a panel is open (verify it doesn't surprise).** The
-      shared host captures Enter→accept (and Esc→cancel) on `document` while open, so an Enter pressed
-      with focus back in the editor accepts-and-closes rather than inserting a newline. This matches
-      the active-region/modal-ish model (the panel is the focus while open) and pairs Enter with ✓,
-      but revisit if it ever feels wrong — e.g. scope the capture to focus within the panel/region.
-      (Submodal accept/cancel rework, 2026-06-05.)
-- [ ] **Decision 15 — F14 lists Export among the shared-host panels, but Export uses the native save dialog.** Crop,
-      Filters and Resize go through `AnchoredSubmenu`; Export is a one-shot native dialog
-      (`export.ts`, AD9/F13), never a live-preview panel. Pre-existing wording, surfaced while
-      pulling F14 to IST for the accept/cancel rework — decide whether to reword F14 ("…and Export"
-      → "Export uses the native dialog") or leave it as the conceptual grouping.
-- [ ] **Decision 16 — `data-`-prefix the runtime-only keys on WRITE? (cross-renderer HTML5-validity).** The writer
-      emits bare `rotate=` / `flip=` / `transform=` / `filter=`; in foreign output these land verbatim as
-      non-standard `rotate="…"` attributes (python-markdown — browser-inert but not valid HTML5) or as
-      `data-rotate="…"` (Pandoc prepends `data-` → valid HTML5). The runtime already READS both
-      spellings (`runtime.ts` claim selector), so writing the `data-` prefix ourselves would make the
-      no-plugin output valid HTML5 everywhere — at the cost of a longer hand-edited block (T11
-      brevity). Current lean: **keep bare keys** (already browser-inert and shorter); revisit only if
-      HTML5 validity of the _exported_ page matters. Surfaced by the cross-renderer fallback research
-      (2026-06-04) — see implementation-plan §2.2b + memory `img-attr-fallback-prior-art`.
-- [ ] **Decision 17 — D7 — the filter panel docks ALWAYS to the right, not "the side with more room".** The shared
-      host supports flipping to the left when it would overflow (`allowFlip` defaults `true`,
-      `anchored-submenu-logic.ts`), but the filter panel passes `allowFlip:false`
-      ([filter-panel.ts:92](src/filter-panel.ts#L92)) — a DELIBERATE Bug-56 trade-off ("never flip onto
-      the file explorer"). So D7's "beside the image, on whichever side has more room" is knowingly not
-      met. Decide: reword D7 to "docks beside, clamped to the right (Bug 64)" or re-enable a guarded
-      flip. (Clean-room analysis reconcile, 2026-06-05.)
-- [ ] **Decision 18 — T2.3 says "never width+height together", but the custom-size path emits both.**
-      `serializeTransform` writes a bare `width=N` AND a `style="height:…"` when the user sets both via
-      the resize modal (D6.1) ([transforms.ts:220-225](src/transforms.ts#L220)). D6.1/F24 deliberately
-      allow an explicit W+H, so T2.3's blanket "never together" contradicts them. Decide: precise the
-      T2.3 wording (W+H allowed for the explicit custom-size case; presets/auto never co-emit) vs.
-      enforce a single axis. (Clean-room analysis reconcile, 2026-06-05.)
-- [ ] **Decision 19 — `reset()` does not `unwrapBox` — the empty 3-layer box stays (verify it's intended).**
-      `reset()` ([main.ts:680](src/main.ts#L680)) writes the empty transform and re-renders via
-      `buildLayers(empty)` but never calls `unwrapBox`, so the wrapper layers remain (rendering the
-      uniform R0 box with no transform). Almost certainly intended (R0 renders every image through the
-      box), but unlike `clearStaleTransform` ([main.ts:335](src/main.ts#L335)) it leaves the chrome in
-      place — confirm or unwrap. (Clean-room analysis reconcile, 2026-06-05.)
-
-_Under-specified specs — decide the wording / behaviour (also Decision):_
-
-- [ ] **Decision 20 — Shared sub-menu host component API** (D6 / F14).
-- [ ] **Decision 21 — Link-form conversion edge cases** (F5 / F6).
-- [ ] **Decision 22 — F7 activation scope — a Reading-view click opens no toolbar** (only the source/LP editor click
-      or a touch long-press does). The click handler is scoped to `.markdown-source-view`; a plain
-      Reading-view click never opens the toolbar (editing needs the editor). Likely intended — pin it
-      down in F7 so it isn't read as a gap. (Clean-room analysis reconcile, 2026-06-05.)
-- [ ] **Decision 23 — Filter histogram samples the ORIGINAL image, not the filtered result** (`filter-panel.ts` reads
-      the source `getImageData`). Reasonable as a fixed reference, but unspecified — state whether the
-      histogram should track the live filter or stay the original. (Clean-room analysis reconcile,
-      2026-06-05.)
+_**24 decisions total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md))._
 
 ### Planned features (Feature)
+
+_**38 features total** — shipped (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the planned ones below._
 
 New capabilities, not yet F-items. Per `methodology.md` each starts at the top (a Functional/Design
 requirement + the storage/permission implications) before any code.
@@ -136,8 +84,17 @@ requirement + the storage/permission implications) before any code.
       image snippets?), how they travel (baked into a per-site CSS at export vs. a runtime config),
       Obsidian theme-var dependencies (`var(--background-modifier-border)` & friends don't resolve
       off-Obsidian), and scoping/collision with the host site's own CSS.
+- [ ] **Feature 37 — A "Save" sub-panel in the in-image toolbar — group Replace + Export under one trigger.**
+      Add a `save` trigger to the toolbar that opens a small sub-panel grouping **Replace** (Feature 35)
+      and **Export** (F13); the standalone Export button moves into it. The Replace command and its
+      editing-toolbar entries already exist (v0.6.0) — this is the UI grouping pass (panel + tests).
+- [ ] **Feature 38 — Collapsed submenus auto-expand on hover + show a dropdown caret (▾).** Like the
+      editing-toolbar: a folded toolbar group should sprout a small caret hinting it's expandable, and
+      open on **hover** (not only click). Small polish — explicitly NOT in the v0.6.0 release. (2026-06-06.)
 
 ### Known open bugs (Bug)
+
+_**88 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
 
 - [ ] **Bug 65 — `<>` dismiss doesn't hide the FRONT of the link on the cursor line (fights the
       native widget).** When the editor cursor is on the image's line, the `<>` dismiss fails to hide the
@@ -151,20 +108,6 @@ requirement + the storage/permission implications) before any code.
       active-line reveal — e.g. on a dismissed line also suppress the native `![](…)` source tokens
       (scoped to that line) — **without** breaking native editing/selection of the source (Lesson 11). Needs
       a CDP diagnose of exactly what renders on the active line first.
-- [ ] **Bug 66 — crop resize handles are hardcoded white (`#fff`), invisible in light mode.** The crop
-      editor's handle chrome — the frame border (`.lie-crop-handles`, `border: 2px solid #fff`), the
-      corner/edge handle squares (`.lie-crop-handle`, `background: #fff`) and the rotate knob
-      (`.lie-crop-rotation-handle` + its stem) — is all hardcoded `#fff`
-      ([styles.css:408-454](styles.css#L408-L454)). On a dark theme this happens to read fine (white on
-      a dark surround); in **light mode** the white handles vanish against the light image/page. _Fix:_
-      recolour them with an Obsidian theme variable that **adapts to the active theme** — an
-      **action/accent** colour such as `var(--interactive-accent)` — and keep them **distinct from the
-      outer native resize handle** (`.lie-box .image-resize-corner`, which mimics Obsidian's native
-      accent handle, [styles.css:285-317](styles.css#L285-L317)) so the two read as different tools (the
-      native handle resizes the whole image; the crop handles scale/crop _within_ the frame). The handle
-      shapes already differ, but a different colour makes that unmistakable. _Nice-to-have:_ render the
-      **frame border dotted or dashed** (not solid) to signal the meta-resize layer it operates on.
-      Reported 2026-06-05 (user; dark-mode masked it the night before).
 - [ ] **Bug 67 — toggling Obsidian's line-break mode makes FLOATED images vanish in Live Preview
       (stale in-place decoration); intermittent.** Obsidian's editor **"Strict line breaks"** setting
       switches between _hard_ breaks (a single newline renders as a break — the **default**) and
@@ -183,9 +126,49 @@ requirement + the storage/permission implications) before any code.
       plugin when this config changes). _Caveat:_ the user could **no longer reproduce it** after the
       first occurrence — confirm with a CDP/focused repro (toggle Settings → Editor → _Strict line
       breaks_ with a floated `{ .lie-left }` embed on screen) before fixing. Reported 2026-06-05 (user).
-
-_(Bugs 68–72 — the community-directory should-fix items — are RESOLVED in v0.4.2; see Change 25 in
-the changelog. The bugs that remain open: 65, 66, 67.)_
+- [ ] **Bug 76 — The standalone runtime doesn't center an `align=center`-only image on a published
+      page.** The portable runtime claims an `<img>` only via `CLAIM_SELECTOR`
+      (`[rotate],[flip],[transform],[aspect-ratio],[filter],.lie` + the `data-*` spellings,
+      [render-core.ts:331](src/render-core.ts#L331)) — `align` / `width` ALONE never claim. For
+      `align=left` / `right` that is correct: the bare `align="left"` / `"right"` attribute floats
+      natively via legacy HTML (faithful with no plugin and no runtime). But `align="center"` is a no-op
+      on an `<img>`, and the runtime's centering rule keys on the marker class
+      (`.lie-image-area:has(img.lie-center){…margin:auto}`, [runtime.ts](src/runtime.ts)), which
+      `buildLayers` only adds **on a claim**. So a center-aligned image with NO other transform is
+      **not** centered on a foreign / published page (it stays inline) — left/right work, center
+      silently degrades. The render-core comment "`align`…ALONE do not claim (native CSS already handles
+      them faithfully)" ([render-core.ts:326](src/render-core.ts#L326)) over-states the center case.
+      _Fix (mirrors Bug 58, which added `[filter]` to the claim selector):_ add `[align]` /
+      `[data-align]` to `CLAIM_SELECTOR` (so the runtime builds the box + marker and centers it), or add
+      a no-claim `:has(img[align="center"])` / `[align="center"]` rule to `RUNTIME_CSS`. In Obsidian
+      itself this never bites — every image renders through `buildLayers` (R0), so the marker is always
+      present; only the standalone runtime's claim gate is selective. Surfaced by the cross-renderer
+      fallback research (memory `img-attr-fallback-prior-art`: "align=left/right faithful … no center
+      value though"). Found via memory harvest 2026-06-06.
+- [ ] **Bug 80 — Crop edge/corner handles stretch the whole image instead of moving only the grabbed
+      edge/corner (D8, Decision 24).** Each handle must reshape the crop WINDOW from its own side — the
+      grabbed corner/edge moves, the opposite side stays anchored. **Corners** keep the aspect ratio
+      (aspect-locked); **edges** are single-axis. The current in-place editor stretches the inner image
+      on an axis, which is wrong. Fix in the crop drag geometry (`crop-editor` / `crop-editor-logic`).
+      DEFERRED — batch with any future crop-component bug. (Decision 24; 2026-06-06.)
+- [ ] **Bug 82 — Export doesn't bake a `style="filter:…"` (outer-box) filter.** `renderTransformedImage`
+      applies only `transform.filter` (the inner-image `filter=`, [export.ts:74](src/export.ts#L74)); a
+      filter written via `{style="filter:…"}` lands on the OUTER box (`t.box.filter`, render-core
+      `routeBoxStyle`) and is NOT composed into the export canvas → the exported PNG misses it. LOW
+      PRIORITY / edge case — the editor deliberately authors filters only via `filter=`; only expert
+      hand-written style-filters hit this. Fix (if ever): compose the box filter outside-in over the img
+      filter in the export render. (Decision 23; 2026-06-06.)
+- [ ] **Bug 84 — Filter histogram should also reflect the CROP, not just the filter.** Bug 83 made the
+      histogram track the live `filter=`; but a crop changes the visible tonal distribution too (it cuts
+      parts of the image away). The histogram should sample the **rendered R0 result** (cropped + filtered
+      visible region) — e.g. reuse the export's `renderContent` ([export.ts](src/export.ts)) to produce the
+      rendered canvas, then histogram THAT, which also fits the R0 uniform-render model. DEFERRED — track
+      only. (Decision 23 follow-up; 2026-06-06.)
+- [ ] **Bug 86 — Link-reveal visibility changes during crop, making the image jump.** While crop is
+      active, the raw-link reveal (the `.lie-fake-link` / `<>` reveal line) can toggle (cursor moves on/off
+      the line, or the reveal state flips), which reflows the line and **shifts the image inside the crop
+      editor** — confusing mid-crop. Fix: freeze the reveal visibility for the crop duration (no
+      reveal/dismiss changes while `.lie-cropping` is active). DEFERRED — track only. (2026-06-06.)
 
 ---
 
@@ -195,60 +178,31 @@ Process & quality work — stays in `issues.md`, **not** numbered into the chang
 
 ### Verifications (need eyes on a real / focused window)
 
-- [ ] **Reading-view-specific render + native save dialog — focused-window pass.** The interactive
-      panels (crop / filter / size) and the **F2 duplicate-resolution render path** are now verified
-      live in a focused window (`verify-render-gaps` 4/4 incl. the occurrence-aware F2 checks;
-      `verify-crop` 20/20; `verify-write-path` 14/14 incl. the Bug-48 dup rows). What still needs a
-      focused **reading-view** pass (it doesn't render in a backgrounded/headless window) is the
-      reading-view-SPECIFIC rendering — captions on a real captioned image and float/inline THERE — and
-      the **native save dialog** (F13, not CDP-reachable). The pure logic each depends on is unit-tested.
-- [ ] **Crop responsive scaling (Decision 2).** Box-relative `translate%` + `width:100%` img should rescale a
-      crop as the column narrows; structurally correct but not yet measured under a narrowing column.
-- [ ] **Crop drag haptics / pinch-sensitivity feel.** The drag/zoom feel of the in-place crop editor —
-      the one remaining MANUAL focused-window check (not CDP-synthesizable).
-- [ ] **Submodal + active-region + Bugs 62–64 — real-`:hover` travel only (structural part DONE).**
-      The structural guards now actually RUN green live (2026-06-05 re-check, fresh build):
-      `verify-submodal-icons` 16/16, `verify-submodal-region` 12/12, `verify-region-clickaway` 14/14
-      (incl. the click-away-boundary follow-up: clicking the IMAGE closes+persists filter/size),
-      `verify-popup-region` 8/8 (read-source-back + synthetic enter/leave). What's left is the ONE
-      thing CDP can't synthesize — the **real-pointer `:hover` CSS travel** and the visual feel:
-      (a) the **floating** bar (outside the image rect) — hover image→bar→panel/popup and back must
-      stay one region with no flicker; (b) the in-chrome bar stays **greyed the whole time** a panel is
-      open (no one-frame un-greyed flash on re-entry); (c) ✓/✗ feel right. (Click-away leaving crop
-      open, group-popup coupling, and the greyed-hidden states are now structurally proven, not just
-      claimed — Lesson 16.)
-- [ ] **Caption pure-CSS sizing** against the implemented new DOM (verified in isolation, not the
-      real structure).
-- [ ] **Toolbar container-query** with the box's aspect-ratio height (tested with an explicit px
-      height, not the derived one).
-- [ ] **`.cm-active` lock-step (verify).** Confirm the reveal class flips in lock-step with
-      Obsidian's own source-reveal across edge cases (fallback signal: native widget DOM presence via
-      `:has()`). Largely addressed by the HEAD pure-CSS model (`.cm-line:has(> .cm-formatting)`), but
-      worth a final empirical confirm.
-- [ ] **Detached-anchor commit — add a `verify-write-path.mjs` row.** The fix (commit on a panel whose
-      anchor scrolled out uses the captured `ImageLocation`, not the basename scan) is unit/code-verified;
-      its CONNECTED duplicate case is in the write-path matrix, but the DETACHED branch has no CDP row
-      yet (needs synthesizing a scroll-out of a duplicated embed mid-edit). Add it when next in the
-      crop/write-path code. (Resolved-by-finalization-pass, narrow trigger.)
-- [ ] **Portable runtime (AB7a) + Export (F13) — re-verify + add a guard.** Both are recorded as
-      **SOLVED✓CDP** from earlier sessions but were **NOT re-checked** in the 2026-06-05 finalization,
-      and **neither has an automated guard**: `scripts/` carries no runtime/export/smoke check and
-      `tests/runtime-smoke.html` is a manual fixture. So the two least-covered paths are (a) the **portable
-      runtime** — foreign-page hydration via `buildLayers`/`readTransform`, the runtime-only keys
-      degrading to the original image; and (b) the **export canvas render** (`renderTransformedImage` —
-      replay box geometry + native filter at original resolution). _Add:_ a headless-browser check that
-      hydrates `tests/runtime-smoke.html` and asserts the built 3-layer structure + applied transform (CI-able,
-      no Obsidian), and an export-render guard that drives `renderTransformedImage` and reads the output
-      canvas back (the save DIALOG stays manual, F13).
+_Ticked off in v0.6.0: the **native save dialog** (F13, macOS) and the **crop drag / pinch + trackpad
+rotate** (Feature 23) were user-verified 2026-06-06. The remaining items:_
+
+- [ ] **Reading-view render — focused-window pass.** Run once with Obsidian in the FOREGROUND on the
+      current build (F2 + captioned / floated rendering THERE). Reading view DOES now render in a
+      backgrounded/headless run AS LONG AS the Obsidian window is in the foreground; a CDP run here was
+      SKIPPED because the window was backgrounded (a fully backgrounded window still won't render — see
+      Lesson 15c).
+- [ ] **Crop responsive scaling (Decision 2).** Box-relative `translate%` + `width:100%` img should
+      rescale a crop as the column narrows; measure under a narrowing column (after Bug 78).
+- [ ] **Toolbar container-query** with the box's derived aspect-ratio height (tested so far only with
+      an explicit px height).
+- [ ] **Detached-anchor commit — add a `verify-write-path.mjs` row.** Synthesize a scroll-out of a
+      duplicated embed mid-edit (the commit uses the captured `ImageLocation`, not the basename scan);
+      the CONNECTED duplicate case is already in the matrix.
+- [ ] **Portable runtime (AB7a) + export canvas — add a headless guard.** A headless-browser check that
+      hydrates `tests/runtime-smoke.html` and asserts the built 3-layer structure + applied transform,
+      plus an export-render guard that drives `renderTransformedImage` and reads the output canvas back.
+      The save DIALOG itself is done.
 
 ### Refactoring (deferred — a mix of verify & change)
 
 _These date from the 2026-06-05 DRY/KISS analysis — re-validate that each still applies before acting;
 when one is actually carried out it ships as a **Change** in the changelog._
 
-- [ ] **Smaller chrome unification** — the resize handle, the anchored sub-menu and the filter-panel
-      docking could all anchor to the uniform box through one mechanism. _(Crop-in-place and the
-      portable runtime + bare-key format are DONE — see the changelog.)_
 - [ ] **`src/` file-structure pass — group the flat module set into speaking subfolders.** `src/` is
       essentially flat (~34 files, only `i18n/`); a file-level grouping (e.g. `render/`, `ui/`,
       `logic/`, `platform/`) would make the module map self-evident. Fold this into the **pending
@@ -378,9 +332,11 @@ architecture encodes most in its decisions (`AD…`).
   an _intermediate_ build (e.g. a function renamed at the call site but not the definition →
   `ReferenceError`), looking like "rendering broke"; force a clean `location.reload()`. (b) The **CDP
   relay (9222) flaps after a plugin reload** (old socket lingers in TIME_WAIT) — connect directly to
-  `CDP_PORT=9223` until it recovers. (c) **Reading view does not render headless** — Obsidian's
-  reading-view renderer is visibility-driven; a backgrounded/headless window leaves
-  `.markdown-preview-sizer` empty, so verify that path in a focused window. (See CLAUDE.md → Live
+  `CDP_PORT=9223` until it recovers. (c) **Reading view renders only while the Obsidian window is in
+  the foreground** — Obsidian's reading-view renderer is visibility-driven, so a headless/backgrounded
+  CDP run DOES render the reading view as long as the Obsidian window is in the foreground; a window
+  that is itself fully backgrounded (e.g. a second window, or Obsidian behind another app) leaves
+  `.markdown-preview-sizer` empty, so verify that path with the window in front. (See CLAUDE.md → Live
   debugging.)
 - **Lesson 16 — "Verified" requires a REBUILT vault AND a guard that actually RUNS** (the over-claim trap;
   surfaced by the 2026-06-05 finalization re-check). A fix is not verified just because the code is

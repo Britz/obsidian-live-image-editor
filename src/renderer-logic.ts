@@ -48,6 +48,19 @@ export function rotatedAabb(w: number, h: number, deg: number): { w: number; h: 
 }
 
 /**
+ * The default box width (px) for an image with NO explicit width — the native cap. It is the
+ * ORIGINAL intrinsic dimension on the ROTATION-CORRECT axis: a 0°/180° box caps on the original
+ * WIDTH, a 90°/270° box on the original HEIGHT (the rotated bounding box). The `max-width:100%`
+ * rule then shrinks it to the column. This is the SINGLE no-explicit-width sizing decision shared
+ * by both the non-crop AND the cropped path (a cropped image whose width was removed must fall
+ * back to native sizing exactly like any non-cropped image, never an empty/0-width box — Bug 78).
+ * Pure (Lesson 6); `rotatedAabb.w` reduces to the swapped intrinsic dimension for a quarter-turn.
+ */
+export function nativeBoxWidth(nw: number, nh: number, deg: number): number {
+  return Math.round(rotatedAabb(nw, nh, deg).w);
+}
+
+/**
  * A SYNCHRONOUS estimate of a block image's rendered height for the CM6 block widget's
  * `estimatedHeight` (so CodeMirror doesn't model an off-screen image line as one ~14px
  * text line and lurch the scroll when it's measured). No access to the natural size (an

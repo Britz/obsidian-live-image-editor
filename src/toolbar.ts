@@ -23,6 +23,28 @@ export interface ToolbarGroup {
 
 export type ToolbarItem = ToolbarButton | ToolbarGroup;
 
+// Hover micro-animation keyed off the button/group id (Feature 1, ported from the icon-design prototype).
+// The CSS lives in styles.css (`[data-anim="…"]:hover svg`); an id absent here gets the default
+// `transform: scale(1.12)` (no `data-anim`). Reduced-motion is guarded in the stylesheet.
+const ANIM_BY_ID: Record<string, string> = {
+  "rotate-cw": "cw",
+  "rotate-ccw": "ccw",
+  "flip-h": "flip-h",
+  "flip-v": "flip-v",
+  "crop": "snap",
+  "custom-size": "resize",
+  "align-left": "align-l",
+  "align-center": "align-c",
+  "align-right": "align-r",
+  "inline": "wrap",
+  "snippets": "snap",
+  "export": "down",
+  "reset": "wiggle",
+  "reset-all": "wiggle",
+  // Group triggers (makeGroupTrigger): layout has a character animation; edit/filters keep the default scale.
+  "layout": "quote",
+};
+
 // Kept for the command/registration mapping in main.ts (a flat icon+action).
 export interface ToolbarAction {
   icon: string;
@@ -34,6 +56,8 @@ function makeButton(btn: ToolbarButton): HTMLButtonElement {
   const el = document.createElement("button");
   el.classList.add("lie-toolbar-btn");
   el.dataset["lieId"] = btn.id;
+  const anim = ANIM_BY_ID[btn.id];
+  if (anim) el.dataset["anim"] = anim;
   el.setAttribute("aria-label", t(btn.titleKey));
   el.title = t(btn.titleKey);
   setIcon(el, btn.icon);
@@ -116,6 +140,8 @@ function makeGroupTrigger(group: ToolbarGroup): HTMLButtonElement {
   const el = document.createElement("button");
   el.classList.add("lie-toolbar-btn", "lie-toolbar-group-trigger");
   el.dataset["lieGroup"] = group.id;
+  const anim = ANIM_BY_ID[group.id];
+  if (anim) el.dataset["anim"] = anim;
   el.setAttribute("aria-label", t(group.titleKey));
   el.title = t(group.titleKey);
   setIcon(el, group.icon);
