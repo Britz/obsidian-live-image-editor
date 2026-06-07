@@ -203,13 +203,21 @@ body:not(.lie-cls-off-float-right) .lie-wrapper:has(.lie-image-area.lie-float-ri
 body:not(.lie-cls-off-float-right) .image-embed:has(.lie-image-area.lie-float-right) { float: right; clear: none; margin: 0 0 0.5em 1em; }
 /* BLOCK (block-left/center/right): the image sits on its OWN line, text above/below, positioned via
    text-align on a FULL-WIDTH block host (positions the inline-block box inside) — not margin:auto,
-   which Obsidian's `.cm-content > * { margin:0 !important }` beats (Bug 27). */
+   which Obsidian's `.cm-content > * { margin:0 !important }` beats (Bug 27). The full-width-block host
+   is the `.lie-wrapper` widget in BOTH views (already `display:block` when standalone); the native
+   `.image-embed` carries it ONLY in reading view, where it IS the image container. In live preview
+   `.image-embed` is the SUPPRESSED native embed living inline in the source line — forcing it
+   `display:block; width:100%` there breaks the `![](…)` link and its `{…}` block onto two visual
+   lines (Bug 78), so the embed half is reading-view-scoped. */
 body:not(.lie-cls-off-block-left) .lie-wrapper:has(.lie-image-area.lie-block-left),
-body:not(.lie-cls-off-block-left) .image-embed:has(.lie-image-area.lie-block-left) { float: none; display: block; width: 100%; text-align: left; }
+body:not(.lie-cls-off-block-left) .markdown-reading-view .image-embed:has(.lie-image-area.lie-block-left),
+body:not(.lie-cls-off-block-left) .markdown-preview-view .image-embed:has(.lie-image-area.lie-block-left) { float: none; display: block; width: 100%; text-align: left; }
 body:not(.lie-cls-off-block-center) .lie-wrapper:has(.lie-image-area.lie-block-center),
-body:not(.lie-cls-off-block-center) .image-embed:has(.lie-image-area.lie-block-center) { float: none; display: block; width: 100%; text-align: center; }
+body:not(.lie-cls-off-block-center) .markdown-reading-view .image-embed:has(.lie-image-area.lie-block-center),
+body:not(.lie-cls-off-block-center) .markdown-preview-view .image-embed:has(.lie-image-area.lie-block-center) { float: none; display: block; width: 100%; text-align: center; }
 body:not(.lie-cls-off-block-right) .lie-wrapper:has(.lie-image-area.lie-block-right),
-body:not(.lie-cls-off-block-right) .image-embed:has(.lie-image-area.lie-block-right) { float: none; display: block; width: 100%; text-align: right; }
+body:not(.lie-cls-off-block-right) .markdown-reading-view .image-embed:has(.lie-image-area.lie-block-right),
+body:not(.lie-cls-off-block-right) .markdown-preview-view .image-embed:has(.lie-image-area.lie-block-right) { float: none; display: block; width: 100%; text-align: right; }
 /* Inline (F17): the mid-text vertical-align is the direct `.lie-image-area.lie-inline` rule in the
    RENDER_CSS block above (the marker rides the outer; no `:has`). The former `img.lie-inline
    { display:inline }` was a no-op on the absolutely-positioned img, so it is dropped. */

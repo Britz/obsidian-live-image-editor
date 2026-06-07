@@ -11,7 +11,45 @@ Every entry is numbered in one global per-category sequence — **Decision**, **
 Decision › Change › Feature › Bug, each category newest-first (highest number on top). Numbers are
 never reused. (Open/unsolved items and the hard-won lessons live in `docs/development/issues.md`.)
 
-## [0.6.4] - 2026-06-07
+## [0.6.5] - 2026-06-07
+
+Small fixes: after a toolbar edit **cmd+Z no longer scrolls the note to the top**; a **block-aligned
+image no longer breaks its source line onto two lines** in live preview; the **editing-toolbar submenu
+reliably migrates** to the new six-state layout entries and now seats itself **mid-bar** instead of at
+the far left. Verified: `npm test` green (273), `npm run build` succeeds, `npm run lint` / `lint:css`
+clean; the LP/reading-view and editing-toolbar fixes were confirmed live in Obsidian via CDP.
+
+- **Change 39 — The editing-toolbar submenu now inserts in the MIDDLE of the bar, not the left edge.**
+  The original slot (right after a leading undo/redo run) put our entry at the far left, where its
+  expand-on-click row reaches off the right window edge on a wide bar ("ragt aus dem Fenster", per the
+  user). `insertIndexFor` now returns `floor(list.length / 2)`. We still only set the INITIAL slot — a
+  re-add never reorders an existing, correctly-formed entry, so a user's manual placement is kept.
+- **Bug 79 — The editing-toolbar submenu could keep stale pre-rework layout entries.** The load-time
+  self-heal that migrates our submenu to the current command set (here: the six new layout entries,
+  replacing the old `class-left|center|right` / `toggle-inline`) shared one `await` chain with the
+  snippet scan in `onLayoutReady` — `await this.refreshSnippets(); await ensureEditingToolbarButtons(…)`.
+  A `refreshSnippets()` throw (a vault read error) skipped the migration entirely, freezing the submenu
+  at its previous shape until the next clean reload (observed live). The two are now independent: the
+  scan is wrapped in its own try/catch so it can never block the migration.
+- **Bug 78 — A block-aligned image (`align=block-*` / legacy `align=center`) broke its source line
+  onto two lines in live preview.** The block layout rules styled both the plugin's `.lie-wrapper`
+  widget AND the native `.image-embed` with `display:block; width:100%`. In reading view `.image-embed`
+  IS the image container, so that is correct; but in live preview it is the SUPPRESSED native embed
+  sitting inline in the editable source line, and forcing it full-width block pushed the `{…}` block
+  onto a second visual line below the `![](…)` link, even with ample width. The `.image-embed` half of
+  the block rules is now reading-view-scoped (`.markdown-reading-view` / `.markdown-preview-view`); in
+  live preview the standalone `.lie-wrapper` widget alone carries the block layout (it already centers
+  the image), and the native embed stays inline. Float rules are untouched.
+- **Bug 77 — Undo after a toolbar edit jumped the view to the document top.** Plugin edits were
+  written without a selection (old D11 — "never move the cursor"), so the edit transaction's
+  `startSelection` stayed at offset 0; CM6 restores that selection — with `scrollIntoView` — on undo,
+  hurling the view to the top of the note. D11 is **revised**: a single-image edit now places the
+  caret on its image's line (like Obsidian's own embeds), but only on an actual edit, never on hover.
+  Mechanically, `writeSource` takes an optional `cursor` and, when given, dispatches a **prior**
+  selection-only transaction (`addToHistory: false`) so the caret sits on the image *before* the
+  change — making that position the change's `startSelection`, which undo then restores. (Setting the
+  selection *on* the change transaction would not help: undo uses the selection from before the
+  change.) Bulk writers — multi-select edits, link normalization — omit the cursor and are unchanged.
 
 A layout rework: alignment and flow — previously conflated in one `align` field plus a separate
 `inline` flag — become a single **flat six-state layout** (`block-left` · `block-center` ·

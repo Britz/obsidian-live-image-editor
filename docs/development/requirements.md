@@ -244,8 +244,10 @@ no language or link-format setting of its own.
     toolbar icon.
 - **D10 — Native spacing.** Vertical spacing between stacked images matches Obsidian's native
   rendering.
-- **D11 — No disruption.** Toolbar edits and resizes never jump the scroll position and never
-  move the editor cursor.
+- **D11 — No disruption.** Toolbar edits and resizes never jump the scroll position. The editor
+  cursor follows the edit — a single-image edit places the caret on its image's line (like
+  Obsidian's own embeds), which also gives undo a sane anchor so cmd+Z does not scroll to the
+  document top. Hovering never moves the cursor; only an actual edit does.
 - **D12 — Icon set & brand.** The toolbar and editing-toolbar submenu use a **coherent, redesigned
   native-Lucide icon set** (e.g. filter `blend`, custom-size `image-upscale`, export `image-down`,
   CSS-classes `braces`, inline/block `wrap-text`, reset `eraser`, reset-all `copy-x`, layout

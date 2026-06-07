@@ -14,94 +14,6 @@
       "icon": "redo-glyph"
     },
     {
-      "id": "SubmenuCommands-live-image-editor",
-      "name": "Live Editing Toolbar",
-      "icon": "live-image-editor",
-      "menuType": "submenu",
-      "SubmenuCommands": [
-        {
-          "id": "live-image-editor:rotate-cw",
-          "name": "90° im Uhrzeigersinn drehen",
-          "icon": "rotate-cw"
-        },
-        {
-          "id": "live-image-editor:rotate-ccw",
-          "name": "90° gegen Uhrzeigersinn drehen",
-          "icon": "rotate-ccw"
-        },
-        {
-          "id": "live-image-editor:flip-h",
-          "name": "Horizontal spiegeln",
-          "icon": "flip-horizontal"
-        },
-        {
-          "id": "live-image-editor:flip-v",
-          "name": "Vertikal spiegeln",
-          "icon": "flip-vertical"
-        },
-        {
-          "id": "live-image-editor:crop",
-          "name": "Zuschneiden",
-          "icon": "crop"
-        },
-        {
-          "id": "live-image-editor:filters",
-          "name": "Filter",
-          "icon": "blend"
-        },
-        {
-          "id": "live-image-editor:custom-size",
-          "name": "Eigene Größe",
-          "icon": "image-upscale"
-        },
-        {
-          "id": "live-image-editor:class-left",
-          "name": "Linksbündig",
-          "icon": "align-left"
-        },
-        {
-          "id": "live-image-editor:class-center",
-          "name": "Zentriert",
-          "icon": "align-center"
-        },
-        {
-          "id": "live-image-editor:class-right",
-          "name": "Rechtsbündig",
-          "icon": "align-right"
-        },
-        {
-          "id": "live-image-editor:toggle-inline",
-          "name": "Inline/Block umschalten",
-          "icon": "wrap-text"
-        },
-        {
-          "id": "live-image-editor:add-class",
-          "name": "CSS-Klassen",
-          "icon": "braces"
-        },
-        {
-          "id": "live-image-editor:export",
-          "name": "Als Bild exportieren",
-          "icon": "image-down"
-        },
-        {
-          "id": "live-image-editor:replace-image",
-          "name": "Bild ersetzen …",
-          "icon": "replace"
-        },
-        {
-          "id": "live-image-editor:replace-all-images",
-          "name": "Alle Vorkommen dieses Bildes ersetzen …",
-          "icon": "replace-all"
-        },
-        {
-          "id": "live-image-editor:reset",
-          "name": "Bild zurücksetzen",
-          "icon": "eraser"
-        }
-      ]
-    },
-    {
       "id": "editing-toolbar:toggle-format-brush",
       "name": "Format Brush",
       "icon": "paintbrush"
@@ -172,6 +84,104 @@
       "id": "editing-toolbar:toggle-highlight",
       "name": "Highlight",
       "icon": "highlight-glyph"
+    },
+    {
+      "id": "SubmenuCommands-live-image-editor",
+      "name": "Live Editing Toolbar",
+      "icon": "live-image-editor",
+      "menuType": "submenu",
+      "SubmenuCommands": [
+        {
+          "id": "live-image-editor:rotate-cw",
+          "name": "Rotate 90° clockwise",
+          "icon": "rotate-cw"
+        },
+        {
+          "id": "live-image-editor:rotate-ccw",
+          "name": "Rotate 90° counter-clockwise",
+          "icon": "rotate-ccw"
+        },
+        {
+          "id": "live-image-editor:flip-h",
+          "name": "Flip horizontal",
+          "icon": "flip-horizontal"
+        },
+        {
+          "id": "live-image-editor:flip-v",
+          "name": "Flip vertical",
+          "icon": "flip-vertical"
+        },
+        {
+          "id": "live-image-editor:crop",
+          "name": "Crop",
+          "icon": "crop"
+        },
+        {
+          "id": "live-image-editor:filters",
+          "name": "Filters",
+          "icon": "blend"
+        },
+        {
+          "id": "live-image-editor:custom-size",
+          "name": "Custom size",
+          "icon": "image-upscale"
+        },
+        {
+          "id": "live-image-editor:layout-block-left",
+          "name": "Block, left",
+          "icon": "lie-block-left"
+        },
+        {
+          "id": "live-image-editor:layout-block-center",
+          "name": "Block, centered",
+          "icon": "lie-block-center"
+        },
+        {
+          "id": "live-image-editor:layout-block-right",
+          "name": "Block, right",
+          "icon": "lie-block-right"
+        },
+        {
+          "id": "live-image-editor:layout-float-left",
+          "name": "Float left (wrap text)",
+          "icon": "lie-float-left"
+        },
+        {
+          "id": "live-image-editor:layout-float-right",
+          "name": "Float right (wrap text)",
+          "icon": "lie-float-right"
+        },
+        {
+          "id": "live-image-editor:layout-inline",
+          "name": "Inline (in text)",
+          "icon": "lie-inline-icon"
+        },
+        {
+          "id": "live-image-editor:add-class",
+          "name": "CSS classes",
+          "icon": "braces"
+        },
+        {
+          "id": "live-image-editor:export",
+          "name": "Export as image",
+          "icon": "image-down"
+        },
+        {
+          "id": "live-image-editor:replace-image",
+          "name": "Replace image…",
+          "icon": "replace"
+        },
+        {
+          "id": "live-image-editor:replace-all-images",
+          "name": "Replace all occurrences of this image…",
+          "icon": "replace-all"
+        },
+        {
+          "id": "live-image-editor:reset",
+          "name": "Reset image",
+          "icon": "eraser"
+        }
+      ]
     },
     {
       "id": "SubmenuCommands-text-tools",

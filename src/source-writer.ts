@@ -1,4 +1,4 @@
-import { ChangeSpec, Transaction } from "@codemirror/state";
+import { ChangeSpec, EditorSelection, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { isolateHistory } from "@codemirror/commands";
 
@@ -12,14 +12,27 @@ export const LIE_USER_EVENT = "lie.transform";
  * Dispatches the change as ONE CodeMirror transaction, ISOLATED in history
  * (`isolateHistory.of("full")`) so each plugin edit is exactly one undo step: never
  * merged with adjacent typing or another plugin edit, never split — regardless of how
- * large the `{…}` block is. It moves neither cursor nor scroll (D11): no `selection`,
- * no `scrollIntoView`; scroll is pinned in case a reflow nudged it.
+ * large the `{…}` block is. Scroll is pinned in case a reflow nudged it.
+ *
+ * `cursor` (D11): a single-image toolbar edit moves the cursor onto the edited image's
+ * line; bulk writers (multi-select, link normalization) pass nothing and leave it. The
+ * cursor is set in a SEPARATE prior selection-only transaction (`addToHistory: false`)
+ * so it becomes the change transaction's `startSelection` — that is what CM6 restores
+ * (with `scrollIntoView`) on undo. Setting `selection` ON the change transaction would
+ * NOT help: undo uses the selection from BEFORE the change, so without this the cursor
+ * sits at offset 0 and cmd+Z scrolls to the document top.
  *
  * A caller with one logical edit must pass it as ONE `changes` spec (CM accepts an
  * array of ranges) so it stays a single transaction = a single undo step.
  */
-export function writeSource(view: EditorView, changes: ChangeSpec): void {
+export function writeSource(view: EditorView, changes: ChangeSpec, cursor?: number): void {
   const { scrollTop, scrollLeft } = view.scrollDOM;
+  if (cursor !== undefined) {
+    view.dispatch({
+      selection: EditorSelection.cursor(cursor),
+      annotations: Transaction.addToHistory.of(false),
+    });
+  }
   view.dispatch({
     changes,
     annotations: [isolateHistory.of("full"), Transaction.userEvent.of(LIE_USER_EVENT)],

@@ -263,8 +263,9 @@ adapters (AD4); the result is a pure function of the source (AD1).
 
 **Edit (interaction → source → pixels).** A toolbar action (or a sub-menu accept) yields a new
 transform/class state. The model layer serializes it into the attribute block and the
-source↔DOM map locates the line; the edit is written to the document without moving the cursor
-or scroll (D11). The document change re-triggers the adapter, which re-renders through the
+source↔DOM map locates the line; the edit is written to the document without jumping scroll,
+moving the cursor onto the edited image's line (D11 — which also anchors undo). The document
+change re-triggers the adapter, which re-renders through the
 same core. No editing component writes display state directly — closing the loop through the
 source is what guarantees both views and any later reload stay consistent (AD1, F2).
 
@@ -289,7 +290,8 @@ The boundary between Markdown text and everything above it. Pure where possible 
   (carrying the attribute block across intact), and folds a Markdown native size into the block
   while leaving a wikilink's native size as-is (F5, F6).
 - **AB3 — Source↔DOM mapping** — maps a rendered image to its position in the Markdown source so
-  the right occurrence is rewritten / rendered, without moving the cursor or jumping scroll (D11).
+  the right occurrence is rewritten / rendered, without jumping scroll; the cursor is placed on
+  the edited image's line (D11).
   A file embedded more than once is disambiguated **position-exact**, not by first basename match:
   in live preview / the editing actions via CM6 `posAtDOM` (the exact line), and on the reading-view
   render path by **occurrence order** (the n-th rendered embed of a basename = its n-th source
@@ -534,7 +536,7 @@ Confirms every requirement is realized by a building block or decision (and surf
 | D9 Caption appearance | Caption block |
 | D9.1 Too-small → caption on hover | Caption block |
 | D10 Native spacing | Style injection (on the embed) |
-| D11 No disruption | Source↔DOM map (write without cursor/scroll move) |
+| D11 No disruption | Source↔DOM map (write without scroll jump; cursor → image line, undo anchor) |
 | T1 No runtime deps | Crop/histogram/export all in-house (canvas) |
 | T2 Portable storage | AD2 · Transform model (bare-key block, T2.3) |
 | T3 Portable rendering | AD2 · AB7a Portable runtime (own JS+CSS bundle) |

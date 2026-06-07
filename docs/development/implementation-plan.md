@@ -379,13 +379,16 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   for the reading-view render path (F2 — both halves position-exact, never first-basename-match);
   `findImageInSource` is the editor-scan fallback. The module is **pure** (`import type` Editor — so
   the resolvers are vitest-tested, `tests/unit/image-resolver.test.ts`); the rewrite goes through the
-  shared `writeSource` (below), cursor/scroll untouched (D11).
-- **`source-writer.ts`** — `writeSource(view, changes)` is the **single funnel** for every plugin
-  edit to the document (AD1, edit direction): it dispatches the change as **one** CM transaction,
+  shared `writeSource` (below), scroll untouched, cursor on the image line (D11).
+- **`source-writer.ts`** — `writeSource(view, changes, cursor?)` is the **single funnel** for every
+  plugin edit to the document (AD1, edit direction): it dispatches the change as **one** CM transaction,
   isolated in history (`isolateHistory.of("full")`) and tagged `LIE_USER_EVENT`, so each plugin edit
   is **exactly one undo step** (never merged with adjacent typing, never split — regardless of how
-  large the `{…}` block is), and moves neither cursor nor scroll (D11; it re-pins scroll if a reflow
-  nudged it). `@codemirror/commands` is kept an esbuild external; a minimal ambient decl in
+  large the `{…}` block is), and re-pins scroll if a reflow nudged it (D11). When `cursor` is given
+  (the single-image edit path), a **prior** selection-only transaction (`addToHistory: false`) moves
+  the caret to the image's line — that becomes the change's `startSelection`, which CM6 restores on
+  undo, so cmd+Z no longer scrolls to the document top; bulk writers omit it. `@codemirror/commands`
+  is kept an esbuild external; a minimal ambient decl in
   `env.d.ts` gives tsc the `isolateHistory` type. `main.ts` (`writeTransform → writeToSource`) and the
   LP resize both funnel through it.
 - **`snippet-scanner.ts`** — `scanSnippets` reads `.obsidian/snippets/*.css` via the vault

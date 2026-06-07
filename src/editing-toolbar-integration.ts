@@ -122,15 +122,13 @@ function stripOurEntries(list: MenuCommand[]): void {
   }
 }
 
-// Slot our submenu right AFTER a leading undo/redo run (the natural left edge of most bars), else at
-// the very front. We don't bury it deeper: appending overflows off a full bar (verified), and the
-// user can drag it wherever they like in editing-toolbar's settings — anything cleverer would just
-// fight their manual layout.
-const LEADING_SKIP = new Set([`${EDITING_TOOLBAR_ID}:editor-undo`, `${EDITING_TOOLBAR_ID}:editor-redo`]);
+// Slot our submenu roughly in the MIDDLE of the bar. The horizontal `submenu` type expands inline to
+// the full icon row, so at the far left it renders but shoves the rest of the bar off the right window
+// edge ("ragt aus dem Fenster"); the middle keeps it reachable on a wide-but-not-overflowing bar. The
+// user can still drag it wherever they like in editing-toolbar's settings — we only set the initial
+// slot (a re-add never reorders an existing, correctly-formed entry).
 function insertIndexFor(list: MenuCommand[]): number {
-  let at = 0;
-  while (at < list.length && LEADING_SKIP.has(String(list[at]?.id ?? ""))) at++;
-  return at;
+  return Math.floor(list.length / 2);
 }
 
 // Build the submenu entry editing-toolbar stores in its `menuCommands`.

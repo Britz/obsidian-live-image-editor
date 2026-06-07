@@ -93,8 +93,12 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.registerEvent(this.app.workspace.on("editor-change", () => this.scheduleNormalize()));
 
     this.app.workspace.onLayoutReady(async () => {
-      await this.refreshSnippets();
-      // Self-heal / migrate the editing-toolbar submenu once both plugins are up (no-op when off).
+      // The two are INDEPENDENT: a failing snippet scan must not skip the editing-toolbar migration.
+      // They used to share one await chain, so a scanSnippets throw silently left a stale pre-rework
+      // submenu (old class-*/toggle-inline entries) un-migrated until the next clean reload (observed
+      // live). Isolate the scan; then self-heal / migrate the submenu once both plugins are up (no-op
+      // when off).
+      try { await this.refreshSnippets(); } catch (e) { console.error("[live-image-editor] snippet scan failed", e); }
       await ensureEditingToolbarButtons(this.app, this.settings.editingToolbarEnabled);
     });
 
@@ -962,8 +966,12 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   // Funnel a document edit through the shared isolateHistory writer (one undo step per
-  // edit, cursor/scroll left untouched — D11). CM6 is always present in the editing
-  // modes; the editor.replaceRange fallback only guards a hypothetical non-CM6 editor.
+  // edit, scroll pinned). The cursor is moved onto the edited image's line (`from`) — a
+  // single-image toolbar edit places the caret on its image, like Obsidian's own embeds,
+  // and crucially gives undo a sane startSelection so cmd+Z doesn't scroll to the top
+  // (D11 — revised: the cursor follows the edit, but only on edit, never on hover). CM6
+  // is always present in the editing modes; the editor.replaceRange fallback only guards
+  // a hypothetical non-CM6 editor.
   // No-op guard: skip the dispatch when the new block is byte-identical to what's already
   // there, so an UNCHANGED accept/leave (open size/filter, change nothing, then ✓/click-away)
   // adds no redundant undo step — matching crop's dirty-guarded commit (one undo step per
@@ -972,7 +980,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     const cm = (editor as unknown as { cm?: EditorView }).cm;
     if (cm) {
       if (cm.state.doc.sliceString(from, to) === insert) return;
-      writeSource(cm, { from, to, insert });
+      writeSource(cm, { from, to, insert }, from);
       return;
     }
     const fromPos = editor.offsetToPos(from);
