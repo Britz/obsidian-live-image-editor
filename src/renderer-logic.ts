@@ -61,6 +61,39 @@ export function nativeBoxWidth(nw: number, nh: number, deg: number): number {
 }
 
 /**
+ * The footprint box (px) for an EXPLICITLY-sized NON-crop image at angle `deg` (Bug 90). The stored
+ * width/height are the image's BASE (unrotated) footprint, so a quarter-turn must SWAP them — a
+ * 400×200 image rotated 90° occupies 200×400 — mirroring the crop path's `rotatedAabb` sizing
+ * (`rotatedAabb` reduces to a clean swap at a quarter-turn, and is the true AABB at a free angle).
+ * Width-only / height-only derive the missing base dimension from the intrinsic ratio
+ * (`naturalRatio` = nw/nh) and return only that axis — the other follows the swapped aspect-ratio.
+ * With no natural ratio available (width-only/height-only) the value passes through unrotated. Pure
+ * (Lesson 6) — the single source the render core consumes for the rotated non-crop footprint.
+ */
+export function rotatedFootprint(opts: {
+  widthPx: number | null;
+  heightPx: number | null;
+  naturalRatio: number | null;
+  deg: number;
+}): { width?: number; height?: number } {
+  const { widthPx, heightPx, naturalRatio, deg } = opts;
+  const ratioOk = naturalRatio != null && isFinite(naturalRatio) && naturalRatio > 0;
+  if (widthPx != null && heightPx != null) {
+    const a = rotatedAabb(widthPx, heightPx, deg);
+    return { width: Math.round(a.w), height: Math.round(a.h) };
+  }
+  if (widthPx != null) {
+    if (!ratioOk) return { width: Math.round(widthPx) };
+    return { width: Math.round(rotatedAabb(widthPx, widthPx / naturalRatio, deg).w) };
+  }
+  if (heightPx != null) {
+    if (!ratioOk) return { height: Math.round(heightPx) };
+    return { height: Math.round(rotatedAabb(heightPx * naturalRatio, heightPx, deg).h) };
+  }
+  return {};
+}
+
+/**
  * A SYNCHRONOUS estimate of a block image's rendered height for the CM6 block widget's
  * `estimatedHeight` (so CodeMirror doesn't model an off-screen image line as one ~14px
  * text line and lurch the scroll when it's measured). No access to the natural size (an

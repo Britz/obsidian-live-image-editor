@@ -147,7 +147,7 @@ experience.
 
 - **Belongs:** appearance and interaction rules ("toolbar at the top, revealed on hover,
   inset"; "icon order"; "panels fully visible, never clipped"; "captions centred, muted,
-  never wider than the image"; "long-press on mobile").
+  never wider than the image"; "tap to select on touch").
 - **Does not belong:** whether a capability exists at all (Functional), build constraints
   (Technical), or code.
 

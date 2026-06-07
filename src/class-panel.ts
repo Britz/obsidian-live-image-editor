@@ -81,7 +81,7 @@ export class ClassPanel {
   // The horizontal bound the side-of-more-room flip is measured against (Bug 77/D7): the editor
   // content pane that holds the image, EXCLUDING the left sidebar — identical to the filter panel.
   private editorPaneBound(anchorEl: HTMLElement | null): ContentBound | null {
-    const pane = anchorEl?.closest<HTMLElement>(".markdown-source-view, .markdown-reading-view");
+    const pane = anchorEl?.closest<HTMLElement>(".markdown-source-view");
     if (!pane) return null;
     const r = pane.getBoundingClientRect();
     return { left: r.left, right: r.right };

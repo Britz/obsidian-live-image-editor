@@ -77,8 +77,12 @@ previewing the docs site locally are all covered in the
 
 **Release compliance.** Before each community-directory submission the plugin is audited against
 Obsidian's **Developer policies**, **Plugin guidelines** and **Submission requirements**. All
-`R1–R30` rules are met — the former open items were closed in the v0.4.2 release-compliance pass.
-The full audit + submission checklist live in
+`R1–R30` rules are met — the former open items were closed in the v0.4.2 release-compliance pass. The
+v0.6.x **automated review** (`eslint-plugin-obsidianmd` + a CSS scan) is reproduced locally
+(`npm run lint:obsidian` / `npm run lint:css`, separate from the shipped linter — T9) and reports 0
+errors; the kept warnings (architecturally-required `:has`, justified `!important`, the 1.12.7-floor
+API deprecations) and the false positives (the dev-only CDP bridge, the standalone runtime bundle)
+are documented with their rationale there. The full audit + submission checklist live in
 **[Release compliance](docs/development/release-compliance.md)**.
 
 ## File system access & platform support

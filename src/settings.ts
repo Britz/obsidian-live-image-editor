@@ -41,7 +41,9 @@ class ConfirmModal extends Modal {
     app: App,
     private readonly message: string,
     private readonly confirmLabel: string,
-    private readonly onConfirm: () => void
+    // Accepts an async confirm handler (the bundled-snippet uninstall is async) — typing it
+    // `() => void` would make passing an async fn a misused Promise. The modal fires-and-forgets it.
+    private readonly onConfirm: () => void | Promise<void>
   ) {
     super(app);
   }
@@ -51,7 +53,7 @@ class ConfirmModal extends Modal {
     new Setting(this.contentEl)
       .addButton((b) => b.setButtonText(t("cancel")).onClick(() => this.close()))
       .addButton((b) => b.setButtonText(this.confirmLabel).setWarning()
-        .onClick(() => { this.close(); this.onConfirm(); }));
+        .onClick(() => { this.close(); void this.onConfirm(); }));
   }
 
   onClose(): void {

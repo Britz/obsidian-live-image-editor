@@ -16,7 +16,7 @@ a normal CSS class — portable and inert without the plugin.
 
 ## Soft drop shadow — `.shadow`
 
-![](images/sample-landscape.png){.shadow width=360}
+![](images/sample-landscape.png){.shadow .medium width=360}
 
 ## Rounded + shadow together
 

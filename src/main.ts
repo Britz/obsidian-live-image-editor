@@ -64,7 +64,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.applyButtonOutlines();
 
     this.addSettingTab(new LieSettingTab(this.app, this));
-    this.registerMarkdownPostProcessor(this.postProcessor.bind(this));
+    this.registerMarkdownPostProcessor((el, ctx) => this.postProcessor(el, ctx));
     this.registerImageSelectionHandler();
     this.registerToolbarDismissHandlers();
     this.registerCommands();
@@ -120,7 +120,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<LieSettings>);
     this.settings.presetWidths = Object.assign({}, DEFAULT_SETTINGS.presetWidths, this.settings.presetWidths);
   }
 
@@ -190,7 +190,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     }
     for (const img of Array.from(el.querySelectorAll("img"))) {
       if (img.closest(".internal-embed")) continue;
-      this.processBlock(img as HTMLElement, () => img as HTMLImageElement, sourcePath);
+      this.processBlock(img, () => img, sourcePath);
     }
   }
 
@@ -207,9 +207,13 @@ export default class LiveImageEditorPlugin extends Plugin {
     const apply = (): boolean => {
       const img = getImg();
       if (!img) return false;
-      if (hasTransform) applyTransformToImage(img, transform as ImageTransform);
+      if (hasTransform) applyTransformToImage(img, transform);
       else this.clearStaleTransform(img);
       this.applyReadingCaption(img, sourcePath);
+      // Shrink-wrap the reading-view host that DIRECTLY holds our box (caption/column sizing). We set
+      // the `.lie-embed` class on it ourselves — a direct selector, not `:has(> .lie-image-area)`
+      // (Decision 28). LP doesn't need it (its box sits under `.lie-box`, which shrink-wraps itself).
+      img.closest(`.${BOX_CLASS}`)?.parentElement?.classList.add("lie-embed");
       return true;
     };
     if (apply()) return;
@@ -342,7 +346,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       // still counted so later duplicates stay aligned.
       const seen = new Map<string, number>();
       for (const el of Array.from(container.querySelectorAll("img"))) {
-        const img = el as HTMLImageElement;
+        const img = el;
         const file = getImageFilename(img);
         if (!file) continue;
         const occurrence = seen.get(file) ?? 0;
@@ -371,7 +375,9 @@ export default class LiveImageEditorPlugin extends Plugin {
   // unique to this path; nothing else unwraps, so dropping it is safe.
   private clearStaleTransform(img: HTMLImageElement | null): void {
     if (!img) return;
-    const ours = img.classList.contains("lie-inline") || !!img.closest(`.${BOX_CLASS}`);
+    // Ours iff it's inside our 3-layer box (always wrapped per the R0 invariant). The `lie-inline`
+    // marker now rides the outer, not the img (Decision 28), so the box check is the sole signal.
+    const ours = !!img.closest(`.${BOX_CLASS}`);
     if (ours) applyTransformToImage(img, { classes: [] });
   }
 
@@ -457,24 +463,6 @@ export default class LiveImageEditorPlugin extends Plugin {
         this.dismissToolbar();
       }
     });
-
-    this.registerLongPress();
-  }
-
-  private registerLongPress(): void {
-    let timer = 0;
-    let startImg: HTMLImageElement | null = null;
-    const clear = (): void => { window.clearTimeout(timer); timer = 0; startImg = null; };
-
-    this.registerDomEvent(document, "touchstart", (evt: TouchEvent) => {
-      const target = evt.target as HTMLElement;
-      if (target.tagName !== "IMG") return;
-      startImg = target as HTMLImageElement;
-      timer = window.setTimeout(() => { if (startImg) this.onImageSelected(startImg); }, 500);
-    }, { passive: true });
-    this.registerDomEvent(document, "touchmove", clear, { passive: true });
-    this.registerDomEvent(document, "touchend", clear, { passive: true });
-    this.registerDomEvent(document, "touchcancel", clear, { passive: true });
   }
 
   private registerToolbarDismissHandlers(): void {
@@ -483,7 +471,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       if (!this.toolbar.isVisible() && !this.filterPanel && !this.classPanel && !this.submenu && !this.cropEditor) return;
       for (const mutation of mutations) {
         for (const node of Array.from(mutation.addedNodes)) {
-          if (node instanceof HTMLElement && node.matches(overlaySelector)) { this.dismissToolbar(); return; }
+          if (node.instanceOf(HTMLElement) && node.matches(overlaySelector)) { this.dismissToolbar(); return; }
         }
       }
     });
@@ -566,7 +554,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       // The CSS-class dropdown is gated by the snippet-class feature toggle (AB19). Alignment/inline
       // (the layout group above) are core and stay regardless.
       ...(this.settings.cssClassesEnabled ? [b("snippets", "braces", "snippets", () => this.addClass())] : []),
-      b("export", "image-down", "export", () => this.exportImage()),
+      b("export", "image-down", "export", () => { void this.exportImage(); }),
       b("reset", "eraser", "reset", () => this.reset()),
     ];
   }
@@ -900,7 +888,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     if (!this.activeImage) return null;
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) {
-      if (opts.notify) new Notice("Live Image Editor: open the note in editing mode to edit images.");
+      if (opts.notify) new Notice("Open the note in editing mode to edit images.");
       return null;
     }
     const editor = view.editor;
@@ -909,7 +897,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     else if (opts.fallback) location = opts.fallback;
     else location = this.locateImage(editor, this.activeImage);
     if (!location) {
-      if (opts.notify) new Notice("Live Image Editor: couldn't locate this image in the note source.");
+      if (opts.notify) new Notice("Couldn't locate this image in the note source.");
       return null;
     }
     return { editor, location };
@@ -946,10 +934,10 @@ export default class LiveImageEditorPlugin extends Plugin {
     if (!root) return null;
     const base = location.filename.split(/[/\\]/).pop() ?? "";
     if (!base) return null;
-    return (Array.from(root.querySelectorAll("img")).find((img) => {
+    return Array.from(root.querySelectorAll("img")).find((img) => {
       const src = decodeURIComponent(img.getAttribute("src") ?? "");
       return src.includes(base);
-    }) as HTMLImageElement | undefined) ?? null;
+    }) ?? null;
   }
 
   private writeTransform(editor: Editor, location: ImageLocation, transform: ImageTransform): void {
@@ -1101,7 +1089,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     // synchronously (calling onClosed → nulls the ref), and a post-open assignment would otherwise
     // restore a dead editor and jam the crop toggle + the dismiss guards.
     this.cropEditor = cropEditor;
-    cropEditor.open(this.activeToolbarEl(), this.activeImage!);
+    cropEditor.open(this.activeToolbarEl(), this.activeImage);
   }
 
   private closeCrop(persist = true): void {

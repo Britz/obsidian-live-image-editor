@@ -12,13 +12,17 @@ export interface ClassEntry {
   status?: ClassStatus;
 }
 
-// Parse `img.NAME { … }` rules into className → normalized body. Comments are stripped first so an
-// `img.foo {}` inside a /* … */ block can't masquerade as a rule. Only the `img.NAME` form matters
-// here: that's exactly how the shipped bundled snippet writes its classes, so it's the form we diff.
+// Parse the bundled snippet's decoration rules into className → normalized body. The classes ride
+// the OUTER box now (Decision 28), so the shipped form is a plain `.NAME { … }` (a single class) at
+// the START of a line; the legacy `img.NAME { … }` form is still accepted so a pre-Decision-28
+// installed copy migrates. A COMPOUND selector like `.circle img, img.circle { … }` is the auxiliary
+// pixel rule and is deliberately NOT captured (its `.circle` is not immediately followed by `{`, and
+// the `img.circle` part isn't at the line start). Comments are stripped first so a rule inside a
+// /* … */ block can't masquerade as one.
 export function parseImgRules(css: string): Map<string, string> {
   const code = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const rules = new Map<string, string>();
-  const re = /img\.([a-zA-Z][\w-]*)\s*\{([^}]*)\}/g;
+  const re = /^\s*(?:img)?\.([a-zA-Z][\w-]*)\s*\{([^}]*)\}/gm;
   let m: RegExpExecArray | null;
   while ((m = re.exec(code)) !== null) {
     rules.set(m[1] ?? "", normalizeBody(m[2] ?? ""));
@@ -58,10 +62,10 @@ export function classifyBundledFile(installedCss: string, shippedCss: string): C
 
 const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// The verbatim shipped rule text for one class (whitespace preserved, for re-insertion).
+// The verbatim shipped rule text for one class (its primary `.NAME { … }` rule, for re-insertion).
 function shippedRule(shippedCss: string, className: string): string | null {
-  const m = new RegExp(`img\\.${escapeRe(className)}\\s*\\{[^}]*\\}`).exec(shippedCss);
-  return m ? m[0] : null;
+  const m = new RegExp(`^\\s*(?:img)?\\.${escapeRe(className)}\\s*\\{[^}]*\\}`, "m").exec(shippedCss);
+  return m ? m[0].replace(/^\s*/, "") : null;
 }
 
 // Return new file content with ONE class restored to its shipped rule (pure string transform):
@@ -71,7 +75,7 @@ function shippedRule(shippedCss: string, className: string): string | null {
 export function restoreClassInCss(currentCss: string, className: string, shippedCss: string): string {
   const rule = shippedRule(shippedCss, className);
   if (!rule) return currentCss;
-  const ruleRe = new RegExp(`img\\.${escapeRe(className)}\\s*\\{[^}]*\\}`);
+  const ruleRe = new RegExp(`^\\s*(?:img)?\\.${escapeRe(className)}\\s*\\{[^}]*\\}`, "m");
   // Judge presence on the comment-STRIPPED css, matching how the class's status is detected
   // (`parseImgRules` strips comments first). So a class "deleted" by COMMENTING IT OUT takes the
   // append path — NOT replace-inside-the-comment, which would leave the rule commented (still

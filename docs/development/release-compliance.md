@@ -92,6 +92,72 @@ release-compliance pass. The only remaining steps are the manual packaging actio
 - **R29 — Vault API** (PG). `suggestExportPath` uses `Vault.getAbstractFileByPath()` rather than the adapter; the unavoidable `configDir/snippets` adapter calls (config-dir files are not vault `TFile`s) are left as-is.
 - **R30 — Listener teardown** (PG). Every direct `document`/`window` listener is interaction-scoped with matching teardown (popup close, crop exit, drag end, submenu/toolbar detach, `{ once: true }`); plugin-lifetime listeners already use `registerDomEvent`. `registerDomEvent` is intentionally **not** used for the per-interaction listeners (it holds until unload, so it cannot detach a per-drag `pointermove`).
 
+## Automated plugin-review pass (v0.6.x)
+
+Obsidian's automated submission review — the `eslint-plugin-obsidianmd` recommended ruleset, a CSS
+scan for `:has` / `!important`, and a behaviour scan — is reproduced locally as **separate, dev-only**
+passes: `npm run lint:obsidian` (a dedicated `eslint.obsidian.config.mjs`) and `npm run lint:css`
+(stylelint). The **shipped** linter (`npm run lint` / `eslint.config.mjs`) is kept exactly as-is
+(requirement T9), so reproducing the review never touches the gate. `lint:obsidian` reports **0
+errors** (only the documented deprecation warnings below remain). Each v0.6.0 review finding and how
+it was handled:
+
+**Errors — resolved (these are what failed the review):**
+
+- **Sets styles directly** (`obsidianmd/no-static-styles-assignment`). Static literal styles moved to
+  CSS classes / `RENDER_CSS`; per-image *dynamic* values stay inline (the rule flags only literals).
+  (Change 34.)
+- **Creating `<style>` elements** (`obsidianmd/no-forbidden-elements`). The plugin no longer injects a
+  `<style>`: `RENDER_CSS` + the built-in classes live in `styles.css`, preset widths are set as `body`
+  CSS variables, and disabled built-ins are body-class markers. (Change 33.) The same flag on
+  `runtime.ts` is a **false positive** — see below.
+
+**Kept with justification (warnings / recommendations — they do not fail the review):**
+
+- **`:has()`** (CSS scan). Minimised: the inline and embed-shrink-wrap `:has` were replaced by direct
+  classes, and the standalone runtime is now `:has`-free. The remaining `:has` are unavoidable — the
+  reveal slaving (`.cm-line:has(> .cm-formatting)`) reacts to Obsidian's OWN editor DOM, and the
+  alignment-float host rules (`.host:has(.lie-image-area.lie-…)`) must style a flow-participant host
+  the plugin does not own, reacting to the box's marker. Target is Electron/Chromium, where `:has` is
+  fully supported. (Decision 26 / 28.)
+- **`!important`** (CSS scan). Audited and minimised — the one defensive `!important` with no
+  competing rule (the float-out toolbar-hide; `display` is set by no other rule on that element) was
+  dropped. Each remaining one overrides an Obsidian-core or higher-specificity rule — the crop
+  `contain:none` beating app.css `contain:paint !important`, `.lie-frame > img { max-width:none }`
+  beating Obsidian/theme `img { max-width }`, the crop selection-frame suppression beating the
+  higher-specificity `:hover` frame, the dismissed/native reveal beating the reveal rules, the
+  tall-float cap — so removing it would rely on fragile cascade order and regress documented fixes.
+  (Decision 26.)
+- **`setWarning()` / `PluginSettingTab.display()` deprecations** (`@typescript-eslint/no-deprecated`).
+  Their replacements (`setDestructive` / `getSettingDefinitions`) are `@since 1.13.0`, but
+  `minAppVersion` is **1.12.7** and `display()` is the officially-sanctioned pre-1.13.0 fallback. Kept
+  until the floor is raised; reported as warnings, not errors. (Decision 26.)
+- **`net` Node-builtin import** (`dev-bridge.ts`). False positive: the dev-only CDP relay is gated
+  behind `__LIE_DEV__` and tree-shaken out of the production `main.js` (verified 0 hits). Excluded
+  from the `lint:obsidian` scope. (Decision 25.)
+- **`<style>` element + raw `instanceof`** (`runtime.ts`). False positives: the standalone,
+  framework-free `lie-runtime.js` bundle (for foreign, non-Obsidian pages) has no Obsidian-loaded
+  `styles.css` and no Obsidian helpers, so both are required and correct there. It is not the shipped
+  plugin. Excluded from scope. (Decision 25.)
+- **`@codemirror/state` / `@codemirror/view` "should be in dependencies".** Declared as
+  **devDependencies**, NOT runtime `dependencies`: they are Obsidian-provided esbuild externals, never
+  bundled (T1 — no runtime deps). The lint's literal "dependencies" prescription is wrong for a
+  host-provided external. (Change 35.)
+- **Vault Enumeration** (`vault.getFiles`). Required by the F26 Replace-image picker — a
+  `FuzzySuggestModal` needs the full image candidate set up front; it is already filtered to image
+  extensions and there is no narrower public API.
+- **Local Storage.** Was a READ of Obsidian's own `language` key (F21 — follow Obsidian's locale),
+  not plugin persistence; switched to Obsidian's `getLanguage()`. Plugin settings use
+  `loadData` / `saveData`. (Change 35.)
+- **Missing GitHub artifact attestations.** Adopted — the release workflow runs
+  `actions/attest-build-provenance` on `main.js` / `styles.css` (verify with `gh attestation verify`).
+  Attestation only happens in GitHub Actions, so the local `gh release` path stays unattested.
+  (Decision 27.)
+
+The behaviour-neutral lint cleanups — `instanceof` → `.instanceOf()`, bare `setTimeout` →
+`window.setTimeout`, promise-returned-where-void-expected, redundant type assertions, sentence-case
+notices — were applied (Change 35). Full per-item annotations are in `releast-state.md`.
+
 ## Submission checklist (manual, at release time)
 
 Not code — the packaging steps performed when cutting a community-directory release:

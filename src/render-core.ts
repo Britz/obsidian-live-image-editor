@@ -1,8 +1,8 @@
 import {
-  ImageTransform, Align, FilterData, MARKER_CLASS, INLINE_CLASS,
+  ImageTransform, FilterData, MARKER_CLASS, INLINE_CLASS,
   getRotation, isCrop, filterToCss, getWidthPx, getHeightPx,
 } from "./transforms";
-import { boxAspectRatio, innerImageSize, rotatedAabb, nativeBoxWidth, isTallFloat } from "./renderer-logic";
+import { boxAspectRatio, innerImageSize, rotatedAabb, nativeBoxWidth, isTallFloat, rotatedFootprint } from "./renderer-logic";
 
 // The Obsidian-FREE render core (AB7a). It builds the uniform 3-layer image structure and
 // carries the structural render CSS as a STRING — the SINGLE source injected by BOTH the
@@ -38,22 +38,30 @@ export function buildLayers(img: HTMLImageElement, t: ImageTransform): void {
   const outer = ensureLayers(img);
   const frame = img.parentElement as HTMLElement; // `.lie-frame`
 
-  // No marker class on the img: reconcile/selection identify our images by their
-  // `.lie-image-area` outer (or the `.lie-inline` class). resetLieState strips a legacy marker.
-  if (t.inline) img.classList.add(INLINE_CLASS);
-  // Alignment is a FIELD (the bare `align=` key); re-derive the `lie-left/right/center` MARKER
-  // class on the img so the injected `:has(img.lie-…)` float/centre rules still match. It is a
-  // render-time marker (tracked in data-lie-classes, cleared on reset), never stored in source.
+  // The inline marker (F17) rides the OUTER too (Decision 28): `.lie-image-area.lie-inline` sets the
+  // mid-text vertical-align with a DIRECT selector, no `:has(img.lie-inline)`. Reconcile/selection
+  // identify our images by the `.lie-image-area` outer. resetLieState strips a legacy marker off a
+  // reused img (older versions put it on the img).
+  if (t.inline) outer.classList.add(INLINE_CLASS);
+  // Alignment is a FIELD (the bare `align=` key); re-derive the `lie-left/right/center` MARKER on the
+  // OUTER (Decision 28 — markers ride the outer). On a foreign page the outer IS the flow participant,
+  // so the runtime floats it with a DIRECT `.lie-image-area.lie-left` (no `:has`). In the plugin the
+  // float must act on the host ABOVE the outer, so styles.css keeps a `:has(.lie-image-area.lie-…)`
+  // on the host — the tolerated CM-context `:has` (Decision 28). Render-time only, never stored.
   const alignClass = t.align ? `lie-${t.align}` : null;
   // Tall-float cap (R0, cross-view): mark a FLOATED image whose estimated height exceeds the
   // CM6 render margin so the stylesheet stacks it as a non-floated block in safe mode.
-  // Declarative (no DOM measure, AD6); tracked via applyClasses so reset/re-render clears it.
+  // Declarative (no DOM measure, AD6); tracked so reset/re-render clears it.
   const floated = t.align === "left" || t.align === "right";
   const tall = floated && isTallFloat({
     widthPx: getWidthPx(t), heightPx: getHeightPx(t),
     aspectRatio: t.aspectRatio ? parseRatio(t.aspectRatio) : null,
   });
-  applyClasses(img, [...t.classes, ...(alignClass ? [alignClass] : []), ...(tall ? ["lie-tall"] : [])]);
+  // Everything the {…} block carries rides the OUTER (AD2/AD3, Decision 28): the user/decoration
+  // classes, the alignment marker and the tall-float marker — so a decoration class styles the
+  // un-clipped footprint box, and the markers are selected directly (runtime) or via a host `:has`
+  // on the outer (plugin). One tracked set (`data-lie-classes`) so reset clears exactly these.
+  applyTrackedClasses(outer, [...t.classes, ...(alignClass ? [alignClass] : []), ...(tall ? ["lie-tall"] : [])], "lieClasses");
 
   // IMG filter: native CSS, verbatim (AD2).
   img.style.filter = t.filter ?? "";
@@ -107,15 +115,12 @@ function sizeLayers(img: HTMLImageElement, outer: HTMLElement, frame: HTMLElemen
     // string, AD2); the crop placement then pans/zooms/ROTATES it about its CENTRE
     // (transform-origin:center) — the same origin the in-place editor uses, so a rotate pivots
     // intuitively and editor == render (Bug 51 A). The frame (+ its orientation) does the rest.
-    img.style.top = "0";
-    img.style.left = "0";
-    img.style.right = "0";
-    img.style.bottom = "0";
-    img.style.margin = "auto";
-    img.style.transformOrigin = "center";
+    // The static centring + width fill now live in the `.lie-frame > img` rule (RENDER_CSS /
+    // styles.css). A crop keeps the source's native aspect (height:auto) vs. a non-crop's
+    // height:100% fill — expressed by the `lie-crop-fit` marker class (`.lie-frame > img.lie-crop-fit`
+    // in CSS). Only the per-image crop placement transform stays inline (dynamic, AD2).
     img.style.transform = t.transform ?? "";
-    img.style.width = "100%";
-    img.style.height = "auto";
+    img.classList.add("lie-crop-fit");
     // Footprint: shape from the CUT ratio + angle (swaps on a rotate); width = the stored cut
     // width rotated into the footprint (deg=0 → the cut width itself). A non-px width (preset
     // var) can't be rotated — set it as-is (rare).
@@ -142,27 +147,49 @@ function sizeLayers(img: HTMLImageElement, outer: HTMLElement, frame: HTMLElemen
   // Non-crop: the img fills the frame (the orientation lives on the frame, about its centre).
   // Centred statically (inset:0 + margin:auto) — same as the crop case, so a power-user content
   // transform also pivots about the centre and the placement string stays free of centering.
-  img.style.top = "0";
-  img.style.left = "0";
-  img.style.right = "0";
-  img.style.bottom = "0";
-  img.style.margin = "auto";
-  img.style.transformOrigin = "center";
+  // The static centring + 100% fill (img and frame) now live in `.lie-frame > img` / `.lie-frame`
+  // (RENDER_CSS / styles.css); only the per-image (usually empty) content transform stays inline.
   img.style.transform = t.transform ?? ""; // usually empty; a power-user content transform passes through
-  img.style.width = "100%";
-  img.style.height = "100%";
 
   // Give the outer a PROVISIONAL aspect-ratio up front so it can't collapse to 0 height while the
-  // intrinsic ratio is still unknown; the frame fills it until the real ratio lands.
+  // intrinsic ratio is still unknown; the frame fills it (the `.lie-frame` 100%/100% default) until
+  // the real ratio lands and shapeFrame writes the computed percentages.
   outer.style.setProperty("--lie-auto-aspect", t.aspectRatio || "1");
-  frame.style.width = "100%";
-  frame.style.height = "100%";
+
+  // Footprint sizing is ROTATION-AWARE (Bug 90). The stored width/height are the image's BASE
+  // (unrotated) footprint, so a quarter-turn must SWAP them — a 400×200 image rotated 90° is 200×400,
+  // mirroring the crop path's rotatedAabb. routeBoxStyle applied the UNROTATED values; here we
+  // override the px axes with the rotated footprint. (A non-px width like a preset var can't be
+  // rotated numerically — left as routeBoxStyle set it.)
+  const wPx = getWidthPx(t), hPx = getHeightPx(t);
+  if (wPx != null && hPx != null) {
+    const box = rotatedFootprint({ widthPx: wPx, heightPx: hPx, naturalRatio: null, deg });
+    if (box.width != null) outer.style.width = `${box.width}px`;
+    if (box.height != null) outer.style.height = `${box.height}px`;
+  }
+  // An explicit aspect-ratio (rare for a non-crop image) likewise swaps on a quarter-turn so the box
+  // shape rotates with the image; at 0°/180° it is unchanged so routeBoxStyle's value stands.
+  if (t.aspectRatio) {
+    const r = parseRatio(t.aspectRatio);
+    if (r) { const swapped = boxAspectRatio(r, deg); if (swapped !== r) outer.style.aspectRatio = String(swapped); }
+  }
 
   whenNatural(img, (nw, nh) => {
     shapeFrame(outer, frame, nw / nh, deg);
-    // A default width only when NEITHER dimension is set — the box shows at the image's
-    // natural (rotated) size, column-capped (the SAME native cap the no-width crop path uses).
-    if (!t.width && !t.height) outer.style.width = `${nativeBoxWidth(nw, nh, deg)}px`;
+    if (!t.width && !t.height) {
+      // No explicit dimension → the image's natural (rotated) size, column-capped (the SAME native
+      // cap the no-width crop path uses).
+      outer.style.width = `${nativeBoxWidth(nw, nh, deg)}px`;
+    } else if (wPx != null && hPx == null) {
+      // Width only (height derives from the swapped --lie-auto-aspect): rotate the base footprint so
+      // a 400-wide/200-tall box becomes 200-wide/400-tall on a quarter-turn (Bug 90).
+      const box = rotatedFootprint({ widthPx: wPx, heightPx: null, naturalRatio: nw / nh, deg });
+      if (box.width != null) outer.style.width = `${box.width}px`;
+    } else if (hPx != null && wPx == null) {
+      // Height only: symmetric to width-only (Bug 90).
+      const box = rotatedFootprint({ widthPx: null, heightPx: hPx, naturalRatio: nw / nh, deg });
+      if (box.height != null) outer.style.height = `${box.height}px`;
+    }
   });
 }
 
@@ -224,28 +251,24 @@ export function applyFilterPreview(img: HTMLImageElement, filter?: FilterData): 
 
 function resetLieState(img: HTMLImageElement): void {
   img.classList.remove(MARKER_CLASS, INLINE_CLASS);
-  // Remove the layout/decoration classes WE added last render (tracked in data-lie-classes) so
-  // a class dropped from the {…} block doesn't stick on a reused (Obsidian-cached) image.
-  const prev = img.dataset["lieClasses"];
-  if (prev) {
-    for (const c of prev.split(" ")) if (c) img.classList.remove(c);
-    delete img.dataset["lieClasses"];
-  }
-  img.style.transform = "";
-  img.style.filter = "";
-  img.style.transformOrigin = "";
-  img.style.width = "";
-  img.style.height = "";
-  img.style.top = "";
-  img.style.left = "";
-  img.style.right = "";
-  img.style.bottom = "";
-  img.style.margin = "";
-  // Clear the inline styles on the wrapping frame + outer (reused DOM), so a transform dropped
-  // from the block doesn't linger.
+  // Clear any LEGACY tracked classes/markers on the IMG — older versions (and a Part-1 intermediate)
+  // tracked the user classes / alignment markers on the img before they ALL moved to the OUTER
+  // (Decision 28). Clearing both migrates a reused (Obsidian-cached) img cleanly; the OUTER's current
+  // tracked set is cleared in the walk-up below.
+  clearTracked(img, "lieMarkers");
+  clearTracked(img, "lieClasses");
+  // Clear the per-image inline styles buildLayers sets (filter/transform) and the crop-fit marker;
+  // the static centring/sizing lives in CSS now, so nothing else is set inline on the img.
+  img.style.removeProperty("transform");
+  img.style.removeProperty("filter");
+  img.classList.remove("lie-crop-fit");
+  // Clear the wrapping frame + outer (reused DOM): the inline styles, AND the user/decoration
+  // classes we added to the OUTER (data-lie-classes) so a class dropped from the block doesn't
+  // linger on the reused outer.
   let el = img.parentElement;
   for (let i = 0; i < 2 && el; i++) {
     if (el.classList.contains(FRAME_CLASS) || el.classList.contains(BOX_CLASS)) {
+      if (el.classList.contains(BOX_CLASS)) { clearTracked(el, "lieClasses"); el.classList.remove(INLINE_CLASS); }
       el.removeAttribute("style");
       el = el.parentElement;
     } else break;
@@ -280,22 +303,36 @@ function ensureLayers(img: HTMLImageElement): HTMLElement {
   return outer;
 }
 
-// Layout/decoration classes go on the IMG so the `:has(img.lie-*)` rules on the embed match
-// (Bug 10). Recorded in data-lie-classes so resetLieState clears exactly these.
-function applyClasses(img: HTMLImageElement, classes: string[]): void {
+// Apply WE-added classes to `el` and record them under `el.dataset[key]` so reset clears EXACTLY
+// these on a reused (Obsidian-cached) element — a class dropped from the {…} block must not stick.
+// User/decoration classes go on the OUTER (key `lieClasses`, Decision 28); the alignment/tall
+// markers go on the IMG (key `lieMarkers`) for the host float `:has` (Bug 10).
+function applyTrackedClasses(el: HTMLElement, classes: string[], key: string): void {
   const clean = classes.filter(Boolean); // never classList.add("") — empty token throws
-  for (const cls of clean) img.classList.add(cls);
-  if (clean.length) img.dataset["lieClasses"] = clean.join(" ");
-  else delete img.dataset["lieClasses"];
+  for (const cls of clean) el.classList.add(cls);
+  if (clean.length) el.dataset[key] = clean.join(" ");
+  else delete el.dataset[key];
+}
+
+// Remove + untrack the classes recorded under `el.dataset[key]`.
+function clearTracked(el: HTMLElement, key: string): void {
+  const prev = el.dataset[key];
+  if (!prev) return;
+  for (const c of prev.split(" ")) if (c) el.classList.remove(c);
+  delete el.dataset[key];
 }
 
 // ---------------------------------------------------------------------------
-// Structural render CSS (AB7a) — the SINGLE source for the 3-layer LAYER rules, injected at
-// runtime by BOTH the plugin (`styles-injector`) and the standalone runtime, so the image
-// renders identically in Obsidian and on a foreign page (R0). It is ONLY the layer geometry;
-// the Obsidian embed-integration, native-suppression, reveal, tall-float cap, alignment hosts
-// and all chrome stay with their adapter (plugin `styles.css` / `styles-injector`; the runtime
-// injects its own alignment host). `--lie-auto-aspect` is set inline per image by buildLayers.
+// Structural render CSS (AB7a) — the SINGLE source for the 3-layer LAYER rules. The STANDALONE
+// runtime injects this string verbatim via a `<style>` (a foreign page has no Obsidian-loaded
+// stylesheet). The PLUGIN does NOT inject it — Obsidian loads the plugin's `styles.css`, which
+// carries a byte-identical copy of this block (kept in sync by a unit test, so the render is
+// identical in Obsidian and on a foreign page — R0). It is ONLY the layer geometry; the Obsidian
+// embed-integration, native-suppression, reveal, tall-float cap, alignment hosts and all chrome
+// stay with their adapter (plugin `styles.css`; the runtime injects its own alignment host).
+// Per-image values are set inline by buildLayers: `--lie-auto-aspect` (footprint shape) on the
+// outer and the dynamic `transform`/`filter` on the img; the crop-vs-non-crop height difference is
+// the `lie-crop-fit` marker class on the img.
 // ---------------------------------------------------------------------------
 export const RENDER_CSS = `
 .lie-image-area {
@@ -311,15 +348,25 @@ export const RENDER_CSS = `
   position: absolute;
   top: 50%;
   left: 50%;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   transform-origin: center;
 }
 .lie-frame > img {
   position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: auto;
+  width: 100%;
+  height: 100%;
+  transform-origin: center;
   max-width: none !important;
 }
-img.lie-inline { vertical-align: middle; }
-.lie-image-area:has(img.lie-inline) { vertical-align: middle; }
+.lie-frame > img.lie-crop-fit { height: auto; }
+.lie-image-area.lie-inline { vertical-align: middle; }
 `;
 
 // ---------------------------------------------------------------------------
@@ -360,7 +407,7 @@ export function readTransform(el: HTMLElement): ImageTransform {
   const width = el.getAttribute("width") ?? el.getAttribute("data-width");
   if (width) t.width = /^\d+(?:\.\d+)?$/.test(width.trim()) ? `${width.trim()}px` : width.trim();
   const align = el.getAttribute("align") ?? el.getAttribute("data-align");
-  if (align === "left" || align === "right" || align === "center") t.align = align as Align;
+  if (align === "left" || align === "right" || align === "center") t.align = align;
 
   for (const c of Array.from(el.classList)) {
     if (c === "lie" || c === MARKER_CLASS) continue;          // claim markers — not real classes

@@ -12,7 +12,7 @@
 >    manual submission checklist live in the top-level [README → Release compliance](https://github.com/Britz/obsidian-live-image-editor/blob/main/README.md#release-compliance).
 > 2. **Meta level — below OPEN.** Process & quality work that never becomes a changelog entry —
 >    **verifications**, **refactoring**, **housekeeping** — plus the hard-won **Lessons**
->    (**Lesson 1–16**), each a bug-class + the rule that prevents it. All unnumbered.
+>    (**Lesson 1–17**), each a bug-class + the rule that prevents it. All unnumbered.
 >
 > The resolved **Bug**, **Feature**, **Change** and **Decision** entries (each with its cause + fix)
 > live in [`CHANGELOG.md`](../../CHANGELOG.md), numbered per category and split across the version each
@@ -34,7 +34,7 @@ Numbered registry items — each will move to the changelog keeping its number o
 
 ### Open decisions (Decision)
 
-_**24 decisions total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md))._
+_**27 decisions total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md))._
 
 ### Planned features (Feature)
 
@@ -94,7 +94,7 @@ requirement + the storage/permission implications) before any code.
 
 ### Known open bugs (Bug)
 
-_**88 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
+_**91 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
 
 - [ ] **Bug 65 — `<>` dismiss doesn't hide the FRONT of the link on the cursor line (fights the
       native widget).** When the editor cursor is on the image's line, the `<>` dismiss fails to hide the
@@ -247,7 +247,7 @@ when one is actually carried out it ships as a **Change** in the changelog._
 _(The release-requirement housekeeping items RC1/R20, RC8/R27, RC9/R28 and RC10/R29 are DONE in
 v0.4.2 — see Change 25 in the changelog.)_
 
-### Hard-won lessons (Lesson 1–16) — must never be re-broken
+### Hard-won lessons (Lesson 1–17) — must never be re-broken
 
 These were tagged `[LEARNED]` / `T-Ln`. Each is a _bug class_ + the rule that prevents it; the
 architecture encodes most in its decisions (`AD…`).
@@ -359,6 +359,22 @@ architecture encodes most in its decisions (`AD…`).
   live window also **degrades under dense fixture churn** (many create/modify/delete + reloads):
   transient single-image fixtures can fail to render their overlay, making crop/size steps flaky — run
   guards individually with a settle gap, or reload to a clean state.
+
+- **Lesson 17 — Reproduce an EXTERNAL review's ruleset in a SEPARATE config; never inline-disable its
+  rules in source** (surfaced by the 2026-06-06 Obsidian-review compliance pass). The community-plugin
+  review runs `eslint-plugin-obsidianmd`, which is NOT in our shipped `eslint.config.mjs` (T9 — kept
+  as-is). Two traps: (1) an inline `/* eslint-disable obsidianmd/<rule> */` to silence a genuine false
+  positive (e.g. the standalone runtime's `<style>` injection) makes the **shipped** `npm run lint`
+  FAIL with "Definition for rule … was not found" — that linter doesn't know the obsidianmd rules, and
+  ESLint 9 also flags the directive as unused. So a disable comment that helps the review bot BREAKS
+  our own gate. _Rule:_ recreate the review in a dedicated `eslint.obsidian.config.mjs` (`npm run
+  lint:obsidian`) and **exclude** non-plugin files (the `lie-runtime.js` runtime, the tree-shaken
+  `dev-bridge.ts`) there, documenting them as false positives — don't touch source with cross-plugin
+  disables. (2) `obsidianmd/no-static-styles-assignment` flags only **static LITERAL** values
+  (`el.style.x = "0"`, `setProperty("--v", "auto")`) — DYNAMIC values (`= t.transform`, `` =
+  `${px}px` ``, a non-`--` var) are NOT flagged, and `setProperty` with a string LITERAL still is even
+  for a `--` custom prop. So move static literals to `styles.css` and keep per-image dynamic values
+  inline (or behind a marker class); don't churn the dynamic assignments.
 
 ---
 

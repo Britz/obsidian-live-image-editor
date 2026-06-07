@@ -107,10 +107,10 @@ function openGroupPopup(trigger: HTMLElement, group: ToolbarGroup): void {
   }
 
   const rect = trigger.getBoundingClientRect();
-  popup.style.position = "fixed";
+  // position:fixed + z-index are in the `.lie-group-popup` rule (styles.css); only the trigger-rect
+  // coordinates are dynamic and stay inline.
   popup.style.top = `${rect.bottom + 6}px`;
   popup.style.left = `${rect.left}px`;
-  popup.style.zIndex = "1002";
   document.body.appendChild(popup);
 
   const unbindRegion = couplePaletteToRegion(popup, {
@@ -130,7 +130,7 @@ function openGroupPopup(trigger: HTMLElement, group: ToolbarGroup): void {
     document.removeEventListener("mousedown", onDown, true);
     document.removeEventListener("keydown", onKey, true);
   };
-  setTimeout(() => {
+  window.setTimeout(() => {
     document.addEventListener("mousedown", onDown, true);
     document.addEventListener("keydown", onKey, true);
   }, 0);
@@ -289,10 +289,9 @@ export class ImageToolbar {
   private positionAbove(toolbar: HTMLElement, img: HTMLImageElement): void {
     const rect = img.getBoundingClientRect();
     const gap = 8;
-    // position:fixed but recomputed on scroll, so it tracks the image rather than
-    // staying pinned to the page (D1).
-    toolbar.style.position = "fixed";
-    toolbar.style.zIndex = "1000";
+    // position:fixed + z-index are in the `.lie-toolbar-floating` rule (styles.css); the bar is
+    // fixed but recomputed on scroll, so it tracks the image rather than staying pinned to the page
+    // (D1). Only the computed top/left coordinates below are dynamic and stay inline.
     // Place the bar truly ABOVE the image — its bottom sits `gap` above the image top — not
     // inset on top of it (the old `rect.top + 8` left a ~38px bar sitting on, and overhanging
     // below, a 24px image, D1.1). The toolbar is already on document.body with position:fixed,

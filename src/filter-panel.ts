@@ -102,8 +102,8 @@ export class FilterPanel {
       contentBound: centeredTitle ? undefined : () => this.editorPaneBound(anchorEl),
       hideWhenAnchorOffscreen: !centeredTitle,   // track the image; centered has no anchor to track
       // Show/hide with the toolbar's hover while staying part of the active region
-      // (D6/D7): the live-preview overlay is the hover region. Centered/reading view → no
-      // region → undefined → the panel stays shown until dismissed.
+      // (D6/D7): the live-preview overlay is the hover region. Centered (multi-image) mode has no
+      // anchor → no region → undefined → the panel stays shown until dismissed.
       hoverRegion: centeredTitle ? undefined : anchorEl?.closest<HTMLElement>(".lie-wrapper") ?? undefined,
       // Per-panel reset (the SAME shared-host reset as crop/size, F14/Bug 41):
       // clear all filters to default and preview; the panel stays open.
@@ -130,14 +130,14 @@ export class FilterPanel {
   }
 
   // The horizontal bound the side-of-more-room flip is measured against (Bug 77/D7): the
-  // editor content pane that holds the image — `.markdown-source-view` (live preview) or
-  // `.markdown-reading-view` (reading view). Both are the leaf's content area and EXCLUDE
-  // the left sidebar (file explorer), so a left flip stays inside the pane and never lands
-  // over it (the Bug-64 guard). Evaluated live each reposition (the pane moves when the
-  // sidebar is toggled or the window resizes). Null ⇒ pane not found ⇒ the host falls back
-  // to the viewport, i.e. the previous right-clamp-only behaviour.
+  // `.markdown-source-view` editor content pane that holds the image (editing is live-preview
+  // only, F5/F7). It is the leaf's content area and EXCLUDES the left sidebar (file explorer),
+  // so a left flip stays inside the pane and never lands over it (the Bug-64 guard). Evaluated
+  // live each reposition (the pane moves when the sidebar is toggled or the window resizes).
+  // Null ⇒ pane not found ⇒ the host falls back to the viewport, i.e. the previous
+  // right-clamp-only behaviour.
   private editorPaneBound(anchorEl: HTMLElement | null): ContentBound | null {
-    const pane = anchorEl?.closest<HTMLElement>(".markdown-source-view, .markdown-reading-view");
+    const pane = anchorEl?.closest<HTMLElement>(".markdown-source-view");
     if (!pane) return null;
     const r = pane.getBoundingClientRect();
     return { left: r.left, right: r.right };

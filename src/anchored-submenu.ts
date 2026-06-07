@@ -97,12 +97,11 @@ export class AnchoredSubmenu {
     panel.appendChild(opts.body);
     opts.body.classList.add("lie-submenu-body");
 
-    // Render off-screen first so we can measure its true (content) size, then
-    // place it fully on-screen (D9). position:fixed → viewport coordinates.
-    panel.style.position = "fixed";
-    panel.style.visibility = "hidden";
-    panel.style.top = "0";
-    panel.style.left = "0";
+    // Render off-screen first so we can measure its true (content) size, then place it fully
+    // on-screen (D9). `.lie-submenu` is position:fixed (viewport coords); `.lie-measuring` hides it
+    // at 0,0 (visibility:hidden, so it still lays out and is measurable) while we measure — both in
+    // styles.css. Removed once placed (no inline style writes — Obsidian-review compliance).
+    panel.classList.add("lie-measuring");
     document.body.appendChild(panel);
     this.el = panel;
 
@@ -113,7 +112,7 @@ export class AnchoredSubmenu {
 
     this.bindHover(panel, opts.hoverRegion);
     this.reposition();
-    panel.style.visibility = "";
+    panel.classList.remove("lie-measuring");
 
     document.addEventListener("keydown", this.handleKeyDown, true);
     window.addEventListener("resize", this.reposition);
@@ -126,7 +125,7 @@ export class AnchoredSubmenu {
   // keeps the region active while the pointer is over ANY member, bridges the image→panel travel
   // grace, and is robust to the in-chrome toolbar being NESTED inside the image wrapper (moving
   // toolbar→image stays "inside"). The two hide together when the region is left. With no `region`
-  // (reading view: no overlay) the panel is simply always shown until dismissed.
+  // (centered multi-image mode: no overlay) the panel is simply always shown until dismissed.
   private bindHover(panel: HTMLElement, region?: HTMLElement): void {
     if (!region) { this.hoverShown = true; return; }
     this.hoverShown = true; // opened by a click while hovering
@@ -150,7 +149,7 @@ export class AnchoredSubmenu {
     // Centered (multi-image) panels have NO anchor — they float in the viewport centre and stay
     // shown until accept/cancel/click-away, so skip the anchor-bound visibility/offscreen logic.
     if (!this.opts.anchor) {
-      this.el.style.display = "";
+      this.el.classList.remove("lie-submenu-hidden");
       this.place();
       return;
     }
@@ -163,10 +162,10 @@ export class AnchoredSubmenu {
     this.offscreen = !!this.opts.hideWhenAnchorOffscreen && (a.bottom <= 0 || a.top >= window.innerHeight);
 
     const show = !this.offscreen && (this.hoverShown || !this.opts.hoverRegion);
-    this.el.style.display = show ? "" : "none";
+    this.el.classList.toggle("lie-submenu-hidden", !show);
     // The toolbar rides the SAME combined-region state (D6): `lie-region-active` keeps it visible
     // (greyed) while the region is active and lets it hide TOGETHER with the panel when left. With
-    // no hoverRegion (reading view) `show` is always true → the bar stays put.
+    // no hoverRegion (centered multi-image mode) `show` is always true → the bar stays put.
     this.toolbar?.classList.toggle("lie-region-active", show);
     if (show) this.place();
   }

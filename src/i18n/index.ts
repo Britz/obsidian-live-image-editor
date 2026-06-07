@@ -1,3 +1,4 @@
+import { getLanguage } from "obsidian";
 import en from "./en";
 import de from "./de";
 
@@ -20,7 +21,10 @@ export function t(key: keyof Translations): string {
 }
 
 export function detectLocale(): string {
-  const obsidianLocale = window.localStorage.getItem("language");
+  // Obsidian's own UI language (F21 — follow Obsidian's locale, no language setting of our own).
+  // `getLanguage()` is Obsidian's sanctioned accessor for the key it stores under
+  // localStorage["language"] ("en" for the default); fall back to the browser locale.
+  const obsidianLocale = getLanguage();
   if (obsidianLocale && obsidianLocale !== "en") return obsidianLocale;
   return navigator.language || "en";
 }

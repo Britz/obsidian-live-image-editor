@@ -125,7 +125,9 @@ export class CropEditor {
     if (!frame || !area) { this.onClosed(); return; } // not our 3-layer structure — release the ref
     this.frameEl = frame;
     this.areaEl = area;
-    this.hostEl = this.img.closest<HTMLElement>(".lie-wrapper, .image-embed") ?? area;
+    // Editing is live-preview only (F5/F7), so the host is always the `.lie-wrapper` widget; the
+    // `?? area` fallback only guards a hypothetical non-wrapper structure.
+    this.hostEl = this.img.closest<HTMLElement>(".lie-wrapper") ?? area;
 
     // The cut-frame baseline: its LAYOUT box (pre-orientation), not the rotated on-screen AABB.
     this.frameW = Math.max(1, Math.round(frame.offsetWidth));
@@ -162,14 +164,13 @@ export class CropEditor {
     // space → no reflow). The cut `.lie-frame` KEEPS its own overflow:hidden (it is the bright cut);
     // only the OUTER area is opened so the dim ghost can extend beyond the footprint.
     area.classList.add("lie-cropping");
-    area.style.overflow = "visible";
-    area.style.zIndex = "5";
-    // The host (LP block widget) paint-contains its content — app.css `.cm-content >
-    // [contenteditable="false"] { contain: paint }` is `!important`, so it must be beaten with
-    // `!important` or the overflow is re-clipped to the widget box. Lifted for the crop duration
-    // only; harmless where there is no containment.
+    // Un-clip overflow + raise z-index now live in the `.lie-image-area.lie-cropping` rule
+    // (styles.css). The host (LP block widget) paint-contains its content — app.css `.cm-content >
+    // [contenteditable="false"] { contain: paint }` is `!important` — so it must be beaten with
+    // `!important`; that override is likewise a styles.css rule keyed on the `.lie-cropping` host
+    // class (a doubled-class selector out-specifies app.css), lifted for the crop duration only.
+    // No inline style needed here (Obsidian-review compliance: `no-static-styles-assignment`).
     host.classList.add("lie-cropping");
-    host.style.setProperty("contain", "none", "important");
 
     // Pin the cut frame at its current px box so the aspect presets reshape ONLY the cut (the
     // footprint derives from --lie-auto-aspect and is untouched until commit → box stays fixed).
@@ -220,13 +221,14 @@ export class CropEditor {
     this.ghostFrame?.remove();
     this.chromeFrame?.remove();
     this.ghostFrame = this.ghostImg = this.chromeFrame = this.handleBox = null;
-    // Clear only what buildLayers does NOT own: the crop-active classes (on area + host) and the
-    // host's lifted `contain`. The transient inline geometry (area overflow / z-index, the px frame
-    // box) is owned by buildLayers — a committed leave already re-rendered it; a NO-OP leave
-    // re-renders here to restore the clean committed geometry. Either way no stale style lingers.
+    // Clear only what buildLayers does NOT own: the crop-active classes. Removing `.lie-cropping`
+    // off the area + host also reverts the class-driven crop styling (overflow / z-index / the
+    // host `contain` lift — all styles.css rules now), and dropping `.lie-crop-img` off the live
+    // img reverts its crop layout. The px frame box is transient DOM that buildLayers re-renders:
+    // a committed leave already re-rendered it; a NO-OP leave re-renders here. No stale style lingers.
     this.areaEl?.classList.remove("lie-cropping");
     this.hostEl?.classList.remove("lie-cropping");
-    this.hostEl?.style.removeProperty("contain");
+    this.img.classList.remove("lie-crop-img");
     this.areaEl?.removeEventListener("pointerdown", this.onPointerDown);
     this.areaEl?.removeEventListener("wheel", this.onWheel);
     document.removeEventListener("pointermove", this.onPointerMove);
@@ -248,13 +250,10 @@ export class CropEditor {
   // sized to the cut window; overflow visible so the image inside shows beyond the cut.
   private makeFrameBox(orient: string): HTMLElement {
     const box = document.createElement("div");
-    box.style.position = "absolute";
-    box.style.top = "50%";
-    box.style.left = "50%";
-    box.style.width = `${this.frameW}px`;
+    box.classList.add("lie-crop-frame-box"); // position / top:50% / left:50% / transform-origin in styles.css
+    box.style.width = `${this.frameW}px`;     // dynamic px — stays inline
     box.style.height = `${this.frameH}px`;
-    box.style.transform = orient;
-    box.style.transformOrigin = "center";
+    box.style.transform = orient;             // dynamic orientation — stays inline
     return box;
   }
 
@@ -262,13 +261,11 @@ export class CropEditor {
   // the handle box track the live img precisely): absolute, inset 0 + margin auto, width:100% /
   // height:auto, centre pivot.
   private styleAsCropImg(img: HTMLElement): void {
-    img.style.position = "absolute";
-    img.style.top = "0"; img.style.left = "0"; img.style.right = "0"; img.style.bottom = "0";
-    img.style.margin = "auto";
-    img.style.transformOrigin = "center";
-    img.style.width = "100%";
-    img.style.height = "auto";
-    img.style.maxWidth = "none";
+    // The crop-img layout (absolute / inset:0 / margin:auto / centre pivot / width:100% / height:auto
+    // / max-width:none) is the `.lie-image-area.lie-cropping .lie-crop-img` rule in styles.css — it
+    // out-specifies `.lie-frame > img` so it also reshapes the LIVE img during crop. The per-image
+    // placement transform stays inline. Removed off the live img in exitCropMode.
+    img.classList.add("lie-crop-img");
   }
 
   // The frame orientation (rotate + flip about the centre) — the SAME string render-core writes,

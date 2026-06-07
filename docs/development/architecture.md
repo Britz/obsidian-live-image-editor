@@ -125,6 +125,24 @@ current code and are restated here as architecture, not invented anew.
     `display`: a centered image is a centered **block**, an inline image is **inline**. This residual
     coupling is intentional and harmless — the explicit px `width` makes the flow footprint identical
     either way, so no refactor is warranted.
+  - **Self-set markers ride the element they style; `:has()` is reserved for Obsidian's own DOM
+    (Decision 28).** The plugin BUILDS the outer (and, in LP, the host `.lie-wrapper`), so every class
+    or marker IT sets — the user's `.class` / `style` (AD2: on the **outer**), the
+    `lie-left/right/center` alignment marker, `lie-inline`, `lie-tall` — is placed on the element that
+    must react and selected **directly** (e.g. `.lie-image-area.lie-left`; the float on the flow
+    participant), **never** via `:has(img.lie-*)`. `:has()` is used **only** to react to Obsidian's
+    OWN, uncontrolled DOM — the source-reveal slaving (`.cm-line:has(> .cm-formatting)`) — where the
+    plugin cannot add a class of its own. The **F18 alignment-float routing** on the CM `.cm-line`
+    context is a TOLERATED `:has` site for the same reason (an edge case partly controlled by
+    CodeMirror): a direct class is preferred, but `:has` is acceptable there if removal is risky. This is what makes decoration classes (`shadow` / `bordered`)
+    work on the outer box without being clipped, and it removes the marker-on-`<img>` shortcut the code
+    took against AD2/AD3. **Snippet contract (F16):** because the user's class lands on the outer (the
+    conceptual image box), an example / vault snippet is authored as a plain `.classname` (box effects)
+    plus `.classname img` for pixel effects (e.g. `circle`'s `object-fit:cover`) — it NEVER references
+    the plugin's internal `.lie-*` structure. *(Implemented — Change 36 / Bug 91: the user classes +
+    the align/tall/inline markers ride the outer; the standalone runtime floats it with a direct
+    selector; only the plugin's host-float `:has` (now reading the outer's marker) and the reveal
+    remain, both the tolerated Obsidian/CM-DOM case.)*
 
 - **AD4 — Two view adapters, one render core.** *(T4, F4)* Reading view (a Markdown
   post-processor) and live preview (a CodeMirror-6 extension) are separate **only** because
@@ -442,10 +460,13 @@ display state — each produces an edit that round-trips through the model layer
   changed/deleted status shows warning/error colours; restore is **per-class** only (no whole-file
   reset).
 - **AB20 — Style injection** — installs the internal prefixed CSS: the alignment/inline classes
-  and their `:has()` float routing (a `lie-left/right` float escapes the non-BFC cm-line; `z-index:1`
-  keeps the floated image clickable), the box/overflow rules, the **tall-float cap** (a `.lie-tall`
-  float stacks as a block under `body.lie-safe-tall-float`), and the configurable preset-width
-  variables, shared with the render core (F15, F18, F24, T9). It also carries the **live-preview reveal
+  and their float routing (per Decision 28 the marker rides the OUTER `.lie-image-area`; off Obsidian
+  the runtime floats it DIRECTLY, in the plugin the host above the box floats via
+  `:has(.lie-image-area.lie-…)` — the tolerated CM-context `:has`; a `lie-left/right` float escapes the
+  non-BFC cm-line; `z-index:1` keeps the floated image clickable), the box/overflow rules, the
+  **tall-float cap** (a `.lie-tall` float stacks as a block under `body.lie-safe-tall-float`), and the
+  configurable preset-width variables, shared with the render
+  core (F15, F18, F24, T9). It also carries the **live-preview reveal
   CSS** (AD5): the rule that hides Obsidian's native image **uniformly in every embed** (never the
   plugin's own `.lie-wrapper`), and the
   hover/`.cm-active`-keyed rules — plus the `<>`-toggle class and the global default-state class — that
@@ -492,7 +513,7 @@ Confirms every requirement is realized by a building block or decision (and surf
 | F16 Vault-snippet classes | Snippet discovery (+bundled examples) · Settings |
 | F16.1 Bundled snippets opt-in (install/reset) | Snippet discovery · Settings |
 | F17 Inline images | AD5 · Live-preview adapter (inline-mode of the same uniform widget) |
-| F18 Float & text wrap | AD2/render core (class on img, float on embed) |
+| F18 Float & text wrap | AD2/AD3/render core (align marker + float on the flow participant — the outer/host, not the img; Decision 28) |
 | F19 Commands | Commands |
 | F20 Settings | Settings |
 | F21 Localization | AD9 · i18n |

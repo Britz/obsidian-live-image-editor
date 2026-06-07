@@ -11,6 +11,153 @@ Every entry is numbered in one global per-category sequence — **Decision**, **
 Decision › Change › Feature › Bug, each category newest-first (highest number on top). Numbers are
 never reused. (Open/unsolved items and the hard-won lessons live in `docs/development/issues.md`.)
 
+## [0.6.1] - 2026-06-06
+
+An Obsidian community-plugin-review compliance pass. The automated review (`eslint-plugin-obsidianmd`
++ a CSS scan + a behaviour scan) **failed** on two error classes — inline static styles and a
+runtime-injected `<style>` element. Both are resolved with the smallest faithful change: static
+styles move to CSS, dynamic per-image values stay inline, and the plugin no longer hand-injects CSS.
+The review is now reproducible locally (`npm run lint:obsidian` / `lint:css`) **without** touching
+the shipped linter (T9). Independently of the review, this release also fixes a footprint bug when
+rotating explicitly-sized images (Bug 90). Verified: `npm run lint:obsidian` reports 0 errors (6
+documented deprecation warnings), `npm run lint` stays clean, `npm test` is green (270), `npm run
+build` succeeds.
+
+- **Decision 28 — `:has()` is reserved for reacting to Obsidian's own DOM; self-set markers/classes
+  ride the element they style (the outer).** Reaffirms AD2/AD3: everything the user's `{…}` block
+  carries — `.class`, `style`, the align marker — belongs on the **outer `.lie-image-area`** (the
+  size/layout element), never the inner `<img>`. Adds the discipline that since the plugin BUILDS the
+  outer (and the LP `.lie-wrapper`), every class/marker it sets is placed on the element that must
+  react and selected DIRECTLY (`.lie-image-area.lie-left`) — `:has()` is used ONLY where the plugin
+  must react to Obsidian's own, uncontrolled DOM (the source-reveal slaving
+  `.cm-line:has(> .cm-formatting)`), never `:has(img.lie-*)` for our own classes. The code previously
+  violated this (classes/markers on the `<img>`, alignment via `:has(img.lie-*)`) — the root of the
+  decoration-clipping the reverted shadow/border workaround papered over — now FIXED in **Change 36 /
+  Bug 91** (markers on the outer; runtime `:has`-free; the plugin's host float `:has` reads the outer's
+  marker, the tolerated CM case). Snippet contract: with the class on the outer, an
+  example/vault snippet is authored as a plain `.classname` (+ `.classname img` for pixel effects like
+  `circle`'s `object-fit`), never the internal `.lie-*` structure. Recorded in architecture.md (AD3
+  note + AB20 + the F18 row).
+- **Decision 27 — Adopt GitHub build-provenance attestations for the release binaries.** The release
+  workflow now runs `actions/attest-build-provenance` on `main.js` / `styles.css` (permissions
+  `id-token: write` + `attestations: write`), so a CI-cut release is cryptographically tied to this
+  repo+commit (verify with `gh attestation verify <file> -R <owner>/<repo>`). Caveat recorded:
+  attestation only happens inside GitHub Actions (OIDC/Sigstore) — there is no purely-local path, so
+  the `/release` skill's local `gh release create` stays unattested; making CI the sole publisher is a
+  separate future decision.
+- **Decision 26 — Keep the justified CSS-scan warnings and the 1.12.7-floor deprecations (documented,
+  not removed).** The remaining `:has()` warnings are unavoidable: alignment/float/reveal must style a
+  flow-participant ANCESTOR (the embed / `.cm-line`) from a marker on a DESCENDANT (the outer box, or
+  Obsidian's own `.cm-formatting`) — the only CSS-only mechanism (Bug 10/27; AD5 forbids reactive JS).
+  The removable `:has` (inline, embed shrink-wrap) were dropped in Change 36; the runtime is `:has`-free.
+  The `!important` warnings override Obsidian core / dynamically-gated rules (the crop `contain:none`
+  beating app.css `contain: paint !important`, the tall-float cap, the dismissed-reveal) — audited in
+  Change 36, the one removable defensive `!important` dropped. `PluginSettingTab.display()`
+  + `ButtonComponent.setWarning()` are deprecated since 1.13.0, but their replacements
+  (`getSettingDefinitions` / `setDestructive`) are 1.13.0-only and `minAppVersion` is **1.12.7**
+  (`display()` is the officially-sanctioned <1.13.0 fallback) — kept; `no-deprecated` set to *warn* in
+  the recreation. All are warnings, not the errors that fail the review. The review's "Vault
+  Enumeration" behaviour flag (`vault.getFiles()` in `replace-picker`) is likewise justified and left
+  as-is: it backs the F26 Replace-image fuzzy picker (a `FuzzySuggestModal` needs the full image
+  candidate set up front), is already filtered to image extensions, and has no narrower public API.
+- **Decision 25 — Recreate the review as a SEPARATE dev-only lint pass; the shipped linter is kept
+  exactly as-is (T9).** Added `eslint-plugin-obsidianmd` (recommended) behind `npm run lint:obsidian`
+  (a new `eslint.obsidian.config.mjs`) and a stylelint `npm run lint:css` (`stylelint.config.mjs`) that
+  reproduces the bot's `:has`/`!important` CSS scan — neither touches `eslint.config.mjs` / `npm run
+  lint`. The standalone runtime (`runtime.ts` → `lie-runtime.js`) and the dev-only CDP bridge
+  (`dev-bridge.ts`, tree-shaken via `__LIE_DEV__`) are excluded from the pass: off-Obsidian / in dev
+  they legitimately need `createElement("style")` / raw `instanceof` / a `net` import, so the bot's
+  flags on them are FALSE POSITIVES for the shipped plugin. They are excluded rather than silenced
+  with inline `eslint-disable` comments because those would name obsidianmd rules the shipped linter
+  doesn't know and would break `npm run lint` (→ Lesson 17).
+- **Change 36 — Everything the `{…}` block carries now rides the OUTER box, not the `<img>`
+  (Decision 28 / Bug 91).** `render-core`'s `applyClasses` puts the user's `.class` list (incl. the
+  built-in `rounded`/`shadow`/`bordered`/`circle` and any vault-snippet class) AND the
+  `lie-left/right/center` / `lie-tall` / `lie-inline` markers on the OUTER `.lie-image-area` (one
+  tracked set, `data-lie-classes`). This fixes the real defect behind the reverted shadow/border workaround: a decoration
+  class now styles the un-clipped footprint box, so `box-shadow` / outset `border` are no longer clipped
+  by the wrapper's `overflow:hidden`. The bundled snippet moves to the clean public contract — plain
+  `.rounded` / `.shadow` / `.bordered` / `.circle` (no internal `.lie-*`), `.circle img, img.circle {
+  object-fit:cover }` (the `img.circle` fallback for a bare/exported image), and theme-adaptive colours
+  (`var(--text-normal)` border, a `color-mix` text-colour shadow). `snippet-classify` parses the new
+  `.NAME` form (legacy `img.NAME` still accepted so an installed copy migrates; the auxiliary
+  `.circle img` rule is not mis-counted), and `resetLieState` clears a reused img's legacy
+  classes-on-img. Then the REMOVABLE `:has` went away: the inline `:has(img.lie-inline)` became the
+  direct `.lie-image-area.lie-inline`, and the reading-view embed shrink-wrap `:has(> .lie-image-area)`
+  became a `.lie-embed` class the post-processor sets on the host that holds the box. The **standalone
+  runtime is now `:has`-free** — with the align marker on the outer (= the flow participant off
+  Obsidian) it floats via a direct `.lie-image-area.lie-left`. The only `:has` left are the reveal
+  (Obsidian's own `.cm-line`/`.cm-formatting` DOM) and the plugin's alignment-float family, now
+  `.host:has(.lie-image-area.lie-…)` (reacting to the outer's marker) — the tolerated CM-context case
+  where the plugin can't class the host it doesn't own. Exactly per Decision 28. **BREAKING for snippets:** a snippet (or
+  installed bundled copy) targeting `img.myclass` no longer matches — Reset the bundled snippet in
+  settings, and update hand-written vault snippets to `.myclass` / `.myclass img`. NOTE: the box-effect
+  visuals + the inline/shrink-wrap layout are not headless-verifiable — verify in Obsidian.
+- **Change 35 — API-correctness / lint cleanups across the plugin (no behaviour change).**
+  `instanceof HTMLElement` → `node.instanceOf(HTMLElement)` (cross-window safe, main.ts); bare
+  `setTimeout` → `window.setTimeout` (toolbar.ts); promise-returned-where-void-expected fixed with
+  `void` / a threaded reject (main.ts export button, settings `ConfirmModal` — its `onConfirm` widened
+  to `() => void | Promise<void>`); five redundant type assertions removed (main.ts, render-core
+  `align`); `loadData()` laundered with `as Partial<LieSettings>`; the post-processor `.bind(this)`
+  replaced with a typed arrow; the two English notices dropped their redundant "Live Image Editor:"
+  prefix (sentence-case); `localStorage["language"]` replaced with Obsidian's `getLanguage()` (F21,
+  `prefer-get-language`); `@codemirror/state` + `@codemirror/view` declared as **devDependencies**
+  (Obsidian-provided externals — declared, not bundled, so T1 "no runtime deps" holds).
+- **Change 34 — Static inline styles → CSS classes (`no-static-styles-assignment`).** The 3-layer
+  centring/sizing literals move into `RENDER_CSS` (`.lie-frame`/`.lie-frame > img`, with a `lie-crop-fit`
+  marker for the crop `height:auto`); crop-editor, anchored-submenu, toolbar and export static literals
+  move to `styles.css` classes (`.lie-crop-img`, `.lie-crop-frame-box`, `.lie-measuring`,
+  `.lie-submenu-hidden`, position/z-index on `.lie-group-popup` / `.lie-toolbar-floating`,
+  `.lie-export-path-input`); the crop host `contain:none` override moves from inline-`!important` to a
+  doubled-class `styles.css` rule (the same beat-app.css device as `.lie-toolbar-btn.lie-toolbar-btn`).
+  Per-image DYNAMIC values (the crop placement `transform`, `filter`, computed widths/positions, the
+  panel coordinates) stay inline — the rule only flags STATIC literals, so they need no change.
+- **Change 33 — Eliminate the plugin's runtime-injected `<style>` element (`no-forbidden-elements`).**
+  `styles-injector` no longer creates a `<style>`: the static `RENDER_CSS` layer rules and the built-in
+  align/inline classes live in `styles.css` (Obsidian loads it), the preset-width vars are set on
+  `<body>` via `style.setProperty`, and a disabled built-in class is a `body.lie-cls-off-NAME` marker
+  the `body:not(.lie-cls-off-NAME)` rules react to — the same body-class device as
+  `applyTallFloatClass`/`applyButtonOutlines`. `RENDER_CSS` stays the single source the standalone
+  runtime injects; a new unit test (`styles-render-css.test.ts`) asserts `styles.css` carries it
+  verbatim so the two never drift (R0). The runtime (a non-Obsidian bundle) keeps its own `<style>`.
+- **Bug 92 — A long-press on an image opened the editing toolbar everywhere, including reading view.**
+  A 500 ms `touchstart` handler called `onImageSelected` for ANY `<img>` with no view gate, so on touch
+  a long-press in **reading view** raised the toolbar (and from there the in-place crop on the
+  `.image-embed` host) — a double violation of F5/F7 (editing is live-preview only; "no explicit
+  platform-specific trigger"). The click/hover entries were already `.markdown-source-view`-gated; only
+  this path leaked. Fixed by **removing the long-press handler entirely** — a plain tap fires a `click`,
+  which the existing handler already selects in live preview (F7), so touch keeps working. With editing
+  now provably LP-only, the dead reading-view scaffolding it had justified is gone too: the crop host
+  drops its `.image-embed` branch (always `.lie-wrapper`), the filter/class panels' pane lookup drops
+  `.markdown-reading-view`, and the related comments (incl. the native-handle CSS, Bug-32 G) are
+  corrected. No behaviour change in live preview.
+- **Bug 91 — Decoration / snippet classes + the inline marker rode the `<img>`, not the outer (the
+  code violated AD2/AD3).** `render-core`'s `applyClasses` put the user `.class` list + the `lie-inline`
+  marker on the `<img>`, which sits inside the wrapper's `overflow:hidden` — so a decoration class's
+  `box-shadow` / outset `border` was clipped (the real defect behind the reverted shadow/border
+  workaround), and the styling needed `:has(img.lie-*)`. Fixed by Decision 28 + Change 36: the user
+  `.class` list AND the `lie-left/right/center` / `lie-tall` / `lie-inline` markers now ride the OUTER
+  `.lie-image-area` (box effects no longer clipped). The inline + embed-shrink-wrap `:has` are gone
+  (direct selectors); the standalone runtime is `:has`-free; the plugin's alignment-float `:has` now
+  reads the outer's marker (`.host:has(.lie-image-area.lie-…)`) — the tolerated CM-context case
+  (Decision 28, the plugin can't class the host it doesn't own), not a leftover defect.
+- **Bug 90 — Rotating an explicitly-sized image stretched the height instead of swapping the
+  footprint.** The toolbar's rotate only flips the `rotate` field (±90°); the footprint must be
+  derived from `rotate` + the stored size — which the **crop** path did (`rotatedAabb`) but the
+  **non-crop** path did not. So a `width=400` image (height 200 via the intrinsic ratio) kept
+  `width=400` on a quarter-turn while the swapped aspect-ratio ballooned the height to 800, instead of
+  becoming `width=200 / height=400`; same for an explicit `width=400 height=200`. Pre-existing (the
+  `routeBoxStyle` / no-explicit-width logic was unchanged by the v0.6.1 review work). Fixed with a
+  pure, unit-tested `rotatedFootprint()` (renderer-logic) that the non-crop sizing now uses: explicit
+  width+height swap via `rotatedAabb`; width-only / height-only rotate the base footprint using the
+  intrinsic ratio (the other axis follows the swapped `--lie-auto-aspect`); an explicit `aspect-ratio`
+  swaps too. 0°/180° are unchanged; non-px values (e.g. a preset `var(--lie-size-…)`) pass through.
+- **Bug 89 — A failed/denied vault write during Export was silently swallowed.** The Export fallback
+  modal passed an `async` callback into a `() => void` slot, so a rejected `adapter.writeBinary`
+  (e.g. a permission-denied or invalid path, the Bug 72/R26 write path) was an unobserved rejection —
+  no error surfaced. The callback is now synchronous and threads the write into the outer Promise, so a
+  failure rejects and is caught by `exportImage`'s `try/catch` → the "Export failed" notice.
+
 ## [0.6.0] - 2026-06-06
 
 A visual-identity milestone: a refreshed icon set, a new brand mark, hover micro-animations, replace

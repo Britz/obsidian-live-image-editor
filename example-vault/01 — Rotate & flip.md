@@ -14,7 +14,7 @@ A top-left, B top-right, C/D bottom, **TOP** at the top.
 
 **TOP** runs down the right edge; the box is now portrait-shaped and hugs the image.
 
-![](images/sample-landscape.png){rotate=90 width=300}
+![](images/sample-landscape.png){rotate=270 width=300}
 
 ## Rotate 180°
 

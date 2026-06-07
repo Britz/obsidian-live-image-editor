@@ -1,6 +1,6 @@
 {
   "name": "obsidian-live-image-editor",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Non-destructive image editing for Obsidian",
   "main": "main.js",
   "scripts": {
@@ -13,14 +13,21 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src/",
+    "lint:obsidian": "eslint --config eslint.obsidian.config.mjs \"src/**/*.ts\"",
+    "lint:css": "stylelint styles.css",
     "version": "node version-bump.mjs"
   },
   "devDependencies": {
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.38.6",
     "@eslint/js": "^9.39.4",
+    "@eslint/json": "^2.0.0",
     "@types/node": "^22.0.0",
     "esbuild": "0.25.5",
     "eslint": "^9.39.4",
+    "eslint-plugin-obsidianmd": "^0.3.0",
     "obsidian": "latest",
+    "stylelint": "^17.13.0",
     "tslib": "2.4.0",
     "typescript": "5.8.3",
     "typescript-eslint": "^8.59.1",

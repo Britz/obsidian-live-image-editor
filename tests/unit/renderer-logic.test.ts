@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boxAspectRatio, innerImageSize, rotatedAabb, nativeBoxWidth, estimatedBlockHeight, isTallFloat, TALL_FLOAT_THRESHOLD_PX } from "../../src/renderer-logic";
+import { boxAspectRatio, innerImageSize, rotatedAabb, nativeBoxWidth, rotatedFootprint, estimatedBlockHeight, isTallFloat, TALL_FLOAT_THRESHOLD_PX } from "../../src/renderer-logic";
 
 const round = (v: number) => Math.round(v);
 
@@ -69,6 +69,43 @@ describe("nativeBoxWidth (no-explicit-width native cap — Bug 78/79; cropped OR
   });
   it("is the true rotated AABB width for a free angle (matches rotatedAabb)", () => {
     expect(nativeBoxWidth(100, 100, 45)).toBe(Math.round(rotatedAabb(100, 100, 45).w));
+  });
+});
+
+describe("rotatedFootprint (non-crop explicit-size footprint swaps on a quarter turn — Bug 90)", () => {
+  it("explicit width+height: SWAPS w/h at 90° / 270°", () => {
+    // 400×200 rotated 90° → 200×400 (the same image, rotated — not a ballooned box).
+    expect(rotatedFootprint({ widthPx: 400, heightPx: 200, naturalRatio: null, deg: 90 }))
+      .toEqual({ width: 200, height: 400 });
+    expect(rotatedFootprint({ widthPx: 400, heightPx: 200, naturalRatio: null, deg: 270 }))
+      .toEqual({ width: 200, height: 400 });
+  });
+  it("explicit width+height: unchanged at 0° / 180°", () => {
+    expect(rotatedFootprint({ widthPx: 400, heightPx: 200, naturalRatio: null, deg: 0 }))
+      .toEqual({ width: 400, height: 200 });
+    expect(rotatedFootprint({ widthPx: 400, heightPx: 200, naturalRatio: null, deg: 180 }))
+      .toEqual({ width: 400, height: 200 });
+  });
+  it("width-only (height via intrinsic ratio): the box width becomes the base HEIGHT at a quarter turn", () => {
+    // width=400, natural ratio 2:1 → base 400×200 → rotated 90° → width 200 (height 400 follows the
+    // swapped aspect-ratio). This is the reported case: width=400 must become width=200 on rotate.
+    expect(rotatedFootprint({ widthPx: 400, heightPx: null, naturalRatio: 2, deg: 90 }))
+      .toEqual({ width: 200 });
+    expect(rotatedFootprint({ widthPx: 400, heightPx: null, naturalRatio: 2, deg: 0 }))
+      .toEqual({ width: 400 });
+  });
+  it("height-only: symmetric to width-only", () => {
+    // height=200, natural ratio 2:1 → base 400×200 → rotated 90° → height 400.
+    expect(rotatedFootprint({ widthPx: null, heightPx: 200, naturalRatio: 2, deg: 90 }))
+      .toEqual({ height: 400 });
+  });
+  it("width-only with no natural ratio yet: passes the value through unrotated", () => {
+    expect(rotatedFootprint({ widthPx: 400, heightPx: null, naturalRatio: null, deg: 90 }))
+      .toEqual({ width: 400 });
+  });
+  it("no explicit dimension: returns nothing (the native cap handles it)", () => {
+    expect(rotatedFootprint({ widthPx: null, heightPx: null, naturalRatio: 2, deg: 90 }))
+      .toEqual({});
   });
 });
 

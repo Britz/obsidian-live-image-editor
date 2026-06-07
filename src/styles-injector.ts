@@ -1,5 +1,3 @@
-import { RENDER_CSS } from "./render-core";
-
 const PREFIX = "lie";
 
 export interface PresetWidths {
@@ -10,42 +8,23 @@ export interface PresetWidths {
 
 export const DEFAULT_PRESET_WIDTHS: PresetWidths = { small: 200, medium: 400, large: 800 };
 
-interface InternalClass {
-  name: string;
-  css: string;
-}
-
-// Built-in, toggleable classes (F15): alignment + inline ONLY. Decoration (rounded /
-// shadow / border / circle) ships as INSTALLABLE snippets (F16), not injected here.
-// Alignment must act on the flow participant — the LP overlay `.lie-wrapper` or the
-// reading-view `.image-embed` — via `:has()`, never the img or the box (Bug 10/27).
-const ALIGN_HOSTS = ".lie-wrapper:has(img.lie-PREFIX), .image-embed:has(img.lie-PREFIX)";
-const host = (cls: string): string => ALIGN_HOSTS.replace(/PREFIX/g, cls);
-
-const DEFAULT_CLASSES: InternalClass[] = [
-  {
-    name: "left",
-    css: `${host("left")} { float: left; clear: none; margin: 0 1em 0.5em 0; }`,
-  },
-  {
-    name: "right",
-    css: `${host("right")} { float: right; clear: none; margin: 0 0 0.5em 1em; }`,
-  },
-  {
-    // Centre via text-align on a FULL-WIDTH block host (centres the inline-block box
-    // inside) — not margin:auto, which Obsidian's `.cm-content > * { margin:0
-    // !important }` beats (Bug 27).
-    name: "center",
-    css: `${host("center")} { float: none; display: block; width: 100%; text-align: center; }`,
-  },
-  {
-    name: "inline",
-    css: `img.${PREFIX}-inline { display: inline; vertical-align: middle; }`,
-  },
-];
+// The built-in, toggleable classes (F15): alignment + inline ONLY. Their CSS lives STATICALLY in
+// `styles.css` (the `.lie-left/right/center` `:has()` host rules + `img.lie-inline`, each gated by
+// `body:not(.lie-cls-off-NAME)`), and the 3-layer RENDER_CSS likewise. So the plugin injects NO
+// `<style>` element at runtime — Obsidian loads `styles.css` for us (Obsidian-review compliance:
+// `no-forbidden-elements`). Decoration (rounded / shadow / border / circle) ships as INSTALLABLE
+// snippets (F16), not here.
+//
+// This class no longer builds a stylesheet; it only flips the DYNAMIC state on `<body>`:
+//   • the three preset-width CSS vars (`--lie-size-*`), which override the styles.css defaults so a
+//     stored `width: var(--lie-size-medium)` resolves to the user's configured px; and
+//   • a per-class `lie-cls-off-NAME` marker that the `body:not(.lie-cls-off-NAME)` rules react to,
+//     replacing the old "omit the rule from the injected CSS" disable mechanism.
+// Both use the sanctioned non-`<style>` CSSOM paths (`style.setProperty` / `classList.toggle`) —
+// the same body-class device already used by applyTallFloatClass / applyButtonOutlines.
+const DEFAULT_CLASS_NAMES = ["left", "right", "center", "inline"] as const;
 
 export class StylesInjector {
-  private styleEl: HTMLStyleElement | null = null;
   private disabledClasses = new Set<string>();
   private presetWidths: PresetWidths = DEFAULT_PRESET_WIDTHS;
 
@@ -55,43 +34,37 @@ export class StylesInjector {
     this.update();
   }
 
+  // Clear all the body-level state this injector set (mirrors the onunload cleanup in main.ts).
   remove(): void {
-    this.styleEl?.remove();
-    this.styleEl = null;
+    const { style, classList } = document.body;
+    style.removeProperty(`--${PREFIX}-size-small`);
+    style.removeProperty(`--${PREFIX}-size-medium`);
+    style.removeProperty(`--${PREFIX}-size-large`);
+    for (const name of DEFAULT_CLASS_NAMES) classList.remove(`${PREFIX}-cls-off-${name}`);
   }
 
   update(): void {
-    if (!this.styleEl) {
-      this.styleEl = document.createElement("style");
-      this.styleEl.id = "lie-internal-styles";
-      document.head.appendChild(this.styleEl);
+    const { style, classList } = document.body;
+    // Preset widths override the styles.css defaults; setProperty with a dynamic value is the
+    // sanctioned non-`<style>` path (a static literal would be flagged, a CSS var/dynamic value is not).
+    style.setProperty(`--${PREFIX}-size-small`, `${this.presetWidths.small}px`);
+    style.setProperty(`--${PREFIX}-size-medium`, `${this.presetWidths.medium}px`);
+    style.setProperty(`--${PREFIX}-size-large`, `${this.presetWidths.large}px`);
+    // Disabled built-in classes → a body marker the `body:not(.lie-cls-off-NAME)` rules react to.
+    for (const name of DEFAULT_CLASS_NAMES) {
+      classList.toggle(`${PREFIX}-cls-off-${name}`, this.disabledClasses.has(name));
     }
-
-    const presetVars = `body {
-  --${PREFIX}-size-small: ${this.presetWidths.small}px;
-  --${PREFIX}-size-medium: ${this.presetWidths.medium}px;
-  --${PREFIX}-size-large: ${this.presetWidths.large}px;
-}`;
-
-    const classCss = DEFAULT_CLASSES
-      .filter((c) => !this.disabledClasses.has(c.name))
-      .map((c) => c.css)
-      .join("\n");
-
-    // RENDER_CSS (the 3-layer LAYER rules) is the SINGLE source shared with the standalone
-    // runtime (AB7a) — injected here so the plugin and the runtime render identically (R0).
-    this.styleEl.textContent = `${RENDER_CSS}\n${presetVars}\n${classCss}`;
   }
 
   getClassNames(): string[] {
-    return DEFAULT_CLASSES.map((c) => `${PREFIX}-${c.name}`);
+    return DEFAULT_CLASS_NAMES.map((name) => `${PREFIX}-${name}`);
   }
 
   getAvailableClasses(): { name: string; prefixed: string; enabled: boolean }[] {
-    return DEFAULT_CLASSES.map((c) => ({
-      name: c.name,
-      prefixed: `${PREFIX}-${c.name}`,
-      enabled: !this.disabledClasses.has(c.name),
+    return DEFAULT_CLASS_NAMES.map((name) => ({
+      name,
+      prefixed: `${PREFIX}-${name}`,
+      enabled: !this.disabledClasses.has(name),
     }));
   }
 }

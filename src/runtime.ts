@@ -17,13 +17,14 @@ import { buildLayers, readTransform, RENDER_CSS, CLAIM_SELECTOR } from "./render
 import { BUNDLED_SNIPPET_CSS } from "./bundled-snippet";
 
 // On a foreign page the OUTER `.lie-image-area` IS the flow participant (no Obsidian embed
-// wrapper), so alignment floats/centres the outer directly. The marker class rides the img
-// (buildLayers re-derives it from `align`), so `:has(img.lie-…)` matches. margin:auto centres
-// fine here (no `.cm-content > * { margin:0 !important }` to fight, unlike Obsidian — Bug 27).
+// wrapper), so alignment floats/centres the outer directly. The marker class rides the OUTER
+// (buildLayers re-derives it from `align`, Decision 28), so a DIRECT `.lie-image-area.lie-…`
+// selector matches — no `:has` needed here (we build + class the element we style). margin:auto
+// centres fine (no `.cm-content > * { margin:0 !important }` to fight, unlike Obsidian — Bug 27).
 const RUNTIME_CSS = `
-.lie-image-area:has(img.lie-left) { float: left; clear: none; margin: 0 1em 0.5em 0; }
-.lie-image-area:has(img.lie-right) { float: right; clear: none; margin: 0 0 0.5em 1em; }
-.lie-image-area:has(img.lie-center) { display: block; margin-left: auto; margin-right: auto; }
+.lie-image-area.lie-left { float: left; clear: none; margin: 0 1em 0.5em 0; }
+.lie-image-area.lie-right { float: right; clear: none; margin: 0 0 0.5em 1em; }
+.lie-image-area.lie-center { display: block; margin-left: auto; margin-right: auto; }
 `;
 
 function inject(id: string, css: string): void {

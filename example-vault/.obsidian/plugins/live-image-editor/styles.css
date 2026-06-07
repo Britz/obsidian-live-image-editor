@@ -117,6 +117,8 @@ body.lie-btn-outline-always .lie-toolbar-btn { border-color: var(--background-mo
 /* The folded-group / layout palette (a plain button popup, distinct from the modal
    anchored sub-menu). Fully visible, never clipped. */
 .lie-group-popup {
+  position: fixed; /* viewport coords; top/left set inline from the trigger rect (dynamic) */
+  z-index: 1002;
   display: flex;
   flex-wrap: wrap;
   max-width: 240px;
@@ -132,23 +134,95 @@ body.lie-btn-outline-always .lie-toolbar-btn { border-color: var(--background-mo
 .lie-toolbar-inactive { opacity: 0.4; pointer-events: none; }
 
 /* ---- The uniform 3-layer image structure (R0 / AD3) ------------------- *
-   The LAYER rules (`.lie-image-area` outer / `.lie-frame` inner-frame / `.lie-frame > img` /
-   `img.lie-inline`) live in ONE source — `RENDER_CSS` in `src/render-core.ts` — injected at
-   runtime by BOTH the plugin (`styles-injector`) and the standalone runtime (AB7a), so the
-   image renders identically in Obsidian and on a foreign page (R0). They are NOT in this
-   stylesheet. What stays here is the Obsidian embed INTEGRATION (below) + native-suppression +
-   reveal + tall-float cap + chrome. */
+   The LAYER rules below (`.lie-image-area` outer / `.lie-frame` inner-frame / `.lie-frame > img`
+   / `img.lie-inline`) are a VERBATIM copy of `RENDER_CSS` in `src/render-core.ts` — the single
+   source the standalone runtime (AB7a) injects via a <style> on a foreign page. Obsidian loads
+   THIS stylesheet for the plugin, so the plugin no longer hand-injects a <style> element
+   (Obsidian-review compliance — `no-forbidden-elements`). A unit test
+   (tests/unit/styles-render-css.test.ts) asserts this block stays byte-identical to RENDER_CSS,
+   so the two never drift (R0 — identical render in Obsidian and off-Obsidian). Per-image values
+   are set inline by buildLayers: `--lie-auto-aspect`, transform, filter; the crop height:auto is
+   the `lie-crop-fit` marker class on the img.
+   >>> KEEP THE BLOCK BETWEEN THE MARKERS BYTE-IDENTICAL TO RENDER_CSS. >>> */
+/* >>> RENDER_CSS (keep in sync with src/render-core.ts) >>> */
+.lie-image-area {
+  display: inline-block;
+  position: relative;
+  overflow: hidden;
+  max-width: 100%;
+  aspect-ratio: var(--lie-auto-aspect, auto);
+  line-height: 0;
+  vertical-align: bottom;
+}
+.lie-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  transform-origin: center;
+}
+.lie-frame > img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: auto;
+  width: 100%;
+  height: 100%;
+  transform-origin: center;
+  max-width: none !important;
+}
+.lie-frame > img.lie-crop-fit { height: auto; }
+.lie-image-area.lie-inline { vertical-align: middle; }
+/* <<< RENDER_CSS <<< */
 
-/* Obsidian's embed containers are inline and won't take the height of the box —
-   shrink-wrap the ones holding one. `max-width:100%` caps them against their BLOCK containing
-   block (the reading-view column / the LP `.cm-content`): without it the inline-block host
-   shrink-wraps to the box and the box's own `max-width:100%` is circular against it, so a
-   transformed box (e.g. a rotated image sized to its natural rotated AABB) overflows the column
-   in reading view. With the cap the host (and the box inside it) stay column-capped — matching LP. */
-.internal-embed:has(> .lie-image-area),
-.image-embed:has(> .lie-image-area),
-.image-wrapper:has(> .lie-image-area),
-.lie-wrapper:has(> .lie-image-area) {
+/* ---- Built-in toggleable classes (F15 / AB20) ------------------------- *
+   Alignment + inline. These were injected at runtime by `styles-injector`; they are STATIC here
+   now so the plugin needs no runtime <style> (Obsidian-review compliance). Each rule is gated
+   behind `body:not(.lie-cls-off-NAME)`, so the "disabled built-in classes" setting switches it off
+   by toggling a `lie-cls-off-NAME` body class (styles-injector) instead of omitting CSS. Alignment
+   must FLOAT the flow participant — the host ABOVE the box (the LP overlay `.lie-wrapper` or the
+   reading-view `.image-embed`), not the box itself (Bug 10/27). The align marker rides the OUTER box
+   (`.lie-image-area.lie-left`, Decision 28), so the host reacts to it with `:has(.lie-image-area.lie-…)`
+   — the tolerated CM-context `:has`: the plugin doesn't own the host, so it can't class it directly
+   (the standalone runtime, which DOES own the outer-as-flow-participant, uses a direct selector). */
+body:not(.lie-cls-off-left) .lie-wrapper:has(.lie-image-area.lie-left),
+body:not(.lie-cls-off-left) .image-embed:has(.lie-image-area.lie-left) { float: left; clear: none; margin: 0 1em 0.5em 0; }
+body:not(.lie-cls-off-right) .lie-wrapper:has(.lie-image-area.lie-right),
+body:not(.lie-cls-off-right) .image-embed:has(.lie-image-area.lie-right) { float: right; clear: none; margin: 0 0 0.5em 1em; }
+/* Centre via text-align on a FULL-WIDTH block host (centres the inline-block box inside) — not
+   margin:auto, which Obsidian's `.cm-content > * { margin:0 !important }` beats (Bug 27). */
+body:not(.lie-cls-off-center) .lie-wrapper:has(.lie-image-area.lie-center),
+body:not(.lie-cls-off-center) .image-embed:has(.lie-image-area.lie-center) { float: none; display: block; width: 100%; text-align: center; }
+/* Inline (F17): the mid-text vertical-align is the direct `.lie-image-area.lie-inline` rule in the
+   RENDER_CSS block above (the marker rides the outer; no `:has`). The former `img.lie-inline
+   { display:inline }` was a no-op on the absolutely-positioned img, so it is dropped. */
+
+/* Preset-width vars: a stored width can be `var(--lie-size-medium)` (transforms.ts), so the three
+   sizes are defined here as DEFAULTS; the "preset widths" setting overrides them per-vault via
+   `document.body.style.setProperty` (styles-injector) — again, no runtime <style>. */
+body {
+  --lie-size-small: 200px;
+  --lie-size-medium: 400px;
+  --lie-size-large: 800px;
+}
+
+/* What stays below is the Obsidian embed INTEGRATION + native-suppression + reveal + tall-float
+   cap + chrome. */
+
+/* Obsidian's reading-view embed containers are inline and won't take the height of the box —
+   shrink-wrap the one directly holding our box. `max-width:100%` caps it against its BLOCK
+   containing block (the reading-view column): without it the inline-block host shrink-wraps to the
+   box and the box's own `max-width:100%` is circular against it, so a transformed box (e.g. a rotated
+   image sized to its natural rotated AABB) overflows the column. With the cap the host (and the box
+   inside it) stay column-capped — matching LP. The reading adapter sets `lie-embed` on the host that
+   directly contains the box (the post-processor knows it builds the box there), so this is a DIRECT
+   class, not `:has(> .lie-image-area)` — Decision 28 (we set our own marker; no :has). (Live preview
+   doesn't need this: its box sits under `.lie-box`, which shrink-wraps via its own rule.) */
+.lie-embed {
   display: inline-block;
   max-width: 100%;
 }
@@ -197,10 +271,10 @@ body.lie-btn-outline-always .lie-toolbar-btn { border-color: var(--background-mo
    (the next-element-sibling of the floated embed) so the text wraps from the image top — matching
    LP. Float-only (a non-floated image keeps its <br>, so following text stays below it); the wrap
    paragraph's own line-break <br>s sit after text nodes, so `+ br` never hits them. */
-.markdown-preview-view .image-embed:has(img.lie-left) + br,
-.markdown-preview-view .image-embed:has(img.lie-right) + br,
-.markdown-reading-view .image-embed:has(img.lie-left) + br,
-.markdown-reading-view .image-embed:has(img.lie-right) + br { display: none; }
+.markdown-preview-view .image-embed:has(.lie-image-area.lie-left) + br,
+.markdown-preview-view .image-embed:has(.lie-image-area.lie-right) + br,
+.markdown-reading-view .image-embed:has(.lie-image-area.lie-left) + br,
+.markdown-reading-view .image-embed:has(.lie-image-area.lie-right) + br { display: none; }
 
 /* ---- Live-preview image + native suppression + reveal (AD5) ------------ *
    The widget does NOT replace the line: Obsidian renders its native embed (and
@@ -265,8 +339,8 @@ body.lie-btn-outline-always .lie-toolbar-btn { border-color: var(--background-mo
    floated images" setting; permissive mode drops it and the float stands (accepting the LP
    glitch). `float:none` overrides the injected lie-left/right float (the `!important` wins over
    its plain declaration); `margin:0` drops the now-pointless float gutter. */
-body.lie-safe-tall-float .lie-wrapper:has(img.lie-tall),
-body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
+body.lie-safe-tall-float .lie-wrapper:has(.lie-image-area.lie-tall),
+body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall) {
   float: none !important;
   margin: 0 !important;
 }
@@ -414,7 +488,8 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
 .lie-toolbar-in-image.lie-toolbar-inactive { opacity: 0; pointer-events: none; }
 .lie-toolbar-in-image.lie-toolbar-inactive.lie-region-active { opacity: 0.4; }
 
-.lie-toolbar-floating { max-width: 92vw; transition: opacity 0.1s ease; }
+/* The floating bar is position:fixed (recomputed on scroll in positionAbove); top/left set inline. */
+.lie-toolbar-floating { position: fixed; z-index: 1000; max-width: 92vw; transition: opacity 0.1s ease; }
 /* The floating bar carries the same `.lie-region-active`: greyed-visible while the region is active,
    hidden when it is left — so it tracks the panel exactly like the in-chrome bar. */
 .lie-toolbar-floating.lie-toolbar-inactive:not(.lie-region-active) { opacity: 0; pointer-events: none; }
@@ -438,8 +513,29 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
    rotate knob sit on the ORIGINAL image (the `.lie-crop-handles` box tracks it via the SAME
    placement transform); the cut window and the box stay fixed (presets reshape the cut, gestures
    move/scale/rotate the image). */
-.lie-image-area.lie-cropping { overflow: visible; cursor: grab; }
+.lie-image-area.lie-cropping { overflow: visible; z-index: 5; cursor: grab; }
 .lie-image-area.lie-cropping:active { cursor: grabbing; }
+/* Lift the LP block-widget host's paint-containment for the crop duration so the dim ghost can
+   overflow the cut window. Obsidian's app.css `.cm-content > [contenteditable="false"] { contain:
+   paint }` is `!important`; the DOUBLED class raises specificity above it so this wins (the same
+   beat-app.css device used for `.lie-toolbar-btn.lie-toolbar-btn`). Class-driven (added/removed
+   with `.lie-cropping` by the editor) — replaces the former inline setProperty (Bug 32). */
+.cm-content > .lie-cropping.lie-cropping { contain: none !important; }
+/* Crop chrome positioning box (ghost/handle frame) — centred+oriented like the live `.lie-frame`;
+   width/height/transform set inline (dynamic px + orientation). */
+.lie-crop-frame-box { position: absolute; top: 50%; left: 50%; transform-origin: center; }
+/* The crop img layout (live img + dim ghost) — matches render-core's crop branch so the chrome
+   tracks the live image. Scoped under `.lie-cropping` so it out-specifies `.lie-frame > img`
+   (RENDER_CSS) for the live img too; the per-image placement transform stays inline. */
+.lie-image-area.lie-cropping .lie-crop-img {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  transform-origin: center;
+  width: 100%;
+  height: auto;
+  max-width: none;
+}
 
 /* The dim ghost: the full image, un-clipped, behind the bright cut — AND the OUTSIDE pan hit-surface.
    The pan grip must be the WHOLE visible image, inside AND outside the cut. `pointer-events:auto` on
@@ -626,6 +722,7 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
 
 /* ---- Shared anchored sub-menu (D6) ------------------------------------ */
 .lie-submenu {
+  position: fixed; /* viewport coords; placed by AnchoredSubmenu (top/left set inline, dynamic) */
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -638,6 +735,11 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   z-index: 1001;
 }
+/* Off-screen measure state (D9): rendered hidden at 0,0 to read its true content size, then
+   placed on-screen and un-hidden by removing this class (AnchoredSubmenu). */
+.lie-submenu.lie-measuring { visibility: hidden; top: 0; left: 0; }
+/* Visibility toggle (offscreen / hover state) — a class instead of an inline display write. */
+.lie-submenu-hidden { display: none; }
 .lie-submenu-header {
   display: flex;
   align-items: center;
@@ -684,6 +786,9 @@ body.lie-safe-tall-float .image-embed:has(img.lie-tall) {
 
 /* Settings — version-unsupported warning (RC9/R28: no hardcoded inline styling). */
 .lie-settings-warning { color: var(--text-error); }
+
+/* Export — the vault-path text input fills the modal width (was an inline width:100%). */
+.lie-export-path-input { width: 100%; }
 
 
 /* ---- Settings: CSS-classes section (AB19) ----------------------------------------- */

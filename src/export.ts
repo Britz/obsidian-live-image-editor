@@ -221,12 +221,14 @@ export async function saveExport(
   }
 
   // Fallback: an Obsidian modal with an editable vault path (overwrite/relocate).
-  return new Promise<string | null>((resolve) => {
-    new ExportPathModal(app, suggestedRel, originalPath, async (rel) => {
+  return new Promise<string | null>((resolve, reject) => {
+    // The onSubmit callback stays synchronous (returns void) so it isn't a misused Promise; the
+    // async write is threaded into the outer Promise, and a failed/denied write REJECTS (surfaced
+    // by exportImage's try/catch) instead of being swallowed in a fire-and-forget await.
+    new ExportPathModal(app, suggestedRel, originalPath, (rel) => {
       if (!rel) return resolve(null);
       const safeRel = normalizePath(rel); // user-entered vault path (Bug 72/R26)
-      await adapter.writeBinary(safeRel, buffer); // writeBinary overwrites if it exists
-      resolve(safeRel);
+      adapter.writeBinary(safeRel, buffer).then(() => resolve(safeRel), reject); // overwrites if it exists
     }).open();
   });
 }
@@ -255,7 +257,7 @@ class ExportPathModal extends Modal {
     new Setting(contentEl).setName("Save as").addText((t) => {
       input = t.inputEl;
       t.setValue(this.value).onChange((v) => (this.value = v));
-      t.inputEl.style.width = "100%";
+      t.inputEl.classList.add("lie-export-path-input");
       window.setTimeout(() => { input.focus(); input.select(); }, 0);
     });
 

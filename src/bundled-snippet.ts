@@ -9,10 +9,16 @@
 // the runtime is a future extension (see docs/development/issues.md → Planned features).
 export const BUNDLED_SNIPPET_FILE = "live-image-editor.css";
 export const BUNDLED_SNIPPET_CSS = `/* Live Image Editor — example image decoration classes.
-   Installed from the plugin settings (opt-in). Edit freely; "Reset" in settings
-   restores this shipped version. Apply a class in the image's trailing block. */
-img.rounded { border-radius: 8px; }
-img.shadow { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
-img.bordered { border: 1px solid var(--background-modifier-border); }
-img.circle { border-radius: 50%; object-fit: cover; aspect-ratio: 1; }
+   Installed from the plugin settings (opt-in). Edit freely; "Reset" in settings restores this
+   shipped version. Apply a class in the image's trailing block, e.g. {shadow} or {rounded shadow}.
+   The class lands on the image's OUTER box (which controls size + layout), so a plain ".name"
+   styles the whole image — and box effects (shadow / border / rounding) are no longer clipped.
+   Reach the pixels with ".name img" (e.g. object-fit). ".name" also matches a bare exported
+   <img class="name">; "img.name" is the export fallback so object-fit reaches the image itself.
+   Colours derive from the text colour so they adapt to light / dark themes. */
+.rounded { border-radius: 8px; }
+.shadow { box-shadow: 0 4px 14px color-mix(in srgb, var(--text-normal) 70%, transparent); }
+.bordered { border: 2px solid var(--text-normal); box-sizing: border-box; }
+.circle { border-radius: 50%; aspect-ratio: 1; }
+.circle img, img.circle { object-fit: cover; }
 `;

@@ -17,7 +17,7 @@ This file is the **build & debug guide** only. The design — requirements, arch
 - **`docs/development/architecture.md`** — mid-level decisions (`AD1–AD9`) and building blocks (`AB…`); data flow; the **R0** uniform-rendering model.
 - **`docs/development/implementation-plan.md`** — low-level: the module map (file → block → exports), per-layer realization, pitfalls.
 - **`docs/development/test-plan.md`** — the test strategy (currently a draft).
-- **`docs/development/issues.md`** — the **backlog + lessons**. **OPEN** at the top: numbered registry items in the changelog's own per-category sequences — **open decisions** (`Decision N`), **planned features** (`Feature N`), **known open bugs** (`Bug N`) — each assigned its number when opened and **keeping it** when it ships (→ moves to the changelog); plus a **Meta level** of process/quality work (**verifications**, **refactoring**, **housekeeping**, and the hard-won **`Lesson 1–16`**) that stays here and is **unnumbered**. The **solved** Bug / Feature / Change / Decision entries (with cause + fix) live in **`CHANGELOG.md`** — see *Versioning, changelog & commits* below.
+- **`docs/development/issues.md`** — the **backlog + lessons**. **OPEN** at the top: numbered registry items in the changelog's own per-category sequences — **open decisions** (`Decision N`), **planned features** (`Feature N`), **known open bugs** (`Bug N`) — each assigned its number when opened and **keeping it** when it ships (→ moves to the changelog); plus a **Meta level** of process/quality work (**verifications**, **refactoring**, **housekeeping**, and the hard-won **`Lesson 1–17`**) that stays here and is **unnumbered**. The **solved** Bug / Feature / Change / Decision entries (with cause + fix) live in **`CHANGELOG.md`** — see *Versioning, changelog & commits* below.
 - **`docs/development/methodology.md`** — the core principles (DRY, KISS, elegance, think-first, ground-up), the abstraction-level model, and how we work.
 
 ## Build & Test
@@ -26,7 +26,9 @@ All commands run inside the devcontainer (podman). Never install or build on the
 
 ```bash
 npm run build      # tsc -noEmit + esbuild production
-npm run lint       # eslint src/
+npm run lint       # eslint src/  (the SHIPPED gate — kept exactly as-is, T9; do NOT add rules)
+npm run lint:obsidian  # recreates the Obsidian community-plugin review (eslint-plugin-obsidianmd) — a SEPARATE dev-only pass, not the shipped gate; runtime.ts + dev-bridge.ts excluded (non-plugin bundles). Must report 0 errors (a few documented deprecation warnings are expected — Decision 26).
+npm run lint:css   # recreates the review's CSS scan (stylelint :has / !important) — warnings only, all reviewed/justified (Decision 26)
 npm test           # vitest run
 npm run dev        # esbuild watch mode
 npm run dev:vault  # esbuild watch -> writes straight into the example-vault/ vault plugin dir (Developer Toolbox auto-reloads)
