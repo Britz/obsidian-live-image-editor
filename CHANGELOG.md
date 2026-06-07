@@ -11,6 +11,20 @@ Every entry is numbered in one global per-category sequence — **Decision**, **
 Decision › Change › Feature › Bug, each category newest-first (highest number on top). Numbers are
 never reused. (Open/unsolved items and the hard-won lessons live in `docs/development/issues.md`.)
 
+## [0.6.3] - 2026-06-07
+
+A one-bug fix to localization: the plugin now follows Obsidian's UI language faithfully, including
+when Obsidian is set to English. Verified: `npm test` green (272), `npm run build` succeeds.
+
+- **Bug 93 — The plugin ignored Obsidian's language whenever Obsidian was set to English.**
+  `detectLocale()` returned `navigator.language` (the OS/browser locale) whenever `getLanguage()`
+  was `"en"`, so on a German OS the toolbar/menus showed **German even with Obsidian set to English**
+  — the opposite of F21 ("follow Obsidian's locale, no language setting of our own"). `getLanguage()`
+  is documented to return the configured app language and **default to `"en"`**, so the `!== "en"`
+  branch made the plugin prefer the system locale over Obsidian's actual setting. Fixed: `detectLocale()`
+  now mirrors `getLanguage()` verbatim (`getLanguage() || navigator.language || "en"`); the browser
+  locale stays only as a last-ditch guard for an (per the API, impossible) empty return.
+
 ## [0.6.2] - 2026-06-07
 
 A follow-up to the v0.6.1 community-plugin-review compliance pass. The automated **re-review of

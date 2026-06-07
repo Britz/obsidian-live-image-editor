@@ -22,9 +22,9 @@ export function t(key: keyof Translations): string {
 
 export function detectLocale(): string {
   // Obsidian's own UI language (F21 — follow Obsidian's locale, no language setting of our own).
-  // `getLanguage()` is Obsidian's sanctioned accessor for the key it stores under
-  // localStorage["language"] ("en" for the default); fall back to the browser locale.
-  const obsidianLocale = getLanguage();
-  if (obsidianLocale && obsidianLocale !== "en") return obsidianLocale;
-  return navigator.language || "en";
+  // `getLanguage()` is Obsidian's sanctioned accessor; it returns the ISO code Obsidian is
+  // actually displaying in and *defaults to "en"*, so we mirror it verbatim. We must NOT prefer
+  // navigator.language over Obsidian's "en" — that made a German OS override an English Obsidian.
+  // The browser locale stays only as a last-ditch guard for an (per the API, impossible) empty return.
+  return getLanguage() || navigator.language || "en";
 }
