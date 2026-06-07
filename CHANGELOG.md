@@ -11,6 +11,52 @@ Every entry is numbered in one global per-category sequence — **Decision**, **
 Decision › Change › Feature › Bug, each category newest-first (highest number on top). Numbers are
 never reused. (Open/unsolved items and the hard-won lessons live in `docs/development/issues.md`.)
 
+## [0.6.2] - 2026-06-07
+
+A follow-up to the v0.6.1 community-plugin-review compliance pass. The automated **re-review of
+v0.6.1** (`review-0.6.1.md`) still **failed** — now on a single error: the standalone runtime's
+`createElement("style")` (`runtime.ts:32`). v0.6.1 had documented that file as a "false positive"
+and EXCLUDED it from the local recreation, but the real review bot scans it anyway, so the exclusion
+only hid the failure instead of resolving it. This release fixes it at the source — the runtime now
+injects its CSS via a constructable stylesheet (`adoptedStyleSheets`), not a `<style>` element — and
+makes the recreation **bot-faithful**: `npm run lint:obsidian` now scans all of `src/` (incl. the
+runtime + dev-bridge non-plugin bundles) and mirrors the bot's severities, so the gate's error set
+equals the bot's and would catch this class before the bot does. Everything else the review flags is
+a documented warning/recommendation (Decision 26), none of which fails the review. Verified: `npm run
+lint:obsidian` 0 errors (11 documented warnings), `npm run lint` clean (T9), `npm test` green (272),
+`npm run build` succeeds.
+
+- **Decision 29 — The review recreation must SCAN everything the bot scans and MATCH its severities;
+  non-plugin false-positives are fixed at the source or kept as documented warnings, never hidden by
+  exclusion (supersedes the exclusion clause of Decision 25).** Decision 25 excluded the standalone
+  runtime (`runtime.ts` → `lie-runtime.js`) and the dev-only CDP bridge (`dev-bridge.ts`) from
+  `lint:obsidian` as "false positives for the shipped plugin" — but the bot scans the whole repo, so
+  the runtime's `<style>` kept **failing the real review** while our local gate stayed green (the
+  drift that produced `review-0.6.1.md`). Corrected: `eslint.obsidian.config.mjs` no longer ignores
+  those two files, and rules the bot reports as WARNINGS are set to `warn` locally (the recommended
+  ruleset makes `import/no-nodejs-modules` and `obsidianmd/prefer-instanceof` hard errors; the bot —
+  like our `no-deprecated` handling — shows them as warnings) so "0 errors locally" ⟺ "review won't
+  fail". The genuine off-Obsidian/dev-only false positives are kept as documented warnings (runtime
+  raw `instanceof` — no `obsidian` import, so no `instanceOf()` helper; dev-bridge `net` — tree-shaken
+  from production) rather than silenced with inline disables that would break the shipped linter (T9 /
+  Lesson 17). `prefer-active-doc` (the bot's `document` → `activeDocument` warnings) is large,
+  popout-only churn with no review-failing impact and is deferred to **Feature 39**, kept off in the
+  gate by deliberate decision (not suppression). → **Lesson 18**.
+- **Change 37 — The runtime injects CSS via `adoptedStyleSheets` instead of a `<style>` element;
+  `lint:obsidian` made bot-faithful.** `runtime.ts`'s `inject()` no longer does
+  `document.createElement("style")` + `head.appendChild`; it builds a `new CSSStyleSheet()`,
+  `replaceSync(css)`, and appends it to `document.adoptedStyleSheets` (same effect on a foreign page,
+  no forbidden element — the Obsidian-review `no-forbidden-elements` error class is gone at the
+  source). A module-level `Set` keeps the per-id dedupe the old `getElementById` guard provided.
+  `eslint.obsidian.config.mjs` drops the `runtime.ts`/`dev-bridge.ts` ignores, downgrades
+  `import/no-nodejs-modules` + `obsidianmd/prefer-instanceof` to `warn` (bot severities), declares the
+  `NodeJS` + `__LIE_DEV__` ambients so `no-undef` doesn't fire on recreation artifacts, and relaxes
+  the no-console wrapper for the dev-only bridge. A new guard test
+  (`tests/unit/runtime-style-injection.test.ts`) fails the moment a `<style>` element creeps back into
+  the runtime (source-text assertion — the runtime is browser-only and can't load in jsdom). 272 tests
+  green. No behaviour change for users (the runtime renders identically; the plugin proper was already
+  `<style>`-free since Change 33).
+
 ## [0.6.1] - 2026-06-06
 
 An Obsidian community-plugin-review compliance pass. The automated review (`eslint-plugin-obsidianmd`

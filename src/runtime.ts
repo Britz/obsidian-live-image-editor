@@ -27,12 +27,19 @@ const RUNTIME_CSS = `
 .lie-image-area.lie-center { display: block; margin-left: auto; margin-right: auto; }
 `;
 
+// A foreign page has no Obsidian-loaded stylesheet, so the runtime must supply the render +
+// alignment + decoration CSS itself. It does so with a CONSTRUCTABLE stylesheet
+// (`document.adoptedStyleSheets`) rather than a `<style>` element: same effect, no
+// `createElement("style")`. The Obsidian review bot scans THIS bundle too — even though it never
+// runs inside Obsidian — and fails `no-forbidden-elements` on a `<style>`; adoptedStyleSheets is
+// the rule-clean equivalent that also keeps the runtime self-contained (Decision 29 / Lesson 18).
+const injected = new Set<string>();
 function inject(id: string, css: string): void {
-  if (document.getElementById(id)) return;
-  const el = document.createElement("style");
-  el.id = id;
-  el.textContent = css;
-  document.head.appendChild(el);
+  if (injected.has(id)) return;
+  injected.add(id);
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(css);
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
 }
 
 // Every claimed `<img>` at or under `root` that isn't already hydrated.

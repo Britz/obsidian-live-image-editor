@@ -6,7 +6,7 @@ main.js
 
 # Local dev scratch — handoff/working prompts, deleted once the work is handled.
 prompts/
-releast-state.md
+review-*
 
 # Obsidian per-vault local state (regenerated on open) — keep the committed debug
 # config (plugins/snippets/app.json) but not the per-machine layout/settings.

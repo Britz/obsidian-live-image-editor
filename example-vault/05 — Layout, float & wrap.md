@@ -58,7 +58,7 @@ The stress test for the footprint box: the image is rotated 90° **and** floated
 If the wrap followed the pre-rotation width instead, the text would either overlap the image or leave a dead strip beside it;
 it should do neither.
 
-![](images/sample-landscape.png){align=right rotate=90 width=200}
+![](images/sample-landscape.png){align=right rotate=90 width=187}
 Trace the right-hand wrap line down past the rotated image and check that it follows the *visible* edge, not some larger invisible box around it.
 And now, to give the wrap enough text to trace the rotated edge, some random filler: *Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
 Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.

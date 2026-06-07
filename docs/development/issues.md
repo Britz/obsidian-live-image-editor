@@ -34,11 +34,11 @@ Numbered registry items — each will move to the changelog keeping its number o
 
 ### Open decisions (Decision)
 
-_**27 decisions total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md))._
+_**29 decisions total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md))._
 
 ### Planned features (Feature)
 
-_**38 features total** — shipped (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the planned ones below._
+_**39 features total** — shipped (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the planned ones below._
 
 New capabilities, not yet F-items. Per `methodology.md` each starts at the top (a Functional/Design
 requirement + the storage/permission implications) before any code.
@@ -91,6 +91,17 @@ requirement + the storage/permission implications) before any code.
 - [ ] **Feature 38 — Collapsed submenus auto-expand on hover + show a dropdown caret (▾).** Like the
       editing-toolbar: a folded toolbar group should sprout a small caret hinting it's expandable, and
       open on **hover** (not only click). Small polish — explicitly NOT in the v0.6.0 release. (2026-06-06.)
+- [ ] **Feature 39 — Popout-window support (`activeDocument` / `activeWindow` throughout).** The Obsidian
+      review bot flags `obsidianmd/prefer-active-doc` as WARNINGS across ~all files: every bare
+      `document` / `window` reference assumes the main window and is wrong when the note (and its
+      images/toolbar/panels) live in a **detached popout window**. Converting them to `activeDocument`
+      / `activeWindow` (Obsidian's window-aware globals) is the real fix, but it is large, cross-cutting
+      churn (~100 sites: `render-core`, `live-preview`, `toolbar`, the panels, `crop-editor`, `caption`,
+      `export`, …) with real regression risk and **no review-failing impact** (warning-level), so it is
+      deferred and kept off in `lint:obsidian` by deliberate decision (Decision 29 — not a blind
+      suppression). _Do first:_ confirm whether the plugin is even reachable in a popout (its hosts: LP
+      editor + reading-view embeds) and scope which references are genuinely main-window-only (e.g. the
+      `localStorage` language read) vs. document-relative. (2026-06-07.)
 
 ### Known open bugs (Bug)
 
@@ -368,13 +379,29 @@ architecture encodes most in its decisions (`AD…`).
   FAIL with "Definition for rule … was not found" — that linter doesn't know the obsidianmd rules, and
   ESLint 9 also flags the directive as unused. So a disable comment that helps the review bot BREAKS
   our own gate. _Rule:_ recreate the review in a dedicated `eslint.obsidian.config.mjs` (`npm run
-  lint:obsidian`) and **exclude** non-plugin files (the `lie-runtime.js` runtime, the tree-shaken
-  `dev-bridge.ts`) there, documenting them as false positives — don't touch source with cross-plugin
-  disables. (2) `obsidianmd/no-static-styles-assignment` flags only **static LITERAL** values
+  lint:obsidian`) and document the off-Obsidian/dev-only flags as false positives — don't touch
+  source with cross-plugin disables. **(Superseded re: EXCLUSION — see Lesson 18: excluding those
+  files HID a real failing error; scan them, fix at source or keep as documented warnings instead.)**
+  (2) `obsidianmd/no-static-styles-assignment` flags only **static LITERAL** values
   (`el.style.x = "0"`, `setProperty("--v", "auto")`) — DYNAMIC values (`= t.transform`, `` =
   `${px}px` ``, a non-`--` var) are NOT flagged, and `setProperty` with a string LITERAL still is even
   for a `--` custom prop. So move static literals to `styles.css` and keep per-image dynamic values
   inline (or behind a marker class); don't churn the dynamic assignments.
+- **Lesson 18 — A recreated external review must SCAN everything the bot scans and MATCH its
+  severities; excluding files (or guessing what the bot won't flag) hides REAL failing errors**
+  (surfaced by `review-0.6.1.md`, the re-review of the v0.6.1 compliance pass). v0.6.1 EXCLUDED the
+  standalone runtime + dev-bridge from `lint:obsidian` and turned `prefer-active-doc` off "to mirror
+  what the bot enforces" — but the bot scans the **whole repo**, so the runtime's `createElement(
+  "style")` kept **failing the real review** while our local gate stayed green. Two corrections:
+  (1) **scope** — recreate over ALL of `src/**`, exactly like the bot; a non-plugin file's genuine
+  flag is either FIXED at the source (the runtime's `<style>` → `adoptedStyleSheets`, which is also
+  the rule-clean way to inject CSS on a foreign page) or KEPT as a documented warning, never hidden by
+  an `ignores`. (2) **severity** — the recommended ruleset is STRICTER than the bot (it makes
+  `import/no-nodejs-modules`, `prefer-instanceof`, `no-console` hard errors); the bot shows them as
+  warnings. Set those to `warn` so the gate's ERROR set equals the bot's — "0 errors locally" then
+  genuinely means "the review won't fail." _Corollary:_ "documented as a false positive" is NOT a fix
+  if the bot still errors on it — only fixing the source, or proving the bot reports it as a warning,
+  clears the review. (Decision 29 / Change 37.)
 
 ---
 

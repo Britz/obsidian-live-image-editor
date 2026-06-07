@@ -27,7 +27,7 @@ All commands run inside the devcontainer (podman). Never install or build on the
 ```bash
 npm run build      # tsc -noEmit + esbuild production
 npm run lint       # eslint src/  (the SHIPPED gate — kept exactly as-is, T9; do NOT add rules)
-npm run lint:obsidian  # recreates the Obsidian community-plugin review (eslint-plugin-obsidianmd) — a SEPARATE dev-only pass, not the shipped gate; runtime.ts + dev-bridge.ts excluded (non-plugin bundles). Must report 0 errors (a few documented deprecation warnings are expected — Decision 26).
+npm run lint:obsidian  # recreates the Obsidian community-plugin review (eslint-plugin-obsidianmd) — a SEPARATE dev-only pass, not the shipped gate. Scans ALL of src/ exactly like the bot (incl. the runtime + dev-bridge non-plugin bundles — Decision 29 un-excluded them; v0.6.1's exclusion HID a real failing error, Lesson 18) and mirrors the bot's severities. Must report 0 errors; ~11 documented warnings are expected (deprecations + the runtime `instanceof` / dev-bridge `net` off-Obsidian false positives — Decision 26/29).
 npm run lint:css   # recreates the review's CSS scan (stylelint :has / !important) — warnings only, all reviewed/justified (Decision 26)
 npm test           # vitest run
 npm run dev        # esbuild watch mode
