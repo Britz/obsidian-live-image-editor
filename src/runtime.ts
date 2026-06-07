@@ -22,9 +22,11 @@ import { BUNDLED_SNIPPET_CSS } from "./bundled-snippet";
 // selector matches — no `:has` needed here (we build + class the element we style). margin:auto
 // centres fine (no `.cm-content > * { margin:0 !important }` to fight, unlike Obsidian — Bug 27).
 const RUNTIME_CSS = `
-.lie-image-area.lie-left { float: left; clear: none; margin: 0 1em 0.5em 0; }
-.lie-image-area.lie-right { float: right; clear: none; margin: 0 0 0.5em 1em; }
-.lie-image-area.lie-center { display: block; margin-left: auto; margin-right: auto; }
+.lie-image-area.lie-float-left { float: left; clear: none; margin: 0 1em 0.5em 0; }
+.lie-image-area.lie-float-right { float: right; clear: none; margin: 0 0 0.5em 1em; }
+.lie-image-area.lie-block-left { display: block; margin-right: auto; }
+.lie-image-area.lie-block-center { display: block; margin-left: auto; margin-right: auto; }
+.lie-image-area.lie-block-right { display: block; margin-left: auto; }
 `;
 
 // A foreign page has no Obsidian-loaded stylesheet, so the runtime must supply the render +

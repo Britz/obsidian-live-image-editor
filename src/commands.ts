@@ -15,13 +15,15 @@ export interface CommandHandler {
   sizeSmall(): void;
   sizeMedium(): void;
   sizeLarge(): void;
-  classLeft(): void;
-  classRight(): void;
-  classCenter(): void;
+  layoutBlockLeft(): void;
+  layoutBlockCenter(): void;
+  layoutBlockRight(): void;
+  layoutFloatLeft(): void;
+  layoutFloatRight(): void;
+  layoutInline(): void;
   addClass(): void;
   reset(): void;
   customSize(): void;
-  toggleInline(): void;
   exportImage(): void;
   // Replace the underlying file of THIS embed (single) / every occurrence of its source in the note
   // (all). Both are image-specific (they need a target image in context); "all" then fans out from
@@ -54,13 +56,15 @@ export function registerCommands(plugin: Plugin, handler: CommandHandler): void 
     { id: "size-small", name: t("cmdSizeSmall"), action: () => handler.sizeSmall() },
     { id: "size-medium", name: t("cmdSizeMedium"), action: () => handler.sizeMedium() },
     { id: "size-large", name: t("cmdSizeLarge"), action: () => handler.sizeLarge() },
-    { id: "class-left", name: t("cmdAlignLeft"), action: () => handler.classLeft() },
-    { id: "class-right", name: t("cmdAlignRight"), action: () => handler.classRight() },
-    { id: "class-center", name: t("cmdAlignCenter"), action: () => handler.classCenter() },
+    { id: "layout-block-left", name: t("layoutBlockLeft"), action: () => handler.layoutBlockLeft() },
+    { id: "layout-block-center", name: t("layoutBlockCenter"), action: () => handler.layoutBlockCenter() },
+    { id: "layout-block-right", name: t("layoutBlockRight"), action: () => handler.layoutBlockRight() },
+    { id: "layout-float-left", name: t("layoutFloatLeft"), action: () => handler.layoutFloatLeft() },
+    { id: "layout-float-right", name: t("layoutFloatRight"), action: () => handler.layoutFloatRight() },
+    { id: "layout-inline", name: t("layoutInline"), action: () => handler.layoutInline() },
     { id: "add-class", name: t("snippets"), action: () => handler.addClass() },
     { id: "reset", name: t("reset"), action: () => handler.reset() },
     { id: "custom-size", name: t("customSize"), action: () => handler.customSize() },
-    { id: "toggle-inline", name: t("inlineBlock"), action: () => handler.toggleInline() },
     { id: "export", name: t("export"), action: () => handler.exportImage() },
     { id: "replace-image", name: t("replaceImage"), action: () => handler.replaceImage() },
     { id: "replace-all-images", name: t("replaceAll"), action: () => handler.replaceAllImages() },

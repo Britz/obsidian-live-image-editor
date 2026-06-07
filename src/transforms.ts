@@ -22,17 +22,20 @@ export interface FilterData {
   sepia?: number;
 }
 
-export type Align = "left" | "right" | "center";
+// The flat 6-state layout — flow × position as ONE mutually-exclusive choice, surfaced as 6
+// radio-style toolbar buttons. `float-left/right` are the genuinely HTML-faithful `align=left|right`;
+// the three block states + inline have no faithful HTML attr (block- prefix / `.lie-inline` class).
+export type Layout = "float-left" | "float-right" | "block-left" | "block-center" | "block-right" | "inline";
 
 export interface ImageTransform {
-  // Non-internal classes (decoration, vault snippets). Alignment is NOT here — it is the
-  // `align` field (a bare key); legacy `.lie-left/right/center` classes parse INTO `align`.
+  // Non-internal classes (decoration, vault snippets). Layout is NOT here — it is the `layout`
+  // field; legacy `.lie-left/right/center` / `.lie-inline` classes and `align=` keys parse INTO it.
   classes: string[];
-  inline?: boolean;
-  // Alignment → the OUTER/flow participant (AD3). Stored as the bare key `align=left|right|center`
-  // (a real HTML attr → faithful fallback). The renderer re-derives the `lie-left/right/center`
-  // marker class on the img so the `:has(img.lie-…)` float/centre rules still match.
-  align?: Align;
+  // LAYOUT → the OUTER/flow participant (AD3). One flat state. Serialized as the HTML-faithful
+  // `align=left|right` (float), the `align=block-left|block-center|block-right` keys (block), or the
+  // `.lie-inline` class (inline). Read also accepts the legacy `align=center` + `.lie-*` classes.
+  // The renderer derives the marker class on the OUTER so the float/centre CSS still matches.
+  layout?: Layout;
   // ORIENTATION → the INNER-FRAME (AD3): rotate + flip composed about the frame centre, so
   // re-orienting a cropped image pivots structurally and never touches the crop placement on
   // the <img> (Bug 50). Stored as the bare keys `rotate=`/`flip=`, never inside the img
@@ -112,9 +115,9 @@ export function parseAltText(attrs: string): ImageTransform {
     if (token.startsWith(".")) {
       const cls = token.slice(1);
       if (cls === MARKER_CLASS) continue;
-      if (cls === INLINE_CLASS) { result.inline = true; continue; }
-      const legacyAlign = LEGACY_ALIGN[cls];
-      if (legacyAlign) { result.align = legacyAlign; continue; } // back-compat: class → align field
+      if (cls === INLINE_CLASS) { result.layout = "inline"; continue; }
+      const legacyAlign = LEGACY_ALIGN_CLASS[cls];
+      if (legacyAlign) { result.layout = legacyAlign; continue; } // back-compat: legacy class → layout
       result.classes.push(cls);
     } else if (token.startsWith("#")) {
       continue; // ids are not used by transforms
@@ -146,14 +149,29 @@ function applyKey(key: string, val: string, result: ImageTransform): void {
     case "width": result.width = lengthValue(v); break;
     case "height": result.height = lengthValue(v); break;
     case "aspect-ratio": result.aspectRatio = v || undefined; break;
-    case "align": if (v === "left" || v === "right" || v === "center") result.align = v; break;
+    case "align": { const l = ALIGN_TO_LAYOUT[v]; if (l) result.layout = l; break; }
     // other keys (id; …) are ignored.
   }
 }
 
-// Legacy alignment CLASS → the `align` field (back-compat; old notes still render unchanged).
-const LEGACY_ALIGN: Record<string, Align | undefined> = {
-  "lie-left": "left", "lie-right": "right", "lie-center": "center",
+// `align=` on-disk value → Layout. Float uses the HTML-faithful bare left/right; block uses the
+// block- prefix; legacy `align=center` reads as block-center (back-compat). Exported so the
+// foreign-page attribute reader (render-core `readTransform`) maps identically (DRY).
+export const ALIGN_TO_LAYOUT: Record<string, Layout> = {
+  left: "float-left", right: "float-right",
+  "block-left": "block-left", "block-center": "block-center", "block-right": "block-right",
+  center: "block-center",
+};
+// Layout → the `align=` value to serialize (inline serializes as the `.lie-inline` class, not align=).
+const LAYOUT_TO_ALIGN: Record<Layout, string | null> = {
+  "float-left": "left", "float-right": "right",
+  "block-left": "block-left", "block-center": "block-center", "block-right": "block-right",
+  inline: null,
+};
+// Legacy alignment CLASS → Layout (back-compat; old notes still render unchanged). Exported for
+// the foreign-page attribute reader (render-core `readTransform`).
+export const LEGACY_ALIGN_CLASS: Record<string, Layout | undefined> = {
+  "lie-left": "float-left", "lie-right": "float-right", "lie-center": "block-center",
 };
 
 function parseStyle(style: string, result: ImageTransform): void {
@@ -198,17 +216,19 @@ function assignLegacyTransform(value: string, result: ImageTransform): void {
 
 /**
  * Serialize an ImageTransform back into attr_list block content (without the surrounding
- * `{…}`). Bare-key format (T2.3): `align=` (outer), orientation `rotate=`/`flip=` (inner-frame),
- * the crop placement + filter `transform="…"`/`filter="…"` (img), the cut-frame shape
- * `aspect-ratio=` and `width=N` px (outer, a real HTML attr → faithful). A non-px width (var/%)
- * and any `height`/box passthrough keep the `style=` escape. Classes only for inline + the user's
- * own (decoration, snippets). No `.lie-img` marker (parseAltText still SKIPS it). Empty → "".
+ * `{…}`). Bare-key format (T2.3): layout `align=left|right` (float) / `align=block-*` (block) or the
+ * `.lie-inline` class (inline), orientation `rotate=`/`flip=` (inner-frame), the crop placement +
+ * filter `transform="…"`/`filter="…"` (img), the cut-frame shape `aspect-ratio=`, and `width=N` /
+ * `height=N` as bare keys (the parser reads them back; a pure px value drops the unit). A non-px
+ * width (var/%) and any box passthrough keep the `style=` escape. Classes only for inline + the
+ * user's own (decoration, snippets). No `.lie-img` marker (parseAltText still SKIPS it). Empty → "".
  */
 export function serializeTransform(t: ImageTransform): string {
   const parts: string[] = [];
-  if (t.inline) parts.push(`.${INLINE_CLASS}`);
+  if (t.layout === "inline") parts.push(`.${INLINE_CLASS}`);
   for (const c of t.classes) parts.push(`.${c}`);
-  if (t.align) parts.push(`align=${t.align}`);
+  const alignVal = t.layout ? LAYOUT_TO_ALIGN[t.layout] : null;
+  if (alignVal) parts.push(`align=${alignVal}`);
   if (t.rotate) parts.push(`rotate=${roundDeg(t.rotate)}`);
   if (t.flipH) parts.push("flip=horizontal");
   if (t.flipV) parts.push("flip=vertical");
@@ -219,10 +239,12 @@ export function serializeTransform(t: ImageTransform): string {
   // baked to px so it qualifies. A var()/%/other width keeps the `style=` escape (no bare form).
   const widthPx = t.width && /^\d+(?:\.\d+)?px$/.test(t.width) ? t.width.slice(0, -2) : null;
   if (widthPx) parts.push(`width=${widthPx}`);
+  // height as a bare key for every unit (the parser reads it back: `height=1.4em` round-trips); a
+  // pure px value drops the unit (`height=200`) to match the bare width form.
+  if (t.height) parts.push(`height=${bareLength(t.height)}`);
 
   const style: string[] = [];
   if (t.width && !widthPx) style.push(`width: ${t.width}`);
-  if (t.height) style.push(`height: ${t.height}`);
   if (t.box) for (const [k, v] of Object.entries(t.box)) style.push(`${k}: ${v}`);
   if (style.length) parts.push(`style="${style.join("; ")}"`);
   return parts.join(" ");
@@ -230,6 +252,12 @@ export function serializeTransform(t: ImageTransform): string {
 
 function roundDeg(deg: number): string {
   return `${Math.round(deg * 10) / 10}`;
+}
+
+// A length as a bare attr value: a pure px value drops the unit (200px → 200, the parser re-adds
+// px); any other unit (em/%/var) passes through verbatim.
+function bareLength(v: string): string {
+  return /^\d+(?:\.\d+)?px$/.test(v) ? v.slice(0, -2) : v;
 }
 
 // A bare numeric value becomes a px length; an already-unit'd / var() value passes

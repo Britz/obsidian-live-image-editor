@@ -128,9 +128,9 @@ current code and are restated here as architecture, not invented anew.
   - **Self-set markers ride the element they style; `:has()` is reserved for Obsidian's own DOM
     (Decision 28).** The plugin BUILDS the outer (and, in LP, the host `.lie-wrapper`), so every class
     or marker IT sets — the user's `.class` / `style` (AD2: on the **outer**), the
-    `lie-left/right/center` alignment marker, `lie-inline`, `lie-tall` — is placed on the element that
-    must react and selected **directly** (e.g. `.lie-image-area.lie-left`; the float on the flow
-    participant), **never** via `:has(img.lie-*)`. `:has()` is used **only** to react to Obsidian's
+    `lie-float-left/float-right/block-left/block-center/block-right` layout marker, `lie-inline`,
+    `lie-tall` — is placed on the element that must react and selected **directly** (e.g.
+    `.lie-image-area.lie-float-left`; the float on the flow participant), **never** via `:has(img.lie-*)`. `:has()` is used **only** to react to Obsidian's
     OWN, uncontrolled DOM — the source-reveal slaving (`.cm-line:has(> .cm-formatting)`) — where the
     plugin cannot add a class of its own. The **F18 alignment-float routing** on the CM `.cm-line`
     context is a TOLERATED `:has` site for the same reason (an edge case partly controlled by
@@ -158,7 +158,7 @@ current code and are restated here as architecture, not invented anew.
   (every embed, unscoped). The plugin's widget renders in **every** case: a `{…}` embed keeps
   Obsidian's `.cm-line`, so it is an **inline widget IN that line** — rendering inline (rather than a
   block widget below) is load-bearing, because the host cm-line is left a **non-BFC**, so a
-  `lie-left`/`lie-right` `float` **escapes** into `.cm-content`'s block formatting context and shortens
+  `lie-float-left`/`lie-float-right` `float` **escapes** into `.cm-content`'s block formatting context and shortens
   the following sibling cm-lines (F18 — real multi-line wrap), with **no height desync** (the float
   counts to no line's height) and no `contain:paint` clip, and the image **shares the cm-line** with the
   source, giving the reveal a uniform home. Because the float is out of flow and the host line's only
@@ -358,7 +358,7 @@ image looks.
 - **AB9 — Live-preview adapter** — a CodeMirror-6 editor extension that, for every image embed
   (standalone or mid-text), **leaves the line's text intact**, draws the plugin's uniform widget, and
   **CSS-suppresses Obsidian's native image UNIFORMLY** (every embed, AD5). The widget renders in every
-  case: a `{…}` embed → an **inline widget IN its `.cm-line`** (so a `lie-left/right` float escapes the
+  case: a `{…}` embed → an **inline widget IN its `.cm-line`** (so a `lie-float-left/right` float escapes the
   non-BFC line and wraps text, F18); a **bare** embed (no `{…}`, block-promoted, no cm-line) → a
   **`block:true` widget** next to the image-suppressed native embed. It hosts **no** editable field for
   the raw link: the **reveal-for-looking** (F8) is a display-only fake link plus the `{…}`, shown/hidden
@@ -462,7 +462,7 @@ display state — each produces an edit that round-trips through the model layer
 - **AB20 — Style injection** — installs the internal prefixed CSS: the alignment/inline classes
   and their float routing (per Decision 28 the marker rides the OUTER `.lie-image-area`; off Obsidian
   the runtime floats it DIRECTLY, in the plugin the host above the box floats via
-  `:has(.lie-image-area.lie-…)` — the tolerated CM-context `:has`; a `lie-left/right` float escapes the
+  `:has(.lie-image-area.lie-…)` — the tolerated CM-context `:has`; a `lie-float-left/right` float escapes the
   non-BFC cm-line; `z-index:1` keeps the floated image clickable), the box/overflow rules, the
   **tall-float cap** (a `.lie-tall` float stacks as a block under `body.lie-safe-tall-float`), and the
   configurable preset-width variables, shared with the render

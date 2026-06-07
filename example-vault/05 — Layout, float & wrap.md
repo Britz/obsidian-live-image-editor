@@ -1,10 +1,12 @@
 # Layout, float & wrap
 
-The toolbar's **Layout** group controls how the image sits in the text.
-**Left** / **right** turn it into a *float* — the image hugs one margin and the paragraph wraps around it;
-**center** drops it on its own line as a block with text above and below;
-**inline** shrinks it to icon size so it flows *within* a line of words.
-Floating and wrapping behave the same in **both** Live Preview and Reading view, and the choice is stored as a faithful `align=` key on the image's Markdown line.
+The toolbar's **Layout** group is a flat set of six mutually-exclusive states (exactly one active):
+**block-left / block-center / block-right** put the image on its own line — text above and below, no wrap;
+**float-left / float-right** hug one margin and let the paragraph wrap around the side;
+**inline** sits the image *within* a line of words, like a glyph.
+Floating and wrapping behave the same in **both** Live Preview and Reading view. The choice is stored as the
+HTML-faithful `align=left|right` (float), the `align=block-left|block-center|block-right` keys (block), or the
+`.lie-inline` class (inline); legacy `align=center` / `.lie-left|right|center` notes still render unchanged.
 
 A float only *shows itself* when there is enough running text to wrap around it — a single short line would just sit beside the image and stop.
 So the paragraphs under the floated images below are intentionally long: that volume is what lets you see the text hug the image edge line after line and then reclaim the full column width once it clears the bottom of the float.
@@ -34,20 +36,21 @@ And now, to give the right-hand wrap enough to run along, some random filler: *S
 Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.
 Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet.*
 
-## Centered — `align=center`
+## Block, centered — `align=block-center`
 
 Not a float at all: the image becomes a **block on its own line**, centered in the column, with text sitting **above and below** it rather than beside it.
 This case needs far less text than a float — there is nothing to wrap around —
 so a short paragraph is enough to prove that the surrounding text simply stacks above and below and never pulls up alongside the picture.
+(The block states **block-left** and **block-right** behave identically but flush the image to that side; legacy `align=center` still reads as block-center.)
 
-![](images/sample-landscape.png){align=center width=320}
+![](images/sample-landscape.png){align=block-center width=320}
 
 The paragraph after the image starts fresh on its own line at full column width.
 And, just to put a few words below the block, some random filler: *At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident.*
 
 ## Inline — `.lie-inline`
 
-The image is shrunk to text height and flows **within** the line ![](images/sample-square.png){.lie-inline style="height: 1.2em"} like an oversized glyph —
+The image is shrunk to text height and flows **within** the line ![](images/sample-square.png){.lie-inline height=1.2em} like an oversized glyph —
 aligned with the surrounding words and never breaking onto its own line.
 No wrapping paragraph is needed here;
 the whole point is that the image does **not** claim its own block, so a single sentence with the image dropped into it is exactly the test.

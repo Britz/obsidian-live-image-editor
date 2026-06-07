@@ -83,11 +83,13 @@ no language or link-format setting of its own.
   (Click-away counts as a leave for **filter** and **size**; the in-place **crop** session is exempt
   — it ends only via its own controls, D6.3 — but its persist model is identical: leaving persists
   once, ✗/Esc discards.)
-- **F15 — Built-in alignment & inline.** Built-in, toggleable **alignment** (left / right /
-  center) and **inline** styling, plus a reset that restores defaults. Alignment exists as a
-  functional capability; whether it is carried as an attribute key or a CSS class is an
-  architecture concern, not a requirement. (Size is applied as a width — F24; decoration ships as
-  example snippets — F16.)
+- **F15 — Built-in layout (flat six states).** One built-in **layout** choice per image, a flat set
+  of six mutually-exclusive states — **block-left / block-center / block-right** (own line, no wrap),
+  **float-left / float-right** (margin, text wraps the side), **inline** (within a text line) — plus a
+  reset that restores the default. Surfaced as six radio-style controls (exactly one active). Layout
+  exists as a functional capability; how each state is carried on disk (attribute key vs CSS class) is
+  an architecture concern, not a requirement. **Layout is orthogonal to size** (F24) and to decoration
+  classes (F16): choosing a size never changes the layout state, and vice versa.
 - **F16 — Vault-snippet classes.** Discover image CSS classes defined in the vault's own CSS
   snippets and offer them; each is individually de-selectable; the list refreshes on load and
   on change. The plugin also **ships example decoration snippets** (rounded, shadow, border,
@@ -106,13 +108,16 @@ no language or link-format setting of its own.
     offer a **per-class restore** (a deleted class still appears so it can be brought back). A class
     name active in **two** enabled snippets is flagged as a **collision** (last-loaded wins). A class
     repeated within one file lists once and does not collide with itself.
-- **F17 — Inline (mid-text) images.** An image placed within a line of text (icon-style, via
-  the inline class) renders at its intended **inline size** in both views — not Obsidian's
-  native full-size inline image.
-- **F18 — Float & text wrap.** Left / right alignment **floats** the image so the surrounding
-  text wraps around it — in both reading view and live preview.
-- **F19 — Commands.** Image-context commands for the transforms, sizing, alignment,
-  add-class, reset, inline toggle and export (active only when an image is in context — the
+- **F17 — Inline (mid-text) images.** The **inline** layout state places an image within a line of
+  text (icon-style) and renders it at its intended **inline size** in both views — not Obsidian's
+  native full-size inline image. Inline is a layout state, chosen independently of the size preset
+  (an in-text icon = inline layout + the `icon` size).
+- **F18 — Float & text wrap.** The **float-left / float-right** layout states **float** the image so
+  the surrounding text wraps around its side — in both reading view and live preview. (The
+  **block-left / block-right** states align the image to a side WITHOUT wrapping — own line, text
+  above and below.)
+- **F19 — Commands.** Image-context commands for the transforms, sizing, the six layout states,
+  add-class, reset and export (active only when an image is in context — the
   hover/click-active image, or, for command-palette/hotkey use where there is no hover, the image
   on the editor's **cursor line**). **Multi-image:** when the editor selection covers ≥2 image
   embeds, a command acts on **all** of them in one undo step — rotate/flip are relative (each from
@@ -275,12 +280,15 @@ no language or link-format setting of its own.
   are never repurposed; the link type is preserved exactly as written.
   - **T2.3 — Block grammar (target).** The block is a Material-/MkDocs-style attribute list of
     **bare keys** (no `lie-` prefix — the block is hand-edited plain text in the Markdown, so
-    brevity is a hard requirement, T11): `align=left|right|center`, `width=N` (unitless px),
-    `rotate=<deg>`, `flip=horizontal|vertical`, `transform="<2D-affine CSS transform>"` (the
-    inner crop placement — pan / zoom / optional content-rotate), `filter="<CSS filter>"`,
+    brevity is a hard requirement, T11): the layout key `align=left|right` (float, HTML-faithful) /
+    `align=block-left|block-center|block-right` (block) — inline layout is the `.lie-inline` class;
+    `width=N` / `height=N` (a pure px value is unitless, other units pass through — both round-trip as
+    bare keys), `rotate=<deg>`, `flip=horizontal|vertical`, `transform="<2D-affine CSS transform>"`
+    (the inner crop placement — pan / zoom / optional content-rotate), `filter="<CSS filter>"`,
     `aspect-ratio=<ratio>` (the footprint shape, stored **only** for a deliberate crop shape ≠
     original, AD6/T11), plus `.class` (built-in / vault-snippet / decoration classes, F16) and a
-    `style="…"` power-user escape. An optional bare `.lie` is an explicit claim marker. **Presets
+    `style="…"` power-user escape. Read-compat: legacy `align=center` (→ block-center) and the legacy
+    `.lie-left|right|center` classes still parse, migrating to the new form on next save. An optional bare `.lie` is an explicit claim marker. **Presets
     and `auto` sizing never co-emit `width=` and `height=`** (a derived height would distort the
     image); the **explicit custom-size path** (D6.1/F24), where the user types both fields, **may**
     emit both — a fixed width **and** height is deliberately non-responsive user intent, not a

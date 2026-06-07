@@ -137,25 +137,6 @@ _**91 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) e
       plugin when this config changes). _Caveat:_ the user could **no longer reproduce it** after the
       first occurrence — confirm with a CDP/focused repro (toggle Settings → Editor → _Strict line
       breaks_ with a floated `{ .lie-left }` embed on screen) before fixing. Reported 2026-06-05 (user).
-- [ ] **Bug 76 — The standalone runtime doesn't center an `align=center`-only image on a published
-      page.** The portable runtime claims an `<img>` only via `CLAIM_SELECTOR`
-      (`[rotate],[flip],[transform],[aspect-ratio],[filter],.lie` + the `data-*` spellings,
-      [render-core.ts:331](src/render-core.ts#L331)) — `align` / `width` ALONE never claim. For
-      `align=left` / `right` that is correct: the bare `align="left"` / `"right"` attribute floats
-      natively via legacy HTML (faithful with no plugin and no runtime). But `align="center"` is a no-op
-      on an `<img>`, and the runtime's centering rule keys on the marker class
-      (`.lie-image-area:has(img.lie-center){…margin:auto}`, [runtime.ts](src/runtime.ts)), which
-      `buildLayers` only adds **on a claim**. So a center-aligned image with NO other transform is
-      **not** centered on a foreign / published page (it stays inline) — left/right work, center
-      silently degrades. The render-core comment "`align`…ALONE do not claim (native CSS already handles
-      them faithfully)" ([render-core.ts:326](src/render-core.ts#L326)) over-states the center case.
-      _Fix (mirrors Bug 58, which added `[filter]` to the claim selector):_ add `[align]` /
-      `[data-align]` to `CLAIM_SELECTOR` (so the runtime builds the box + marker and centers it), or add
-      a no-claim `:has(img[align="center"])` / `[align="center"]` rule to `RUNTIME_CSS`. In Obsidian
-      itself this never bites — every image renders through `buildLayers` (R0), so the marker is always
-      present; only the standalone runtime's claim gate is selective. Surfaced by the cross-renderer
-      fallback research (memory `img-attr-fallback-prior-art`: "align=left/right faithful … no center
-      value though"). Found via memory harvest 2026-06-06.
 - [ ] **Bug 80 — Crop edge/corner handles stretch the whole image instead of moving only the grabbed
       edge/corner (D8, Decision 24).** Each handle must reshape the crop WINDOW from its own side — the
       grabbed corner/edge moves, the opposite side stays anchored. **Corners** keep the aspect ratio

@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layout-Icons – Vorschau (6 Zustände)</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root {
+    --bg: #1e1e1e;
+    --panel: #262626;
+    --pill: #2f2f2f;
+    --border: #3a3a3a;
+    --text: #dcddde6;
+    --muted: #8a8a8a;
+    --accent: #7e6df2;        /* active highlight */
+    --accent-bg: #7e6df233;
+    --icon: #dcddde6;
+  }
+  body.light {
+    --bg: #f6f6f6; --panel: #ffffff; --pill: #ececec; --border: #d8d8d8;
+    --text: #1f2328; --muted: #777; --icon: #2a2a2a; --accent-bg: #7e6df21f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 32px 0 12px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  p.lead { color: var(--muted); margin: 0 0 8px; max-width: 70ch; }
+  .toggle { margin: 12px 0 0; }
+  .toggle button { background: var(--pill); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+
+  /* ---- toolbar mockups ---- */
+  .mock-wrap { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .mock { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .mock .cap { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  .toolbar {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: var(--pill); border: 1px solid var(--border); border-radius: 8px; padding: 4px;
+  }
+  .tb-btn {
+    width: 30px; height: 30px; display: grid; place-items: center;
+    border-radius: 6px; color: var(--icon); cursor: pointer; border: 1px solid transparent;
+  }
+  .tb-btn:hover { background: #ffffff14; }
+  .tb-btn.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+  .tb-sep { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
+  .tb-btn svg { width: 18px; height: 18px; }
+
+  /* ---- candidate grid ---- */
+  .state { margin-bottom: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .state > .title { font-weight: 600; margin-bottom: 2px; }
+  .state > .desc { color: var(--muted); font-size: 12.5px; margin-bottom: 12px; }
+  .cands { display: flex; gap: 14px; flex-wrap: wrap; }
+  .cand { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 92px; padding: 10px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--pill); }
+  .cand .sizes { display: flex; align-items: center; gap: 12px; height: 30px; }
+  .cand svg { color: var(--icon); }
+  .cand .big svg { width: 28px; height: 28px; }
+  .cand .small svg { width: 18px; height: 18px; }
+  .cand code { font-size: 10.5px; color: var(--muted); text-align: center; word-break: break-all; }
+
+  /* Hover micro-animations (mirror styles.css) — whole-icon transforms keyed on data-anim. */
+  [data-anim] svg { transform-origin: center; transition: transform 0.18s ease; }
+  [data-anim="align-l"]:hover svg { transform: translateX(-2.5px); }
+  [data-anim="align-r"]:hover svg { transform: translateX(2.5px); }
+  [data-anim="align-c"]:hover svg { animation: lie-center 0.4s ease; }
+  [data-anim="wrap"]:hover svg { animation: lie-wrap 0.5s ease; }
+  [data-anim="wrap-left"]:hover svg { animation: lie-wrap-left 0.5s ease; }
+  [data-anim="ly-inline"]:hover svg { animation: lie-ly-inline 0.45s ease; }
+  @keyframes lie-center { 0% { transform: translateX(-2.5px); } 50% { transform: translateX(2.5px); } 100% { transform: translateX(0); } }
+  @keyframes lie-wrap { 0% { transform: translateX(0); } 40% { transform: translateX(2.5px); } 65% { transform: translate(2.5px, 2px); } 100% { transform: translateX(0); } }
+  @keyframes lie-wrap-left { 0% { transform: translateX(0); } 40% { transform: translateX(-2.5px); } 65% { transform: translate(-2.5px, 2px); } 100% { transform: translateX(0); } }
+  @keyframes lie-ly-inline { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(2.5px); } }
+</style>
+</head>
+<body>
+  <h1>Layout-Icons – 6 Zustände</h1>
+  <p class="lead">Ein flaches Set: genau ein Button aktiv (Radio). Bildsprache à la Google Docs/Word:
+  <b>Block</b> = Ausrichtungs-Linien · <b>Float</b> = Kasten an einer Seite · <b>Inline</b> = Glyphe im Text.
+  Kandidaten je Zustand unten — sag mir, welche du je Zeile willst.</p>
+  <div class="toggle"><button id="themeBtn">☀︎ Hell/Dunkel umschalten</button></div>
+
+  <h2>★ Custom-Icons (handgezeichnet, Lucide-Stil) — Vorschlag</h2>
+  <p class="lead">Lucide hat für „Bild + Text-Beziehung" nichts Sauberes — wie Word/Google Docs zeichnen wir 6 eigene Icons:
+  <b>Block</b> = Bild in eigener Zeile, Text nur darüber/darunter · <b>Float</b> = Bild in der Ecke, Text daneben + darunter · <b>Inline</b> = kleine Box mitten in der Textzeile.
+  Gleicher 24er-Stil, via <code>addIcon()</code> nutzbar wie Lucide.</p>
+  <div class="mock-wrap" id="customMock"></div>
+  <div id="customGrid" style="margin-top:16px"></div>
+
+  <h2>Lucide-Kandidaten (zum Vergleich — laut dir: nichts Ordentliches)</h2>
+  <h3 style="font-size:13px;color:var(--muted);margin:0 0 10px">Toolbar-Mockup</h3>
+  <div class="mock-wrap" id="mocks"></div>
+
+  <h3 style="font-size:13px;color:var(--muted);margin:24px 0 10px">Kandidaten je Zustand</h3>
+  <div id="grid"></div>
+
+<script>
+  const STATES = [
+    { key: "block-left",   title: "Block · Links",   desc: "Eigene Zeile, kein Umfluss, linksbündig (Text darüber/darunter).",
+      cands: ["align-left", "align-start-vertical", "panel-top", "gallery-vertical"] },
+    { key: "block-center", title: "Block · Mitte",    desc: "Eigene Zeile, zentriert (heutiges align=center).",
+      cands: ["align-center", "align-center-vertical", "fold-horizontal"] },
+    { key: "block-right",  title: "Block · Rechts",   desc: "Eigene Zeile, kein Umfluss, rechtsbündig.",
+      cands: ["align-right", "align-end-vertical", "panel-bottom"] },
+    { key: "float-left",   title: "Float · Links",    desc: "Bild am linken Rand, Text umfließt rechts.",
+      cands: ["panel-left", "between-vertical-start", "gallery-horizontal-end", "wrap-text"] },
+    { key: "float-right",  title: "Float · Rechts",   desc: "Bild am rechten Rand, Text umfließt links.",
+      cands: ["panel-right", "between-vertical-end", "gallery-horizontal"] },
+    { key: "inline",       title: "Inline",           desc: "Bild fließt wie eine Glyphe in der Textzeile.",
+      cands: ["baseline", "type", "text", "subscript", "wrap-text"] },
+  ];
+
+  // Default-Set fürs Mockup (erste Kandidaten); plus eine Alternative.
+  const MOCK_SETS = [
+    { cap: "Set A — align-* / panel-* / baseline", active: "float-left",
+      icons: ["align-left","align-center","align-right","panel-left","panel-right","baseline"] },
+    { cap: "Set B — align-* / between-* / type", active: "block-center",
+      icons: ["align-left","align-center","align-right","between-vertical-start","between-vertical-end","type"] },
+    { cap: "Set C — gallery / wrap-text", active: "inline",
+      icons: ["align-left","align-center","align-right","gallery-horizontal-end","gallery-horizontal","wrap-text"] },
+  ];
+
+  const ico = (name) => `<i data-lucide="${name}"></i>`;
+
+  // mockups
+  document.getElementById("mocks").innerHTML = MOCK_SETS.map(set => {
+    const btns = set.icons.map((name, i) => {
+      const isActive = STATES[i].key === set.active;
+      const sep = i === 3 ? '<div class="tb-sep"></div>' : ''; // trenne Block-Trio von Float/Inline
+      return `${sep}<div class="tb-btn ${isActive ? "active" : ""}" title="${STATES[i].title} (${name})">${ico(name)}</div>`;
+    }).join("");
+    return `<div class="mock"><div class="cap">${set.cap}</div><div class="toolbar">${btns}</div></div>`;
+  }).join("");
+
+  // candidate grid
+  document.getElementById("grid").innerHTML = STATES.map(s => {
+    const cands = s.cands.map(name => `
+      <div class="cand">
+        <div class="sizes"><span class="big">${ico(name)}</span><span class="small">${ico(name)}</span></div>
+        <code>${name}</code>
+      </div>`).join("");
+    return `<div class="state"><div class="title">${s.title}</div><div class="desc">${s.desc}</div><div class="cands">${cands}</div></div>`;
+  }).join("");
+
+  lucide.createIcons();
+
+  // ---- Custom hand-drawn icons (Lucide style: 24 box, 2px stroke, currentColor, round) ----
+  const S = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+  const CUSTOM = {
+    "block-left": `<svg viewBox="0 0 24 24" ${S}>
+      <line x1="3" y1="3" x2="21" y2="3"/>
+      <rect x="3" y="7.5" width="9" height="9" rx="2"/>
+      <line x1="3" y1="21" x2="21" y2="21"/></svg>`,
+    "block-center": `<svg viewBox="0 0 24 24" ${S}>
+      <line x1="3" y1="3" x2="21" y2="3"/>
+      <rect x="7.5" y="7.5" width="9" height="9" rx="2"/>
+      <line x1="3" y1="21" x2="21" y2="21"/></svg>`,
+    "block-right": `<svg viewBox="0 0 24 24" ${S}>
+      <line x1="3" y1="3" x2="21" y2="3"/>
+      <rect x="12" y="7.5" width="9" height="9" rx="2"/>
+      <line x1="3" y1="21" x2="21" y2="21"/></svg>`,
+    "float-left": `<svg viewBox="0 0 24 24" ${S}>
+      <line x1="3" y1="3" x2="21" y2="3"/>
+      <rect x="3" y="7.5" width="8" height="9" rx="2"/>
+      <line x1="15" y1="7.5" x2="21" y2="7.5"/>
+      <line x1="15" y1="12" x2="21" y2="12"/>
+      <line x1="15" y1="16.5" x2="21" y2="16.5"/>
+      <line x1="3" y1="21" x2="21" y2="21"/></svg>`,
+    "float-right": `<svg viewBox="0 0 24 24" ${S}>
+      <line x1="3" y1="3" x2="21" y2="3"/>
+      <rect x="13" y="7.5" width="8" height="9" rx="2"/>
+      <line x1="3" y1="7.5" x2="9" y2="7.5"/>
+      <line x1="3" y1="12" x2="9" y2="12"/>
+      <line x1="3" y1="16.5" x2="9" y2="16.5"/>
+      <line x1="3" y1="21" x2="21" y2="21"/></svg>`,
+    "inline": `<svg viewBox="0 0 24 24" ${S}>
+      <line x1="3" y1="3" x2="21" y2="3"/>
+      <rect x="9.5" y="7.5" width="5" height="9" rx="2"/>
+      <line x1="3" y1="16.5" x2="6" y2="16.5"/>
+      <line x1="18" y1="16.5" x2="21" y2="16.5"/>
+      <line x1="3" y1="21" x2="21" y2="21"/></svg>`,
+  };
+
+  // Hover micro-animation per state (mirrors toolbar.ts ANIM_BY_ID): block = crisp directional nudge,
+  // float = "wrap" drift (sideways + slightly down, like text flowing around), inline = bob into the line.
+  const ANIM = {
+    "block-left": "align-l", "block-center": "align-c", "block-right": "align-r",
+    "float-left": "wrap-left", "float-right": "wrap", "inline": "ly-inline",
+  };
+
+  // custom mockup toolbar
+  document.getElementById("customMock").innerHTML = (() => {
+    const active = "float-left";
+    const btns = STATES.map((s, i) => {
+      const sep = (i === 3 || i === 5) ? '<div class="tb-sep"></div>' : '';
+      return `${sep}<div class="tb-btn ${s.key === active ? "active" : ""}" data-anim="${ANIM[s.key]}" title="${s.title}">${CUSTOM[s.key]}</div>`;
+    }).join("");
+    return `<div class="mock"><div class="cap">Custom-Set — alle 6 Zustände (float-left aktiv) · hover zum Animieren</div><div class="toolbar">${btns}</div></div>`;
+  })();
+
+  // custom grid
+  document.getElementById("customGrid").innerHTML = `<div class="cands">` + STATES.map(s => `
+    <div class="cand" data-anim="${ANIM[s.key]}" style="width:108px">
+      <div class="sizes"><span class="big">${CUSTOM[s.key]}</span><span class="small">${CUSTOM[s.key]}</span></div>
+      <code>${s.title}</code>
+    </div>`).join("") + `</div>`;
+
+  document.getElementById("themeBtn").addEventListener("click", () => document.body.classList.toggle("light"));
+</script>
+</body>
+</html>

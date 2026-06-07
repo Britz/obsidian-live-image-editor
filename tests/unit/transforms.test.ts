@@ -62,16 +62,18 @@ describe("parseAltText (bare-key attr_list block, T2.3)", () => {
     expect(r.aspectRatio).toBe("4/3");
     expect(r.box).toEqual({ "--x": "1" });
   });
-  it("parses the inline class and ignores the marker class", () => {
+  it("parses the inline class to the layout field and ignores the marker class", () => {
     const r = parseAltText(".lie-img .lie-inline .my-custom");
-    expect(r.inline).toBe(true);
+    expect(r.layout).toBe("inline");
     expect(r.classes).toEqual(["my-custom"]);
   });
-  it("parses align= to the field; legacy .lie-left/center/right class → field (back-compat)", () => {
-    expect(parseAltText("align=right").align).toBe("right");
-    expect(parseAltText("align=center").align).toBe("center");
+  it("parses align= to the layout field; legacy .lie-left/center/right class → field (back-compat)", () => {
+    expect(parseAltText("align=right").layout).toBe("float-right");      // float = HTML-faithful align=right
+    expect(parseAltText("align=left").layout).toBe("float-left");
+    expect(parseAltText("align=block-center").layout).toBe("block-center");
+    expect(parseAltText("align=center").layout).toBe("block-center");    // legacy align=center → block-center
     const legacy = parseAltText('.lie-left style="width: 180px"');
-    expect(legacy.align).toBe("left");            // class mapped to the field
+    expect(legacy.layout).toBe("float-left");     // legacy class mapped to the field
     expect(legacy.classes).not.toContain("lie-left"); // not kept as a class
     expect(legacy.width).toBe("180px");
   });
@@ -92,13 +94,22 @@ describe("serializeTransform (bare keys, T2.3)", () => {
   it("serializes a px width as the bare width=N key (a real HTML attr → faithful)", () => {
     expect(serializeTransform({ width: "320px", classes: [] })).toBe("width=320");
   });
-  it("serializes align as the bare align= key, not a class", () => {
-    expect(serializeTransform({ align: "right", width: "240px", classes: [] })).toBe("align=right width=240");
-    expect(serializeTransform({ align: "center", classes: [] })).toBe("align=center");
+  it("serializes layout: float → HTML-faithful align=left|right, block → align=block-*", () => {
+    expect(serializeTransform({ layout: "float-right", width: "240px", classes: [] })).toBe("align=right width=240");
+    expect(serializeTransform({ layout: "float-left", classes: [] })).toBe("align=left");
+    expect(serializeTransform({ layout: "block-center", classes: [] })).toBe("align=block-center");
+    expect(serializeTransform({ layout: "block-left", classes: [] })).toBe("align=block-left");
+    expect(serializeTransform({ layout: "block-right", classes: [] })).toBe("align=block-right");
   });
   it("keeps a non-px width (%, em, …) in the style= escape", () => {
     expect(serializeTransform({ width: "2em", classes: [] })).toBe('style="width: 2em"');
     expect(serializeTransform({ width: "50%", classes: [] })).toBe('style="width: 50%"');
+  });
+  it("serializes height as a bare key for every unit (round-trips; px drops the unit)", () => {
+    expect(serializeTransform({ height: "1.4em", classes: [] })).toBe("height=1.4em");
+    expect(serializeTransform({ height: "200px", classes: [] })).toBe("height=200");
+    expect(parseAltText("height=1.4em").height).toBe("1.4em");
+    expect(parseAltText(serializeTransform({ height: "1.4em", classes: [] })).height).toBe("1.4em");
   });
   it("serializes orientation as bare rotate=/flip=, not the img transform", () => {
     expect(serializeTransform({ rotate: 90, flipH: true, classes: [] })).toBe("rotate=90 flip=horizontal");
@@ -115,8 +126,8 @@ describe("serializeTransform (bare keys, T2.3)", () => {
   it("serializes snippet classes (no marker)", () => {
     expect(serializeTransform({ classes: ["rounded", "shadow"] })).toBe(".rounded .shadow");
   });
-  it("serializes inline", () => {
-    expect(serializeTransform({ inline: true, classes: [] })).toBe(".lie-inline");
+  it("serializes the inline layout as the .lie-inline class", () => {
+    expect(serializeTransform({ layout: "inline", classes: [] })).toBe(".lie-inline");
   });
 });
 
@@ -193,14 +204,14 @@ describe("size helpers", () => {
 });
 
 describe("round-trips (the canonical block is the lossless single encoding)", () => {
-  it("preserves orientation / filter / size / classes / inline", () => {
+  it("preserves orientation / filter / size / classes / layout", () => {
     const original: ImageTransform = {
       rotate: 90,
       flipH: true,
       filter: "brightness(1.1) sepia(0.8)",
       width: "400px",
       classes: ["rounded"],
-      inline: true,
+      layout: "inline",
     };
     const reparsed = parseAltText(serializeTransform(original));
     expect(reparsed.rotate).toBe(90);
@@ -208,7 +219,7 @@ describe("round-trips (the canonical block is the lossless single encoding)", ()
     expect(reparsed.filter).toBe(original.filter);
     expect(reparsed.width).toBe(original.width);
     expect(reparsed.classes).toEqual(original.classes);
-    expect(reparsed.inline).toBe(true);
+    expect(reparsed.layout).toBe("inline");
   });
   it("passes a power-user skew()/extra filter function through untouched (AD2)", () => {
     const original: ImageTransform = {
@@ -246,13 +257,15 @@ describe("round-trips (the canonical block is the lossless single encoding)", ()
     expect(reparsed.transform).toBe(original.transform);
     expect(isCrop(reparsed)).toBe(true);
   });
-  it("round-trips align + width as bare keys; a legacy align class migrates to align=", () => {
-    const reparsed = parseAltText(serializeTransform({ align: "right", width: "240px", classes: ["rounded"] }));
-    expect(reparsed.align).toBe("right");
+  it("round-trips layout + width as bare keys; a legacy align class migrates to align=", () => {
+    const reparsed = parseAltText(serializeTransform({ layout: "float-right", width: "240px", classes: ["rounded"] }));
+    expect(reparsed.layout).toBe("float-right");
     expect(reparsed.width).toBe("240px");
     expect(reparsed.classes).toEqual(["rounded"]);
     // legacy class form parses to the same model, then serializes to the new bare key.
     expect(serializeTransform(parseAltText(".lie-left width=240"))).toBe("align=left width=240");
+    // legacy align=center migrates to the prefixed block form on re-serialize.
+    expect(serializeTransform(parseAltText("align=center"))).toBe("align=block-center");
   });
   it("empty round-trips to empty; a legacy .lie-img note re-serializes without the marker", () => {
     expect(serializeTransform(parseAltText(""))).toBe("");
@@ -293,12 +306,12 @@ describe("per-operation persistence (§2.8 — Bug 56 guard)", () => {
     setFilter(t, undefined); expect(block(t)).not.toContain("filter=");
   });
 
-  it("alignment persists align= and clears on reset", () => {
-    const t = base(); t.align = "left";
+  it("layout persists align=/.lie-inline and clears on reset", () => {
+    const t = base(); t.layout = "float-left";
     expect(block(t)).toContain("align=left");
-    expect(parseAltText(block(t)).align).toBe("left");
-    t.align = "center"; expect(block(t)).toContain("align=center");
-    t.align = undefined; expect(block(t)).not.toContain("align=");
+    expect(parseAltText(block(t)).layout).toBe("float-left");
+    t.layout = "block-center"; expect(block(t)).toContain("align=block-center");
+    t.layout = undefined; expect(block(t)).not.toContain("align=");
   });
 
   it("size persists width=N (presets bake to px via setWidthPx); original clears it", () => {
@@ -308,10 +321,10 @@ describe("per-operation persistence (§2.8 — Bug 56 guard)", () => {
     setWidthPx(t, null); expect(block(t)).not.toContain("width="); // 'original'
   });
 
-  it("inline toggle persists the inline marker; addClass persists the class", () => {
-    const t = base(); t.inline = true;
+  it("inline layout persists the .lie-inline marker; addClass persists the class", () => {
+    const t = base(); t.layout = "inline";
     expect(block(t)).toContain(".lie-inline");
-    expect(parseAltText(block(t)).inline).toBe(true);
+    expect(parseAltText(block(t)).layout).toBe("inline");
     const t2 = base(); t2.classes.push("rounded");
     expect(block(t2)).toContain(".rounded");
     expect(parseAltText(block(t2)).classes).toContain("rounded");

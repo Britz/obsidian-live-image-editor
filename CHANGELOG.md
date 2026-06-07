@@ -11,6 +11,55 @@ Every entry is numbered in one global per-category sequence — **Decision**, **
 Decision › Change › Feature › Bug, each category newest-first (highest number on top). Numbers are
 never reused. (Open/unsolved items and the hard-won lessons live in `docs/development/issues.md`.)
 
+## [0.6.4] - 2026-06-07
+
+A layout rework: alignment and flow — previously conflated in one `align` field plus a separate
+`inline` flag — become a single **flat six-state layout** (`block-left` · `block-center` ·
+`block-right` · `float-left` · `float-right` · `inline`), surfaced as six radio-style toolbar buttons
+with an active highlight and custom icons. Size is now orthogonal to layout (the `icon` size preset no
+longer forces inline). The serializer also gains a `height=` bare-key round-trip fix, and the new
+non-native states close the long-open center-claim gap (Bug 76). Verified: `npm test` green (273),
+`npm run build` succeeds, `npm run lint` clean, `npm run lint:obsidian` 0 errors. Live rendering /
+hover-animation / active-state verification in Obsidian is pending (not headless-checkable).
+
+- **Decision 30 — Layout is ONE flat six-state choice (block-left/center/right · float-left/right ·
+  inline), not two conflated axes; serialized back-compat + HTML-faithful.** The old model overloaded
+  `align=left|right` to mean *float* and kept `inline` as a separate boolean, so "block-left/right"
+  (aligned, no wrap) was impossible and the toolbar couldn't show which state was active. The rework
+  makes the six valid states a single `layout` field (the impossible combinations — float-center,
+  inline-with-position — simply don't exist), surfaced as six radio buttons (exactly one active). On
+  disk: **float stays the genuinely HTML-faithful `align=left|right`** (a browser floats `<img
+  align=left>`), **block uses the `align=block-left|block-center|block-right` keys**, **inline the
+  `.lie-inline` class**; legacy `align=center` and `.lie-left|right|center` classes still READ
+  (migrate on next save). Chosen over the symmetric `align=left=block` scheme because that would have
+  silently reinterpreted every existing float note AND dropped the float HTML-fidelity. The earlier
+  "click-cycles, hover-opens-submenu" idea was dropped for the simpler flat six-button set (no invalid
+  combinations, nothing to gray out). Icons are hand-drawn (Lucide has none for image-to-text
+  layout; a `gallery-vertical` family — frame + box / box + side-lines / box-in-a-line), since icon
+  artwork is design-patent/copyright territory only for a specific drawing, not the generic concept.
+- **Change 38 — `height=` serializes as a bare key (round-trip); size is decoupled from layout.** The
+  parser already read a bare `height=` (`applyKey`), but `serializeTransform` always normalized it to
+  the `style="height:…"` escape, so `{… height=1.4em}` didn't round-trip. It now emits `height=N` as a
+  bare key for every unit (a pure px value drops the unit, mirroring `width=N`). Separately, the size
+  sub-menu's `SizeState`/presets no longer carry an `inline` flag — the `icon` preset sets only a
+  line-height height; the inline rendering is the `inline` *layout* state, chosen independently.
+- **Feature 40 — The six-state Layout group: radio buttons + active highlight + custom icons +
+  hover animations.** The Layout toolbar group is six buttons (block-left/center/right,
+  float-left/right, inline), exactly one highlighted to match the image's current state (computed per
+  show in `toolbarItemsForImage`; the `.lie-toolbar-btn.is-active` accent rule — the first toolbar
+  active-state, mirroring `.lie-class-item.is-active`). Each carries a custom `addIcon` icon
+  (`layout-icons.ts`) and a fitting hover micro-animation (block = directional nudge, float = a
+  sideways "wrap" drift, inline = a bob into the line). The same six states drive the command palette,
+  the editing-toolbar submenu and the keyboard commands. CSS: float floats the host, block uses
+  `text-align` on a full-width host (block-left/right are new), inline keeps the direct
+  `vertical-align` rule; the standalone runtime mirrors all of it with direct selectors.
+- **Bug 76 — A non-native layout now CLAIMS, so block / center / inline render on a published page.**
+  `CLAIM_SELECTOR` claimed an image only on a runtime-only key; `align=center` (and now
+  `align=block-*` / `.lie-inline`) have no faithful HTML rendering, so off-Obsidian they showed
+  unstyled. They are added to the claim selector (`[align="center"]`, `[align^="block-"]`,
+  `.lie-inline` + `data-` variants); `align=left|right` (float) stays unclaimed — a browser floats it
+  natively. `readTransform` also now reads a `height=` attribute.
+
 ## [0.6.3] - 2026-06-07
 
 A one-bug fix to localization: the plugin now follows Obsidian's UI language faithfully, including

@@ -22,7 +22,7 @@ export const DEFAULT_PRESET_WIDTHS: PresetWidths = { small: 200, medium: 400, la
 //     replacing the old "omit the rule from the injected CSS" disable mechanism.
 // Both use the sanctioned non-`<style>` CSSOM paths (`style.setProperty` / `classList.toggle`) —
 // the same body-class device already used by applyTallFloatClass / applyButtonOutlines.
-const DEFAULT_CLASS_NAMES = ["left", "right", "center", "inline"] as const;
+const DEFAULT_CLASS_NAMES = ["float-left", "float-right", "block-left", "block-center", "block-right", "inline"] as const;
 
 export class StylesInjector {
   private disabledClasses = new Set<string>();

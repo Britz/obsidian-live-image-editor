@@ -28,10 +28,11 @@ Medium — 400 px:
 
 ![](images/sample-landscape.png){width=320}
 
-## Icon → inline
+## Icon size + inline layout
 
-The **icon** preset makes the image flow **inline** at a line-height size (F17). Here is an inline
-icon ![](images/sample-square.png){.lie-inline style="height: 1.4em"} sitting in the sentence, and
+Size and layout are **independent** now: the **icon** size preset just sets a line-height height, and
+the **inline** layout state (Layout group) makes the image flow *within* a line. Combine them for an
+in-text icon ![](images/sample-square.png){.lie-inline height=1.4em} sitting in the sentence (F17), and
 the words continue normally afterwards.
 
 ## Original (clears the explicit width)

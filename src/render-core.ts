@@ -1,5 +1,5 @@
 import {
-  ImageTransform, FilterData, MARKER_CLASS, INLINE_CLASS,
+  ImageTransform, FilterData, MARKER_CLASS, INLINE_CLASS, ALIGN_TO_LAYOUT, LEGACY_ALIGN_CLASS,
   getRotation, isCrop, filterToCss, getWidthPx, getHeightPx,
 } from "./transforms";
 import { boxAspectRatio, innerImageSize, rotatedAabb, nativeBoxWidth, isTallFloat, rotatedFootprint } from "./renderer-logic";
@@ -42,17 +42,18 @@ export function buildLayers(img: HTMLImageElement, t: ImageTransform): void {
   // mid-text vertical-align with a DIRECT selector, no `:has(img.lie-inline)`. Reconcile/selection
   // identify our images by the `.lie-image-area` outer. resetLieState strips a legacy marker off a
   // reused img (older versions put it on the img).
-  if (t.inline) outer.classList.add(INLINE_CLASS);
-  // Alignment is a FIELD (the bare `align=` key); re-derive the `lie-left/right/center` MARKER on the
-  // OUTER (Decision 28 — markers ride the outer). On a foreign page the outer IS the flow participant,
-  // so the runtime floats it with a DIRECT `.lie-image-area.lie-left` (no `:has`). In the plugin the
-  // float must act on the host ABOVE the outer, so styles.css keeps a `:has(.lie-image-area.lie-…)`
-  // on the host — the tolerated CM-context `:has` (Decision 28). Render-time only, never stored.
-  const alignClass = t.align ? `lie-${t.align}` : null;
+  if (t.layout === "inline") outer.classList.add(INLINE_CLASS);
+  // Layout is a FIELD (the flat 6-state); re-derive the `lie-float-left|float-right|block-left|
+  // block-center|block-right` MARKER on the OUTER (Decision 28 — markers ride the outer; inline uses
+  // INLINE_CLASS above). On a foreign page the outer IS the flow participant, so the runtime floats/
+  // blocks it with a DIRECT `.lie-image-area.lie-…` (no `:has`). In the plugin the layout must act on
+  // the host ABOVE the outer, so styles.css keeps a `:has(.lie-image-area.lie-…)` on the host — the
+  // tolerated CM-context `:has` (Decision 28). Render-time only, never stored.
+  const layoutClass = t.layout && t.layout !== "inline" ? `lie-${t.layout}` : null;
   // Tall-float cap (R0, cross-view): mark a FLOATED image whose estimated height exceeds the
   // CM6 render margin so the stylesheet stacks it as a non-floated block in safe mode.
   // Declarative (no DOM measure, AD6); tracked so reset/re-render clears it.
-  const floated = t.align === "left" || t.align === "right";
+  const floated = t.layout === "float-left" || t.layout === "float-right";
   const tall = floated && isTallFloat({
     widthPx: getWidthPx(t), heightPx: getHeightPx(t),
     aspectRatio: t.aspectRatio ? parseRatio(t.aspectRatio) : null,
@@ -61,7 +62,7 @@ export function buildLayers(img: HTMLImageElement, t: ImageTransform): void {
   // classes, the alignment marker and the tall-float marker — so a decoration class styles the
   // un-clipped footprint box, and the markers are selected directly (runtime) or via a host `:has`
   // on the outer (plugin). One tracked set (`data-lie-classes`) so reset clears exactly these.
-  applyTrackedClasses(outer, [...t.classes, ...(alignClass ? [alignClass] : []), ...(tall ? ["lie-tall"] : [])], "lieClasses");
+  applyTrackedClasses(outer, [...t.classes, ...(layoutClass ? [layoutClass] : []), ...(tall ? ["lie-tall"] : [])], "lieClasses");
 
   // IMG filter: native CSS, verbatim (AD2).
   img.style.filter = t.filter ?? "";
@@ -371,14 +372,19 @@ export const RENDER_CSS = `
 
 // ---------------------------------------------------------------------------
 // Identification (AB7a) — claim an `<img>` IFF it carries a distinctive RUNTIME-ONLY key
-// (`rotate`/`flip`/`transform`/`aspect-ratio`/`filter`) OR the explicit `.lie` marker;
-// `align`/`width`/`style`/`class` ALONE do not claim (native CSS already handles them faithfully).
+// (`rotate`/`flip`/`transform`/`aspect-ratio`/`filter`) OR a non-native LAYOUT (the `.lie-inline`
+// class, `align=center`, or any `align=block-*`) OR the explicit `.lie` marker. `align=left|right`
+// (FLOAT) is genuinely HTML-faithful — a browser floats `<img align=left>` — so it does NOT claim,
+// matching `width`/`style`/`class` (native CSS handles them). The block/center/inline states have
+// NO faithful HTML attr (browser ignores them), so the runtime must claim to lay them out (fixes the
+// center-only-not-centered gap, Bug 76; extends it to block-left/right + inline).
 // A bare `filter=` is runtime-only — a browser ignores the bare attribute, so the runtime must
 // claim it to apply the CSS filter; the optional `style="filter:…"` escape needs no runtime.
 // Recognises both the bare keys (python-markdown / Material) and the `data-`-prefixed Pandoc variants.
 // ---------------------------------------------------------------------------
 export const CLAIM_SELECTOR =
-  "[rotate],[flip],[transform],[aspect-ratio],[filter],.lie," +
+  "[rotate],[flip],[transform],[aspect-ratio],[filter],.lie,.lie-inline," +
+  '[align="center"],[align^="block-"],[data-align="center"],[data-align^="block-"],' +
   "[data-rotate],[data-flip],[data-transform],[data-aspect-ratio],[data-filter]";
 
 function attr(el: Element, name: string): string | null {
@@ -406,15 +412,16 @@ export function readTransform(el: HTMLElement): ImageTransform {
   const ar = attr(el, "aspect-ratio"); if (ar) t.aspectRatio = ar;
   const width = el.getAttribute("width") ?? el.getAttribute("data-width");
   if (width) t.width = /^\d+(?:\.\d+)?$/.test(width.trim()) ? `${width.trim()}px` : width.trim();
+  const height = el.getAttribute("height") ?? el.getAttribute("data-height");
+  if (height) t.height = /^\d+(?:\.\d+)?$/.test(height.trim()) ? `${height.trim()}px` : height.trim();
   const align = el.getAttribute("align") ?? el.getAttribute("data-align");
-  if (align === "left" || align === "right" || align === "center") t.align = align;
+  if (align) { const l = ALIGN_TO_LAYOUT[align]; if (l) t.layout = l; }
 
   for (const c of Array.from(el.classList)) {
     if (c === "lie" || c === MARKER_CLASS) continue;          // claim markers — not real classes
-    if (c === INLINE_CLASS) { t.inline = true; continue; }
-    if (c === "lie-left") { t.align = "left"; continue; }     // tolerate legacy align classes
-    if (c === "lie-right") { t.align = "right"; continue; }
-    if (c === "lie-center") { t.align = "center"; continue; }
+    if (c === INLINE_CLASS) { t.layout = "inline"; continue; }
+    const legacy = LEGACY_ALIGN_CLASS[c];
+    if (legacy) { t.layout = legacy; continue; }              // tolerate legacy align classes
     t.classes.push(c);
   }
   return t;

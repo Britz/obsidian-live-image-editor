@@ -1,6 +1,7 @@
 import { App } from "obsidian";
 import { t } from "./i18n";
 import { BRAND_ICON_ID } from "./brand-icon";
+import { LAYOUT_ICON_ID } from "./layout-icons";
 
 // Optional integration with the community "editing-toolbar" plugin (T7/F12). It is
 // OFF by default, version-gated (only versions we've validated; others warn). It adds the full image
@@ -43,10 +44,12 @@ const SUBMENU_COMMANDS: { id: string; icon: string; nameKey: Parameters<typeof t
   { id: "crop", icon: "crop", nameKey: "crop" },
   { id: "filters", icon: "blend", nameKey: "filters" },
   { id: "custom-size", icon: "image-upscale", nameKey: "customSize" },
-  { id: "class-left", icon: "align-left", nameKey: "alignLeft" },
-  { id: "class-center", icon: "align-center", nameKey: "alignCenter" },
-  { id: "class-right", icon: "align-right", nameKey: "alignRight" },
-  { id: "toggle-inline", icon: "wrap-text", nameKey: "inlineBlock" },
+  { id: "layout-block-left", icon: LAYOUT_ICON_ID["block-left"], nameKey: "layoutBlockLeft" },
+  { id: "layout-block-center", icon: LAYOUT_ICON_ID["block-center"], nameKey: "layoutBlockCenter" },
+  { id: "layout-block-right", icon: LAYOUT_ICON_ID["block-right"], nameKey: "layoutBlockRight" },
+  { id: "layout-float-left", icon: LAYOUT_ICON_ID["float-left"], nameKey: "layoutFloatLeft" },
+  { id: "layout-float-right", icon: LAYOUT_ICON_ID["float-right"], nameKey: "layoutFloatRight" },
+  { id: "layout-inline", icon: LAYOUT_ICON_ID["inline"], nameKey: "layoutInline" },
   { id: "add-class", icon: "braces", nameKey: "snippets" },
   { id: "export", icon: "image-down", nameKey: "export" },
   { id: "replace-image", icon: "replace", nameKey: "replaceImage" },

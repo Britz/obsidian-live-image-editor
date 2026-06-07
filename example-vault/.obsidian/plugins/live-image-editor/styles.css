@@ -43,6 +43,9 @@
 .lie-toolbar-btn.lie-toolbar-btn { background: transparent; box-shadow: none; }
 .lie-toolbar-btn.lie-toolbar-btn:hover { background: var(--background-modifier-hover); }
 .lie-toolbar-btn.lie-toolbar-btn:active { background: var(--background-modifier-active-hover); }
+/* Radio active-state for the layout buttons (the current state is highlighted, accent-tinted) —
+   set per show in toolbarItemsForImage. Same device as `.lie-class-item.is-active` / `.lie-size-choice.is-active`. */
+.lie-toolbar-btn.lie-toolbar-btn.is-active { background: var(--background-modifier-hover); color: var(--text-accent); }
 .lie-toolbar-btn svg { width: 16px; height: 16px; }
 
 /* ---- Hover micro-animations (Feature 1) ------------------------------------
@@ -66,6 +69,8 @@
 .lie-toolbar-btn[data-anim="align-r"]:hover svg { transform: translateX(2.5px); }
 .lie-toolbar-btn[data-anim="align-c"]:hover svg { animation: lie-center 0.4s ease; }
 .lie-toolbar-btn[data-anim="wrap"]:hover svg { animation: lie-wrap 0.5s ease; }
+.lie-toolbar-btn[data-anim="wrap-left"]:hover svg { animation: lie-wrap-left 0.5s ease; }
+.lie-toolbar-btn[data-anim="ly-inline"]:hover svg { animation: lie-ly-inline 0.45s ease; }
 .lie-toolbar-btn[data-anim="resize"]:hover svg { animation: lie-resize 0.55s ease; }
 .lie-toolbar-btn[data-anim="pop"]:hover svg { animation: lie-pop 0.4s ease; }
 .lie-toolbar-btn[data-anim="quote"]:hover svg { animation: lie-quote 0.5s ease; }
@@ -75,6 +80,8 @@
 @keyframes lie-down { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
 @keyframes lie-center { 0% { transform: translateX(-2.5px); } 50% { transform: translateX(2.5px); } 100% { transform: translateX(0); } }
 @keyframes lie-wrap { 0% { transform: translateX(0); } 40% { transform: translateX(2.5px); } 65% { transform: translate(2.5px, 2px); } 100% { transform: translateX(0); } }
+@keyframes lie-wrap-left { 0% { transform: translateX(0); } 40% { transform: translateX(-2.5px); } 65% { transform: translate(-2.5px, 2px); } 100% { transform: translateX(0); } }
+@keyframes lie-ly-inline { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(2.5px); } }
 @keyframes lie-resize { 0% { transform: scale(1); } 30% { transform: scale(1.3, 1); } 60% { transform: scale(1, 1.3); } 100% { transform: scale(1.12); } }
 @keyframes lie-pop { 0% { transform: scale(0.9); } 55% { transform: scale(1.18); } 100% { transform: scale(1); } }
 @keyframes lie-quote { 0% { transform: translateX(0); } 50% { transform: translateX(3px); } 72% { transform: translateX(3px); } 88% { transform: translateX(-0.8px); } 100% { transform: translateX(0); } }
@@ -189,14 +196,20 @@ body.lie-btn-outline-always .lie-toolbar-btn { border-color: var(--background-mo
    (`.lie-image-area.lie-left`, Decision 28), so the host reacts to it with `:has(.lie-image-area.lie-…)`
    — the tolerated CM-context `:has`: the plugin doesn't own the host, so it can't class it directly
    (the standalone runtime, which DOES own the outer-as-flow-participant, uses a direct selector). */
-body:not(.lie-cls-off-left) .lie-wrapper:has(.lie-image-area.lie-left),
-body:not(.lie-cls-off-left) .image-embed:has(.lie-image-area.lie-left) { float: left; clear: none; margin: 0 1em 0.5em 0; }
-body:not(.lie-cls-off-right) .lie-wrapper:has(.lie-image-area.lie-right),
-body:not(.lie-cls-off-right) .image-embed:has(.lie-image-area.lie-right) { float: right; clear: none; margin: 0 0 0.5em 1em; }
-/* Centre via text-align on a FULL-WIDTH block host (centres the inline-block box inside) — not
-   margin:auto, which Obsidian's `.cm-content > * { margin:0 !important }` beats (Bug 27). */
-body:not(.lie-cls-off-center) .lie-wrapper:has(.lie-image-area.lie-center),
-body:not(.lie-cls-off-center) .image-embed:has(.lie-image-area.lie-center) { float: none; display: block; width: 100%; text-align: center; }
+/* FLOAT (float-left/right): the host ABOVE the box floats, text wraps the side. */
+body:not(.lie-cls-off-float-left) .lie-wrapper:has(.lie-image-area.lie-float-left),
+body:not(.lie-cls-off-float-left) .image-embed:has(.lie-image-area.lie-float-left) { float: left; clear: none; margin: 0 1em 0.5em 0; }
+body:not(.lie-cls-off-float-right) .lie-wrapper:has(.lie-image-area.lie-float-right),
+body:not(.lie-cls-off-float-right) .image-embed:has(.lie-image-area.lie-float-right) { float: right; clear: none; margin: 0 0 0.5em 1em; }
+/* BLOCK (block-left/center/right): the image sits on its OWN line, text above/below, positioned via
+   text-align on a FULL-WIDTH block host (positions the inline-block box inside) — not margin:auto,
+   which Obsidian's `.cm-content > * { margin:0 !important }` beats (Bug 27). */
+body:not(.lie-cls-off-block-left) .lie-wrapper:has(.lie-image-area.lie-block-left),
+body:not(.lie-cls-off-block-left) .image-embed:has(.lie-image-area.lie-block-left) { float: none; display: block; width: 100%; text-align: left; }
+body:not(.lie-cls-off-block-center) .lie-wrapper:has(.lie-image-area.lie-block-center),
+body:not(.lie-cls-off-block-center) .image-embed:has(.lie-image-area.lie-block-center) { float: none; display: block; width: 100%; text-align: center; }
+body:not(.lie-cls-off-block-right) .lie-wrapper:has(.lie-image-area.lie-block-right),
+body:not(.lie-cls-off-block-right) .image-embed:has(.lie-image-area.lie-block-right) { float: none; display: block; width: 100%; text-align: right; }
 /* Inline (F17): the mid-text vertical-align is the direct `.lie-image-area.lie-inline` rule in the
    RENDER_CSS block above (the marker rides the outer; no `:has`). The former `img.lie-inline
    { display:inline }` was a no-op on the absolutely-positioned img, so it is dropped. */
@@ -271,10 +284,10 @@ body {
    (the next-element-sibling of the floated embed) so the text wraps from the image top — matching
    LP. Float-only (a non-floated image keeps its <br>, so following text stays below it); the wrap
    paragraph's own line-break <br>s sit after text nodes, so `+ br` never hits them. */
-.markdown-preview-view .image-embed:has(.lie-image-area.lie-left) + br,
-.markdown-preview-view .image-embed:has(.lie-image-area.lie-right) + br,
-.markdown-reading-view .image-embed:has(.lie-image-area.lie-left) + br,
-.markdown-reading-view .image-embed:has(.lie-image-area.lie-right) + br { display: none; }
+.markdown-preview-view .image-embed:has(.lie-image-area.lie-float-left) + br,
+.markdown-preview-view .image-embed:has(.lie-image-area.lie-float-right) + br,
+.markdown-reading-view .image-embed:has(.lie-image-area.lie-float-left) + br,
+.markdown-reading-view .image-embed:has(.lie-image-area.lie-float-right) + br { display: none; }
 
 /* ---- Live-preview image + native suppression + reveal (AD5) ------------ *
    The widget does NOT replace the line: Obsidian renders its native embed (and

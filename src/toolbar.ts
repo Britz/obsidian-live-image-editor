@@ -8,6 +8,9 @@ export interface ToolbarButton {
   icon: string;
   titleKey: TranslationKey;
   action: () => void;
+  // Radio active-state (layout buttons): highlighted when it matches the image's current state.
+  // Computed per show in `toolbarItemsForImage`; undefined for stateless buttons.
+  active?: boolean;
 }
 
 export interface ToolbarGroup {
@@ -33,10 +36,12 @@ const ANIM_BY_ID: Record<string, string> = {
   "flip-v": "flip-v",
   "crop": "snap",
   "custom-size": "resize",
-  "align-left": "align-l",
-  "align-center": "align-c",
-  "align-right": "align-r",
-  "inline": "wrap",
+  "block-left": "align-l",
+  "block-center": "align-c",
+  "block-right": "align-r",
+  "float-left": "wrap-left",
+  "float-right": "wrap",
+  "inline": "ly-inline",
   "snippets": "snap",
   "export": "down",
   "reset": "wiggle",
@@ -55,6 +60,7 @@ export interface ToolbarAction {
 function makeButton(btn: ToolbarButton): HTMLButtonElement {
   const el = document.createElement("button");
   el.classList.add("lie-toolbar-btn");
+  if (btn.active) { el.classList.add("is-active"); el.setAttribute("aria-pressed", "true"); }
   el.dataset["lieId"] = btn.id;
   const anim = ANIM_BY_ID[btn.id];
   if (anim) el.dataset["anim"] = anim;

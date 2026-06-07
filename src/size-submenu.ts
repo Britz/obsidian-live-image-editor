@@ -19,14 +19,13 @@ export interface SizeBody {
  * owner reads on commit.
  */
 export function buildSizeBody(
-  current: { width?: string; height?: string; inline?: boolean },
+  current: { width?: string; height?: string },
   onPreview: (s: SizeState) => void,
   state: SizeState,
   presetWidths: PresetWidths
 ): SizeBody {
   state.width = current.width ?? null;
   state.height = current.height ?? null;
-  state.inline = current.inline ?? false;
 
   const body = document.createElement("div");
   body.classList.add("lie-size-body");
@@ -46,7 +45,6 @@ export function buildSizeBody(
     quick.appendChild(textButton(t(p.labelKey), "lie-size-choice", () => {
       state.width = p.width;
       state.height = p.height;
-      state.inline = p.inline;  // icon → inline rendering (F17); the others clear it
       sync();
       preview();
     }));
@@ -73,7 +71,6 @@ export function buildSizeBody(
     reset: () => {
       state.width = null;
       state.height = null;
-      state.inline = false;
       sync();
       preview();
     },

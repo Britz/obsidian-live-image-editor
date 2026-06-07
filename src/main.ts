@@ -1,12 +1,13 @@
 import { Plugin, MarkdownView, MarkdownPostProcessorContext, Notice, Editor, TFile, addIcon } from "obsidian";
 import {
-  ImageTransform, Align, FilterData, parseAltText, serializeTransform,
+  ImageTransform, Layout, FilterData, parseAltText, serializeTransform,
   getRotation, setRotation, toggleFlipH, toggleFlipV, getFilter, setFilter,
   setWidthPx, PresetKey,
 } from "./transforms";
 import { buildLayers as applyTransformToImage, applyFilterPreview, BOX_CLASS } from "./render-core";
 import { ImageToolbar, ToolbarItem, ToolbarButton, ToolbarGroup } from "./toolbar";
 import { BRAND_ICON_ID, BRAND_ICON_SVG } from "./brand-icon";
+import { LAYOUTS, LAYOUT_ICON_ID, registerLayoutIcons, currentLayout } from "./layout-icons";
 import { findImageInSource, findImageInText, findImageInLine, firstEmbedInLine, allEmbedsInText, spansOverlappingRanges, getImageFilename, basename, ImageLocation } from "./image-resolver";
 import { CropEditor } from "./crop-editor";
 import { FilterPanel } from "./filter-panel";
@@ -36,10 +37,14 @@ import { ensureEditingToolbarButtons } from "./editing-toolbar-integration";
 // (the reset modifier, drives both the single reset and the page-/selection-scope reset).
 const ROTATE_CW = (t: ImageTransform): void => setRotation(t, (getRotation(t) + 90) % 360);
 const ROTATE_CCW = (t: ImageTransform): void => setRotation(t, (getRotation(t) - 90 + 360) % 360);
-const TOGGLE_INLINE = (t: ImageTransform): void => { t.inline = !t.inline; };
+// Set the flat layout state; clicking the already-active state clears it (radio + toggle-off → the
+// natural default). Used by the single-image toolbar buttons (multi SETS, see commandLayout).
+const setLayoutToggle = (layout: Layout) => (t: ImageTransform): void => {
+  t.layout = t.layout === layout ? undefined : layout;
+};
 const clearTransform = (t: ImageTransform): void => {
   t.classes = [];
-  t.inline = t.align = t.rotate = t.flipH = t.flipV = undefined;
+  t.layout = t.rotate = t.flipH = t.flipV = undefined;
   t.transform = t.filter = t.width = t.height = t.aspectRatio = t.box = undefined;
 };
 
@@ -57,6 +62,7 @@ export default class LiveImageEditorPlugin extends Plugin {
 
   async onload(): Promise<void> {
     addIcon(BRAND_ICON_ID, BRAND_ICON_SVG); // brand mark — usable via setIcon (editing-toolbar submenu, settings)
+    registerLayoutIcons(); // the six layout icons (block/float/inline) — usable via setIcon (toolbar, editing-toolbar)
     await this.loadSettings();
     this.initLocale();
     this.stylesInjector.inject(this.settings.disabledInternalClasses, this.settings.presetWidths);
@@ -513,8 +519,12 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   private toolbarItemsForImage(img: HTMLImageElement): ToolbarItem[] {
+    // A layout button (id === its Layout value) is highlighted when it matches the image's current
+    // layout (radio active-state); recomputed per show, so the open toolbar always reflects the image.
+    const cur = currentLayout(img);
     const bind = (b: ToolbarButton): ToolbarButton => ({
       ...b,
+      active: LAYOUTS.includes(b.id as Layout) ? b.id === cur : b.active,
       action: () => { this.activeImage = img; b.action(); },
     });
     return this.buildToolbarItems().map((it) =>
@@ -539,10 +549,12 @@ export default class LiveImageEditorPlugin extends Plugin {
     const layoutGroup: ToolbarGroup = {
       kind: "group", id: "layout", icon: "text-quote", titleKey: "layout", collapse: "auto",
       buttons: [
-        b("align-left", "align-left", "alignLeft", () => this.applyAlignment("left")),
-        b("align-center", "align-center", "alignCenter", () => this.applyAlignment("center")),
-        b("align-right", "align-right", "alignRight", () => this.applyAlignment("right")),
-        b("inline", "wrap-text", "inlineBlock", () => this.toggleInline()),
+        b("block-left", LAYOUT_ICON_ID["block-left"], "layoutBlockLeft", () => this.applyLayout("block-left")),
+        b("block-center", LAYOUT_ICON_ID["block-center"], "layoutBlockCenter", () => this.applyLayout("block-center")),
+        b("block-right", LAYOUT_ICON_ID["block-right"], "layoutBlockRight", () => this.applyLayout("block-right")),
+        b("float-left", LAYOUT_ICON_ID["float-left"], "layoutFloatLeft", () => this.applyLayout("float-left")),
+        b("float-right", LAYOUT_ICON_ID["float-right"], "layoutFloatRight", () => this.applyLayout("float-right")),
+        b("inline", LAYOUT_ICON_ID["inline"], "layoutInline", () => this.applyLayout("inline")),
       ],
     };
 
@@ -580,13 +592,15 @@ export default class LiveImageEditorPlugin extends Plugin {
       sizeSmall: () => this.runTransformCommand((t) => setWidthPx(t, this.settings.presetWidths.small)),
       sizeMedium: () => this.runTransformCommand((t) => setWidthPx(t, this.settings.presetWidths.medium)),
       sizeLarge: () => this.runTransformCommand((t) => setWidthPx(t, this.settings.presetWidths.large)),
-      classLeft: () => this.commandAlign("left"),
-      classRight: () => this.commandAlign("right"),
-      classCenter: () => this.commandAlign("center"),
+      layoutBlockLeft: () => this.commandLayout("block-left"),
+      layoutBlockCenter: () => this.commandLayout("block-center"),
+      layoutBlockRight: () => this.commandLayout("block-right"),
+      layoutFloatLeft: () => this.commandLayout("float-left"),
+      layoutFloatRight: () => this.commandLayout("float-right"),
+      layoutInline: () => this.commandLayout("inline"),
       addClass: () => this.commandAddClass(),
       reset: () => this.runTransformCommand(clearTransform),
       customSize: () => this.commandCustomSize(),
-      toggleInline: () => this.runTransformCommand(TOGGLE_INLINE),
       exportImage: () => single(() => { void this.exportImage(); }),
       replaceImage: () => single(() => this.replaceImage()),
       replaceAllImages: () => single(() => this.replaceAllImages()),
@@ -664,15 +678,15 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.modifyTransform(modifier);
   }
 
-  // Alignment is the one command whose multi semantics differ from single: a single image TOGGLES
-  // the side (matching the toolbar), but a selection SETS every image to that side (the intuitive
-  // "make all these left" — not a per-image toggle that would scatter the result).
-  private commandAlign(side: Align): void {
+  // Layout is the one command whose multi semantics differ from single: a single image TOGGLES the
+  // state (matching the toolbar), but a selection SETS every image to that layout (the intuitive
+  // "make all these float-left" — not a per-image toggle that would scatter the result).
+  private commandLayout(layout: Layout): void {
     const scope = this.commandScope();
     if (!scope) return;
-    if (scope.kind === "multi") { this.modifyTransformMulti(scope.editor, scope.locations, (t) => { t.align = side; }); return; }
+    if (scope.kind === "multi") { this.modifyTransformMulti(scope.editor, scope.locations, (t) => { t.layout = layout; }); return; }
     this.activeImage = scope.img;
-    this.applyAlignment(side);
+    this.applyLayout(layout);
   }
 
   // --- Interactive multi-image commands (0.5.2) ---------------------------------------------------
@@ -735,24 +749,23 @@ export default class LiveImageEditorPlugin extends Plugin {
     if (this.submenu) { this.closeSubmenu(); return; }
     const pairs = this.renderedPairs(locations);
     const first = parseAltText(locations[0]!.params);
-    const state: SizeState = { width: first.width ?? null, height: first.height ?? null, inline: first.inline ?? false };
+    const state: SizeState = { width: first.width ?? null, height: first.height ?? null };
     const preview = (s: SizeState): void => {
       for (const { loc, img } of pairs) {
         const tr = parseAltText(loc.params);
         tr.width = s.width ?? undefined;
         tr.height = s.height ?? undefined;
-        tr.inline = s.inline;
         applyTransformToImage(img, tr);
       }
     };
-    const sizeBody = buildSizeBody({ width: first.width, height: first.height, inline: first.inline }, preview, state, this.settings.presetWidths);
+    const sizeBody = buildSizeBody({ width: first.width, height: first.height }, preview, state, this.settings.presetWidths);
     const submenu = new AnchoredSubmenu();
     submenu.open({
       body: sizeBody.body,
       placement: "centered",
       title: this.multiTitle(locations.length),
       onReset: () => sizeBody.reset(),
-      onCommit: () => this.modifyTransformMulti(editor, locations, (tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; tr.inline = state.inline; }),
+      onCommit: () => this.modifyTransformMulti(editor, locations, (tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; }),
       onCancel: () => { for (const { loc, img } of pairs) applyTransformToImage(img, parseAltText(loc.params)); },
       onClose: () => { this.submenu = null; },
     });
@@ -977,12 +990,8 @@ export default class LiveImageEditorPlugin extends Plugin {
   private flipH(): void { this.modifyTransform((tr) => toggleFlipH(tr)); }
   private flipV(): void { this.modifyTransform((tr) => toggleFlipV(tr)); }
 
-  private applyAlignment(side: Align): void {
-    this.modifyTransform((tr) => { tr.align = tr.align === side ? undefined : side; });
-  }
-
-  private toggleInline(): void {
-    this.modifyTransform((tr) => { tr.inline = !tr.inline; });
+  private applyLayout(layout: Layout): void {
+    this.modifyTransform(setLayoutToggle(layout));
   }
 
   private applyPreset(key: PresetKey): void {
@@ -1027,7 +1036,7 @@ export default class LiveImageEditorPlugin extends Plugin {
 
     const current = parseAltText(location.params);
     const img = this.activeImage!;
-    const state: SizeState = { width: current.width ?? null, height: current.height ?? null, inline: current.inline ?? false };
+    const state: SizeState = { width: current.width ?? null, height: current.height ?? null };
 
     // Live preview by RE-RENDERING with the new size (so clearing a field / "Original"
     // falls back to the intrinsic default rather than collapsing the box — Bug 42).
@@ -1035,10 +1044,9 @@ export default class LiveImageEditorPlugin extends Plugin {
       const tr = parseAltText(location.params);
       tr.width = s.width ?? undefined;
       tr.height = s.height ?? undefined;
-      tr.inline = s.inline;
       applyTransformToImage(this.liveTarget(img), tr);
     };
-    const sizeBody = buildSizeBody({ width: current.width, height: current.height, inline: current.inline }, preview, state, this.settings.presetWidths);
+    const sizeBody = buildSizeBody({ width: current.width, height: current.height }, preview, state, this.settings.presetWidths);
 
     const submenu = new AnchoredSubmenu();
     submenu.open({
@@ -1049,7 +1057,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       title: t("customSize"),
       hoverRegion: img.closest<HTMLElement>(".lie-wrapper") ?? undefined,
       onReset: () => sizeBody.reset(),
-      onCommit: () => this.modifyTransform((tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; tr.inline = state.inline; }, location),
+      onCommit: () => this.modifyTransform((tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; }, location),
       // ✗ cancel / Esc (F14): discard — no source write. The source was never touched while open,
       // so re-rendering the live image from its original params restores the pre-open size.
       onCancel: () => applyTransformToImage(this.liveTarget(img), parseAltText(location.params)),
@@ -1278,8 +1286,8 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   private hasTransforms(t: ImageTransform): boolean {
-    return !!(t.align || t.rotate || t.flipH || t.flipV || t.transform || t.filter ||
+    return !!(t.layout || t.rotate || t.flipH || t.flipV || t.transform || t.filter ||
       t.width || t.height || t.aspectRatio ||
-      (t.box && Object.keys(t.box).length) || t.classes.length || t.inline);
+      (t.box && Object.keys(t.box).length) || t.classes.length);
   }
 }
