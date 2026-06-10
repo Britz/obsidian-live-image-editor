@@ -25,13 +25,13 @@ not a screenshot.
 
 ## The pages
 
-- [[01 — Rotate & flip|Rotate & flip]] — quarter-turn rotation, horizontal / vertical flip.
-- [[02 — Crop|Crop]] — pan / zoom / rotate crops via `transform` + `aspect-ratio`.
-- [[03 — Size & presets|Size & presets]] — width resize and the size presets.
-- [[04 — Filters|Filters]] — brightness, contrast, saturation, hue, blur, grayscale, sepia.
-- [[05 — Layout, float & wrap|Layout, float & wrap]] — align left / right / center with text wrap.
-- [[06 — Captions|Captions]] — alt text rendered as a caption below the image.
-- [[07 — Classes & snippets|Classes & snippets]] — decoration classes (rounded, shadow, border, circle).
+- [[01-rotate-flip|Rotate & flip]] — quarter-turn rotation, horizontal / vertical flip.
+- [[02-crop|Crop]] — pan / zoom / rotate crops via `transform` + `aspect-ratio`.
+- [[03-size-presets|Size & presets]] — width resize and the size presets.
+- [[04-filters|Filters]] — brightness, contrast, saturation, hue, blur, grayscale, sepia.
+- [[05-layout-float-wrap|Layout, float & wrap]] — align left / right / center with text wrap.
+- [[06-captions|Captions]] — alt text rendered as a caption below the image.
+- [[07-classes-snippets|Classes & snippets]] — decoration classes (rounded, shadow, border, circle).
 
 Without the runtime (or with the plugin disabled in Obsidian) these images still appear — the
 native-faithful keys `width` / `align` survive and the original image shows for the rest. That

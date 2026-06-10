@@ -1,4 +1,5 @@
 # Reviews
+
 Date: Jun 6, 2026
 Version: 0.6.0
 Commit: 05cae28
@@ -13,7 +14,7 @@ Failed
 > the shipped linter (`npm run lint`) stays unchanged (T9). Details in `CHANGELOG.md`
 > (Decisions 25–27, Changes 33–35, Bug 89) and `docs/development/issues.md` (Lesson 17).
 
-#### Releases
+## Releases
 
 - **Recommendation**: Missing GitHub artifact attestations for release assetsmain.js, styles.cssArtifact attestations let users cryptographically verify the provenance of the release assets, proving they were built from the source repository. [Learn more](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds)
 
@@ -24,13 +25,13 @@ Failed
   > GitHub-Actions run (OIDC/Sigstore) — the local `gh release create` path of the `/release` skill
   > stays unattested; "CI as the sole publisher" is a separate later decision.
 
-#### Network requests
+## Network requests
 
 - **Pass**: No suspicious network patterns found.
 
   > ✅ **No action needed** (Pass).
 
-#### Behavior
+## Behavior
 
 - **Recommendation**: **Vault Enumeration**: Enumerates all files in the vault (`vault.getFiles`, `getMarkdownFiles`, etc.). Gives the plugin access to every file path in the vault.
 
@@ -56,7 +57,7 @@ Failed
 
   > ✅ **No action needed** (Pass).
 
-#### Source code
+## Source code
 
 - **Error**: Sets styles directly instead of using CSS classes or `setCssProps`
   - obsidianmd/no-static-styles-assignment
@@ -183,7 +184,7 @@ Failed
   > ✅ **Fixed** (Change 35). `setTimeout(` → `window.setTimeout(` (the only bare call;
   > the rest of the code already used it).
 
-#### CSS lint
+## CSS lint
 
 - **Warning**: Avoid !important — override styles by increasing selector specificity or using CSS variables instead.[styles.css:270](https://github.com/britz/obsidian-live-image-editor/blob/05cae2880e691dd0cc8b0ac9f5856eefa5423b65/styles.css#L270)[styles.css:271](https://github.com/britz/obsidian-live-image-editor/blob/05cae2880e691dd0cc8b0ac9f5856eefa5423b65/styles.css#L271)[styles.css:303](https://github.com/britz/obsidian-live-image-editor/blob/05cae2880e691dd0cc8b0ac9f5856eefa5423b65/styles.css#L303)[styles.css:311](https://github.com/britz/obsidian-live-image-editor/blob/05cae2880e691dd0cc8b0ac9f5856eefa5423b65/styles.css#L311)[styles.css:339](https://github.com/britz/obsidian-live-image-editor/blob/05cae2880e691dd0cc8b0ac9f5856eefa5423b65/styles.css#L339)[styles.css:378](https://github.com/britz/obsidian-live-image-editor/blob/05cae2880e691dd0cc8b0ac9f5856eefa5423b65/styles.css#L378)[styles.css:406](https://github.com/britz/obsidian-live-image-editor/blob/05cae2880e691dd0cc8b0ac9f5856eefa5423b65/styles.css#L406)
 

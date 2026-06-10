@@ -7,10 +7,11 @@
 #   bash scripts/release.sh                       # interactive — prompts for commit + tag message
 #   bash scripts/release.sh "<commit>" "<tag>"    # non-interactive (commit-msg tag-msg)
 #
-# What it produces (the version is auto-prepended — you supply the bare message only):
-#   commit  : chore(release): v<VERSION> — <COMMIT-MSG>      (em-dash, matches the repo convention)
-#   tag     : annotated, named <VERSION> (NO leading v), message  "v<VERSION> - <TAG-MSG>"
-#   release : gh release on tag <VERSION>; notes = "v<VERSION> - <TAG-MSG>\n\n" + the CHANGELOG section;
+# What it produces (the commit + tag messages are used VERBATIM — exactly what you pass/approve;
+# the script does NOT prepend a version/chore prefix, nor alter them in any way):
+#   commit  : <COMMIT-MSG>                    (verbatim)
+#   tag     : annotated, named <VERSION> (the tag NAME is the bare version), message <TAG-MSG> verbatim
+#   release : gh release on tag <VERSION>; notes = <TAG-MSG> + "\n\n" + the CHANGELOG section;
 #             assets main.js + manifest.json + styles.css attached as binaries (Obsidian SR rule).
 #
 # It BUILDS first (npm run build → generates main.js; a build failure aborts immediately), then
@@ -35,11 +36,13 @@ command -v node >/dev/null || die "node not found — run this inside the devcon
 # VERSION is NOT an input — it comes from package.json (the SSOT).
 VERSION="$(node -p "require('./package.json').version")"
 MANIFEST_VERSION="$(node -p "require('./manifest.json').version")"
-COMMIT_MSG="${1:-}"; TAG_MSG="${2:-}"
+COMMIT_MSG="${1:-}"; TAG_MSG="${2:-}"; NOTES_MSG="${3:-}"
 
-# --- gather the two messages (prompt for anything not passed as an argument) ---
-[ -z "$COMMIT_MSG" ] && { read -rp "Commit message (after 'chore(release): v${VERSION} — '): " COMMIT_MSG || true; }
-[ -z "$TAG_MSG" ]    && { read -rp "Tag message (after 'v${VERSION} - '): " TAG_MSG || true; }
+# --- gather the three messages (prompt for anything not passed as an argument) ---
+[ -z "$COMMIT_MSG" ] && { read -rp "Commit message (verbatim — used exactly as typed): " COMMIT_MSG || true; }
+[ -z "$TAG_MSG" ]    && { read -rp "Tag message (verbatim — used exactly as typed): " TAG_MSG || true; }
+# Release notes: if not passed as arg 3, default to the verbatim tag message + the CHANGELOG section
+# (computed below). An empty arg 3 therefore means "use that default", not an error.
 
 # --- validate (no mutations happen in this whole section) ---
 [ -n "$COMMIT_MSG" ] && [ -n "$TAG_MSG" ] || die "commit message and tag message are both required."
@@ -75,10 +78,17 @@ CHANGELOG_BODY="$(printf '%s\n' "$CHANGELOG_SECTION" | sed '1d' | grep -vE '^[[:
 step "building (tsc + esbuild) — generates main.js…"
 npm run build || die "build failed — aborting; nothing was committed, tagged, or released."
 
-# --- assemble the summary strings (no git mutation happens until after you confirm, below) ---
-COMMIT_FULL="chore(release): v${VERSION} — ${COMMIT_MSG}"
-TAG_FULL="v${VERSION} - ${TAG_MSG}"
-NOTES="$(printf 'v%s - %s\n\n%s\n' "$VERSION" "$TAG_MSG" "$CHANGELOG_SECTION")"
+# --- assemble the summary strings — all three messages are used VERBATIM (exactly as the caller
+#     approved them); the script no longer prepends a 'chore(release): v…' / 'v… - ' prefix or alters
+#     anything. Release notes: the verbatim arg-3 message if given, else the default (verbatim tag
+#     message + the CHANGELOG section).
+COMMIT_FULL="${COMMIT_MSG}"
+TAG_FULL="${TAG_MSG}"
+if [ -n "$NOTES_MSG" ]; then
+  NOTES="$NOTES_MSG"
+else
+  NOTES="$(printf '%s\n\n%s\n' "$TAG_MSG" "$CHANGELOG_SECTION")"
+fi
 SCOPE_COUNT="$(git status --porcelain | wc -l | tr -d ' ')"
 
 # --- FINAL SUMMARY + explicit confirmation gate (nothing above this mutated anything) ---

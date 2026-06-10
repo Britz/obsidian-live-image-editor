@@ -391,6 +391,22 @@ export function setHeightPx(t: ImageTransform, px: number | null): void {
   t.height = px && px > 0 ? `${Math.round(px)}px` : undefined;
 }
 
+/**
+ * Fold a native size token (the wikilink alias / markdown alt size — `W`, `WxH`, `autoxH`,
+ * `Wxauto`, `auto`, per link-format's grammar) into a transform's width/height so a raw
+ * `![[img|160]]` / `![[img|160 "Caption"]]` still renders at its native size on READ (Bug 94).
+ * The explicit `{…}` block WINS: an already-set width/height is never overridden (same
+ * precedence as the write path that folds native sizes into the block). A numeric dimension
+ * becomes a px value; an `auto`/absent dimension is left to the derived/responsive value.
+ * Idempotent (a second call is a no-op once the axis is set), so it is safe in re-render loops.
+ */
+export function applyNativeSize(t: ImageTransform, size: string): void {
+  if (!size) return;
+  const [w, h] = size.split("x");
+  if (t.width === undefined && w && w !== "auto" && /^\d+$/.test(w)) t.width = `${w}px`;
+  if (t.height === undefined && h && h !== "auto" && /^\d+$/.test(h)) t.height = `${h}px`;
+}
+
 function quantizeFilter(val: number): number {
   return Math.round(val * 100) / 100;
 }

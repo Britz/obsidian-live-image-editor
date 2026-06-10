@@ -3,7 +3,7 @@ import {
   parseAltText, serializeTransform, ImageTransform,
   getRotation, setRotation, getFlipH, getFlipV, toggleFlipH, toggleFlipV, isCrop,
   getFilter, setFilter, filterToCss, parseFilterCss,
-  getWidthPx, setWidthPx,
+  getWidthPx, setWidthPx, applyNativeSize,
 } from "../../src/transforms";
 import { toCropResult } from "../../src/crop-editor-logic";
 
@@ -200,6 +200,43 @@ describe("size helpers", () => {
     expect(t.width).toBe("200px");
     setWidthPx(t, null);
     expect(t.width).toBeUndefined();
+  });
+});
+
+describe("applyNativeSize (fold native wikilink/markdown size on READ — Bug 94)", () => {
+  it("folds a bare width / WxH into px width/height", () => {
+    const w: ImageTransform = { classes: [] };
+    applyNativeSize(w, "160");
+    expect(w.width).toBe("160px");
+    expect(w.height).toBeUndefined();
+
+    const wh: ImageTransform = { classes: [] };
+    applyNativeSize(wh, "300x200");
+    expect(wh.width).toBe("300px");
+    expect(wh.height).toBe("200px");
+  });
+  it("honours auto / empty as 'no constraint' on that axis", () => {
+    const h: ImageTransform = { classes: [] };
+    applyNativeSize(h, "autox200");
+    expect(h.width).toBeUndefined();
+    expect(h.height).toBe("200px");
+
+    const none: ImageTransform = { classes: [] };
+    applyNativeSize(none, "");
+    expect(none.width).toBeUndefined();
+    expect(none.height).toBeUndefined();
+  });
+  it("the explicit {…} block WINS — never overrides an already-set axis", () => {
+    const t: ImageTransform = { classes: [], width: "500px" };
+    applyNativeSize(t, "160x90");
+    expect(t.width).toBe("500px"); // block kept
+    expect(t.height).toBe("90px"); // gap filled
+  });
+  it("is idempotent (safe in re-render loops)", () => {
+    const t: ImageTransform = { classes: [] };
+    applyNativeSize(t, "160");
+    applyNativeSize(t, "160");
+    expect(t.width).toBe("160px");
   });
 });
 

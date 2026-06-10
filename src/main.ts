@@ -2,7 +2,7 @@ import { Plugin, MarkdownView, MarkdownPostProcessorContext, Notice, Editor, TFi
 import {
   ImageTransform, Layout, FilterData, parseAltText, serializeTransform,
   getRotation, setRotation, toggleFlipH, toggleFlipV, getFilter, setFilter,
-  setWidthPx, PresetKey,
+  setWidthPx, applyNativeSize, PresetKey,
 } from "./transforms";
 import { buildLayers as applyTransformToImage, applyFilterPreview, BOX_CLASS } from "./render-core";
 import { ImageToolbar, ToolbarItem, ToolbarButton, ToolbarGroup } from "./toolbar";
@@ -24,7 +24,7 @@ import { captionFromAlt, createCaption, CaptionHandle } from "./caption";
 import { Prec } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { setLocale, detectLocale, t } from "./i18n";
-import { convertEmbedLine, desiredFormat, LinkFormat } from "./link-format";
+import { convertEmbedLine, desiredFormat, splitTail, buildEmbed, LinkFormat } from "./link-format";
 import { replaceEmbedTarget, planReplaceAll } from "./replace-logic";
 import { ImagePickerModal } from "./replace-picker";
 import { writeSource } from "./source-writer";
@@ -217,7 +217,14 @@ export default class LiveImageEditorPlugin extends Plugin {
     const apply = (): boolean => {
       const img = getImg();
       if (!img) return false;
-      if (hasTransform) applyTransformToImage(img, transform);
+      // Fold the native wikilink/markdown size (e.g. `![[img|160]]`) into the {…} transform on READ
+      // so a raw native size still renders at its size; the explicit {…} block always wins (Bug 94).
+      // Re-derived per call — idempotent.
+      const merged: ImageTransform = transform
+        ? { ...transform, classes: [...transform.classes] }
+        : { classes: [] };
+      this.foldNativeSize(merged, img);
+      if (this.hasTransforms(merged)) applyTransformToImage(img, merged);
       else this.clearStaleTransform(img);
       this.applyReadingCaption(img, sourcePath);
       // Shrink-wrap the reading-view host that DIRECTLY holds our box (caption/column sizing). We set
@@ -367,8 +374,12 @@ export default class LiveImageEditorPlugin extends Plugin {
         // (buildLayers → resetLieState) mid-session would wipe the editor's transient geometry.
         if (img.closest(".lie-wrapper, .cm-editor, .lie-cropping")) continue;
         const loc = findImageInText(source, file, occurrence);
-        const transform = loc ? parseAltText(loc.params) : null;
-        if (transform && this.hasTransforms(transform)) applyTransformToImage(img, transform);
+        const transform = loc ? parseAltText(loc.params) : { classes: [] };
+        // Fold the native wikilink/markdown size into the transform on READ (the {…} block wins);
+        // a raw `![[img|160]]` with no block still renders at its size (Bug 94). The raw source
+        // alias (loc.alt) is authoritative for every pipe variant.
+        this.foldNativeSize(transform, img, loc?.alt);
+        if (this.hasTransforms(transform)) applyTransformToImage(img, transform);
         else this.clearStaleTransform(img);
         this.applyReadingCaption(img, sourcePath);
       }
@@ -928,10 +939,40 @@ export default class LiveImageEditorPlugin extends Plugin {
     const resolved = this.locateActiveImage({ notify: true, fallback });
     if (!resolved) return;
     const { editor, location } = resolved;
-    const transform = parseAltText(location.params);
+    // Seed with the native pipe/alt size folded in so an edit that doesn't touch size (rotate,
+    // flip, filter…) PRESERVES a raw `![[img|160]]`'s size; writeTransform then normalizes it into
+    // the {…} block and strips the pipe (size lives in the block — F6/T2, Bug 94).
+    const transform = this.locationTransform(location);
     modifier(transform);
     this.writeTransform(editor, location, transform);
     this.applyLivePreview(location, transform);
+  }
+
+  // The transform a located embed currently renders with: its {…} block PLUS the native
+  // wikilink/markdown size folded in (the explicit block always wins). The single source for
+  // reading an image's current state on edit/display, so a raw `![[img|160]]` is seen at its real
+  // size (Bug 94).
+  private locationTransform(location: ImageLocation): ImageTransform {
+    const t = parseAltText(location.params);
+    applyNativeSize(t, splitTail(location.alt).size);
+    return t;
+  }
+
+  // Fold the native size of a READING-VIEW <img> into the transform (the {…} block always wins).
+  // Sources, in priority order, so EVERY pipe variant is covered (Bug 94): the RAW source alias when
+  // known (`rawAlt` — authoritative: `300`, `300x200`, `auto`-forms, caption+size, legacy `|size`),
+  // the rendered `img.alt` token (Obsidian keeps the alias for caption embeds), and finally the
+  // `width`/`height` ATTRIBUTES Obsidian sets for a PURE native size — where it strips the size from
+  // the alt (notably the markdown `![alt|300](p)` form). Each `applyNativeSize` only fills a still-
+  // empty axis, so the order is a true priority chain.
+  private foldNativeSize(t: ImageTransform, img: HTMLImageElement, rawAlt?: string): void {
+    applyNativeSize(t, splitTail(rawAlt ?? img.alt).size);
+    const aw = img.getAttribute("width");
+    const ah = img.getAttribute("height");
+    if (aw || ah) {
+      const dim = (v: string | null): string => (v && /^\d+$/.test(v) ? v : "auto");
+      applyNativeSize(t, `${dim(aw)}x${dim(ah)}`);
+    }
   }
 
   private applyLivePreview(location: ImageLocation, transform: ImageTransform): void {
@@ -959,6 +1000,21 @@ export default class LiveImageEditorPlugin extends Plugin {
 
   private writeTransform(editor: Editor, location: ImageLocation, transform: ImageTransform): void {
     const params = serializeTransform(transform);
+    const { size, caption } = splitTail(location.alt);
+    if (size) {
+      // Normalize on edit (Bug 94): the embed carries a native pipe/alt size — rebuild the WHOLE
+      // embed in canonical form so the size moves into the {…} block (already in `transform`,
+      // seeded by locationTransform; empty on reset → size cleared) and is STRIPPED from the link
+      // head, keeping the caption. Size lives in the block, never the link (F6/T2).
+      const path = location.isWikiLink ? (location.filename.split("|")[0] ?? location.filename) : location.filename;
+      const embed = buildEmbed(location.isWikiLink ? "wiki" : "md", {
+        caption, path, size: "", block: params ? `{${params}}` : "",
+      });
+      const from = editor.posToOffset({ line: location.line, ch: location.start });
+      const to = editor.posToOffset({ line: location.line, ch: location.end });
+      this.writeToSource(editor, from, to, embed);
+      return;
+    }
     const block = params ? `{${params}}` : "";
     const from = editor.posToOffset({ line: location.line, ch: location.headEnd });
     const to = editor.posToOffset({ line: location.line, ch: location.end });
@@ -1042,14 +1098,15 @@ export default class LiveImageEditorPlugin extends Plugin {
     if (!resolved) return;
     const { location } = resolved;
 
-    const current = parseAltText(location.params);
+    // Native pipe/alt size folded in, so a raw `![[img|160]]` opens showing 160 (Bug 94).
+    const current = this.locationTransform(location);
     const img = this.activeImage!;
     const state: SizeState = { width: current.width ?? null, height: current.height ?? null };
 
     // Live preview by RE-RENDERING with the new size (so clearing a field / "Original"
     // falls back to the intrinsic default rather than collapsing the box — Bug 42).
     const preview = (s: SizeState): void => {
-      const tr = parseAltText(location.params);
+      const tr = this.locationTransform(location);
       tr.width = s.width ?? undefined;
       tr.height = s.height ?? undefined;
       applyTransformToImage(this.liveTarget(img), tr);
@@ -1068,7 +1125,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       onCommit: () => this.modifyTransform((tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; }, location),
       // ✗ cancel / Esc (F14): discard — no source write. The source was never touched while open,
       // so re-rendering the live image from its original params restores the pre-open size.
-      onCancel: () => applyTransformToImage(this.liveTarget(img), parseAltText(location.params)),
+      onCancel: () => applyTransformToImage(this.liveTarget(img), this.locationTransform(location)),
       onClose: () => { this.submenu = null; },
     });
     this.submenu = submenu;
@@ -1080,7 +1137,9 @@ export default class LiveImageEditorPlugin extends Plugin {
     if (!resolved) return;
     const { location } = resolved;
 
-    const current = parseAltText(location.params);
+    // Native pipe/alt size folded in, so cropping a raw `![[img|160]]` seeds the crop from its
+    // actual displayed width (Bug 94); the commit's modifyTransform then normalizes it.
+    const current = this.locationTransform(location);
     const cropEditor = new CropEditor(
       this.activeImage!,
       current,
@@ -1118,7 +1177,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     if (!resolved) return;
     const { location } = resolved;
 
-    const current = parseAltText(location.params);
+    const current = this.locationTransform(location);
     const originalFilter = getFilter(current);
     const img = this.activeImage!;
 
@@ -1127,7 +1186,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       onCommit: (filter: FilterData) => this.modifyTransform((tr) => setFilter(tr, Object.keys(filter).length ? filter : undefined), location),
       // ✗ cancel / Esc (F14): discard — no source write. Re-render from the untouched source to
       // restore the pre-open filter (and any other transform the live preview painted over).
-      onCancel: () => applyTransformToImage(this.liveTarget(img), parseAltText(location.params)),
+      onCancel: () => applyTransformToImage(this.liveTarget(img), this.locationTransform(location)),
       onClose: () => { this.filterPanel = null; },
     });
     panel.open(img, this.activeToolbarEl());

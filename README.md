@@ -2,7 +2,7 @@
 
 Non-destructive image editing for Obsidian. Crop, rotate, flip, resize, and apply CSS filters — all live, without modifying the original file.
 
-![The Live Image Editor hover toolbar in action — rotate, crop, resize and filter an image live](docs/img/usage.gif)
+![The Live Image Editor hover toolbar in action — rotate, crop, resize and filter an image live](docs/img/usage.gif){ .lie-usage-gif }
 
 ## Features
 
@@ -65,6 +65,12 @@ from `docs/` via ProperDocs + MaterialX (the maintained MkDocs / Material forks)
 
 ## Installation
 
+**From the community directory (recommended).** Live Image Editor is published in Obsidian's
+community plugin directory: **<https://community.obsidian.md/plugins/live-image-editor>**. In Obsidian,
+open *Settings → Community plugins → Browse*, search for **Live Image Editor**, install and enable it.
+
+**Manual install.**
+
 1. Download the latest release from [Releases](https://github.com/Britz/obsidian-live-image-editor/releases)
 2. Extract into your vault's `.obsidian/plugins/live-image-editor/` directory
 3. Enable the plugin in Settings > Community Plugins
@@ -75,7 +81,8 @@ Building the plugin from source, the watch / dev-install loop, live debugging in
 previewing the docs site locally are all covered in the
 **[Development docs](docs/development/README.md)** — everything builds inside the devcontainer.
 
-**Release compliance.** Before each community-directory submission the plugin is audited against
+**Release compliance.** The plugin is **accepted into the community directory**
+(<https://community.obsidian.md/plugins/live-image-editor>). Before each submission it is audited against
 Obsidian's **Developer policies**, **Plugin guidelines** and **Submission requirements**. All
 `R1–R30` rules are met — the former open items were closed in the v0.4.2 release-compliance pass. The
 v0.6.x **automated review** (`eslint-plugin-obsidianmd` + a CSS scan) is reproduced locally

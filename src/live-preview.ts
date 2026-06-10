@@ -1,7 +1,8 @@
 import { App, TFile, editorLivePreviewField, setIcon } from "obsidian";
 import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
-import { parseAltText, getWidthPx, getHeightPx } from "./transforms";
+import { parseAltText, getWidthPx, getHeightPx, applyNativeSize, ImageTransform } from "./transforms";
+import { parseEmbedLine } from "./link-format";
 import { lineDecorations, inlineEmbeds, rewriteWidth, reduceReveal, EMBED_LINE, URL_CLASS } from "./live-preview-logic";
 import { estimatedBlockHeight } from "./renderer-logic";
 import { captionMarkdown, createCaption, CaptionHandle } from "./caption";
@@ -107,11 +108,20 @@ class EmbedWidget extends WidgetType {
   }
   eq(other: EmbedWidget): boolean { return this.sig() === other.sig(); }
 
+  // The {…} block transform with the native wikilink/markdown size (the alias/alt size token of
+  // `this.embed`, e.g. `![[img|160]]`) folded in — the block wins (Bug 94). Used by every render
+  // path so a raw native size renders at its size in live preview too.
+  private parsedTransform(): ImageTransform {
+    const tf = parseAltText(this.params);
+    applyNativeSize(tf, parseEmbedLine(this.embed)?.size ?? "");
+    return tf;
+  }
+
   get estimatedHeight(): number {
     // Only block:true widgets need an estimate (CM models them out of flow); inline and
     // standalone widgets are measured in the line's natural flow.
     if (this.mode !== "block") return -1;
-    const tf = parseAltText(this.params);
+    const tf = this.parsedTransform();
     const aspect = tf.aspectRatio ? parseFloat(tf.aspectRatio) : null;
     return estimatedBlockHeight({ widthPx: getWidthPx(tf), heightPx: getHeightPx(tf), aspectRatio: aspect });
   }
@@ -135,7 +145,7 @@ class EmbedWidget extends WidgetType {
       inlineImg.src = this.app.vault.getResourcePath(file);
       inlineImg.dataset["lieSrc"] = file.path;
       wrapper.appendChild(inlineImg);
-      applyTransformToImage(inlineImg, parseAltText(this.params));
+      applyTransformToImage(inlineImg, this.parsedTransform());
       return wrapper;
     }
 
@@ -147,7 +157,7 @@ class EmbedWidget extends WidgetType {
     img.src = this.app.vault.getResourcePath(file);
     img.dataset["lieSrc"] = file.path;
     area.appendChild(img);
-    applyTransformToImage(img, parseAltText(this.params));
+    applyTransformToImage(img, this.parsedTransform());
 
     area.appendChild(this.makeResizeCorner(view, wrapper, img));
     area.appendChild(this.makeToolbar(view, img, wrapper));

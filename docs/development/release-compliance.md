@@ -18,46 +18,62 @@ rule sources** — every rule below is drawn from one of them:
   (**SR**) — the manifest/packaging checks the submission bot and human reviewers run: `id`/`name`
   naming, `version`/`minAppVersion`, `isDesktopOnly`, the release artifacts, and so on.
 
+The plugin is **accepted into Obsidian's community plugin directory**:
+**<https://community.obsidian.md/plugins/live-image-editor>**.
+
 Last audited **2026-06-05**. There is **no hard-policy violation** — no ads, telemetry, obfuscation,
 or self-update; an MIT [`LICENSE`](../../LICENSE) is present; no trademark clash. **All review-checklist
 rules (R1–R30) are now met** — the former open items (R20–R30) were closed in the v0.4.2
 release-compliance pass. The only remaining steps are the manual packaging actions in the
 [Submission checklist](#submission-checklist-manual-at-release-time) below.
 
-**Status:** ✅ fulfilled
+**Status:** :lucide-circle-check:{ .lie-ok } fulfilled — listed in the community directory
 
 | Rule | Requirement | Source | Status |
 | --- | --- | --- | --- |
-| R1 | No ads (dynamic or static) | DP | ✅ |
-| R2 | No client-side telemetry; no network calls in the production build | DP | ✅ |
-| R3 | No self-update mechanism | DP | ✅ |
-| R4 | `LICENSE` present and declared | SR | ✅ |
-| R5 | No `innerHTML` / `outerHTML` / `insertAdjacentHTML` | PG | ✅ |
-| R6 | No `var` (only `const` / `let`) | PG | ✅ |
-| R7 | No global `app` / `window.app` (uses `this.app`) | PG | ✅ |
-| R8 | No deprecated `workspace.activeLeaf` | PG | ✅ |
-| R9 | `async`/`await` over raw Promise chains | PG | ✅ |
-| R10 | `onunload` does not detach leaves | PG | ✅ |
-| R11 | No default hotkeys; `checkCallback` used correctly | PG | ✅ |
-| R12 | `console.*` only in the dev-only bridge | PG | ✅ |
-| R13 | `registerEvent` / `registerMarkdownPostProcessor` for auto-cleanup | PG | ✅ |
-| R14 | Manifest `id` / `name` follow the naming rules | SR | ✅ |
-| R15 | `fundingUrl` omitted (no donations) | SR | ✅ |
-| R16 | Command IDs not prefixed with the plugin id | PG | ✅ |
-| R17 | `version` is `x.y.z`; `minAppVersion` set | SR | ✅ |
-| R18 | Template sample code removed | PG | ✅ |
-| R19 | Toolbar / UI strings sentence case | PG | ✅ |
-| R20 | Disclose out-of-vault file writes in this README | DP | ✅ |
-| R21 | Reconcile `isDesktopOnly: false` with the Electron/Node usage | SR | ✅ |
-| R22 | Remove the plugin-name top-level heading in settings | PG | ✅ |
-| R23 | Use `setHeading()` instead of raw HTML headings | PG | ✅ |
-| R24 | Sentence-case the command names (and route via i18n) | PG | ✅ |
-| R25 | Sentence-case the remaining UI headings | PG | ✅ |
-| R26 | Run user / constructed paths through `normalizePath()` | PG | ✅ |
-| R27 | Polish the manifest description (no em-dash; action verb) | SR | ✅ |
-| R28 | Move static inline styles to CSS classes | PG | ✅ |
-| R29 | Prefer the Vault API over the Adapter API where a `TFile` exists | PG | ✅ |
-| R30 | Verify listener teardown (or switch to `registerDomEvent`) | PG | ✅ |
+| R1 | No ads (dynamic or static) | DP | :lucide-circle-check:{ .lie-ok } |
+| R2 | No client-side telemetry; no network calls in the production build | DP | :lucide-circle-check:{ .lie-ok } |
+| R3 | No self-update mechanism | DP | :lucide-circle-check:{ .lie-ok } |
+| R4 | `LICENSE` present and declared | SR | :lucide-circle-check:{ .lie-ok } |
+| R5 | No `innerHTML` / `outerHTML` / `insertAdjacentHTML` | PG | :lucide-circle-check:{ .lie-ok } |
+| R6 | No `var` (only `const` / `let`) | PG | :lucide-circle-check:{ .lie-ok } |
+| R7 | No global `app` / `window.app` (uses `this.app`) | PG | :lucide-circle-check:{ .lie-ok } |
+| R8 | No deprecated `workspace.activeLeaf` | PG | :lucide-circle-check:{ .lie-ok } |
+| R9 | `async`/`await` over raw Promise chains | PG | :lucide-circle-check:{ .lie-ok } |
+| R10 | `onunload` does not detach leaves | PG | :lucide-circle-check:{ .lie-ok } |
+| R11 | No default hotkeys; `checkCallback` used correctly | PG | :lucide-circle-check:{ .lie-ok } |
+| R12 | `console.*` only in the dev-only bridge | PG | :lucide-circle-check:{ .lie-ok } |
+| R13 | `registerEvent` / `registerMarkdownPostProcessor` for auto-cleanup | PG | :lucide-circle-check:{ .lie-ok } |
+| R14 | Manifest `id` / `name` follow the naming rules | SR | :lucide-circle-check:{ .lie-ok } |
+| R15 | `fundingUrl` omitted (no donations) | SR | :lucide-circle-check:{ .lie-ok } |
+| R16 | Command IDs not prefixed with the plugin id | PG | :lucide-circle-check:{ .lie-ok } |
+| R17 | `version` is `x.y.z`; `minAppVersion` set | SR | :lucide-circle-check:{ .lie-ok } |
+| R18 | Template sample code removed | PG | :lucide-circle-check:{ .lie-ok } |
+| R19 | Toolbar / UI strings sentence case | PG | :lucide-circle-check:{ .lie-ok } |
+| R20 | Disclose out-of-vault file writes in this README | DP | :lucide-circle-check:{ .lie-ok } |
+| R21 | Reconcile `isDesktopOnly: false` with the Electron/Node usage | SR | :lucide-circle-check:{ .lie-ok } |
+| R22 | Remove the plugin-name top-level heading in settings | PG | :lucide-circle-check:{ .lie-ok } |
+| R23 | Use `setHeading()` instead of raw HTML headings | PG | :lucide-circle-check:{ .lie-ok } |
+| R24 | Sentence-case the command names (and route via i18n) | PG | :lucide-circle-check:{ .lie-ok } |
+| R25 | Sentence-case the remaining UI headings | PG | :lucide-circle-check:{ .lie-ok } |
+| R26 | Run user / constructed paths through `normalizePath()` | PG | :lucide-circle-check:{ .lie-ok } |
+| R27 | Polish the manifest description (no em-dash; action verb) | SR | :lucide-circle-check:{ .lie-ok } |
+| R28 | Move static inline styles to CSS classes | PG | :lucide-circle-check:{ .lie-ok } |
+| R29 | Prefer the Vault API over the Adapter API where a `TFile` exists | PG | :lucide-circle-check:{ .lie-ok } |
+| R30 | Verify listener teardown (or switch to `registerDomEvent`) | PG | :lucide-circle-check:{ .lie-ok } |
+| W1 | [`:has()` in CSS](#w-has) — architecturally required | Review | :lucide-triangle-alert:{ .lie-warn } |
+| W2 | [`!important` in CSS](#w-important) — overrides core / gated rules | Review | :lucide-triangle-alert:{ .lie-warn } |
+| W3 | [`setWarning()` / `display()` deprecations](#w-deprecations) — 1.12.7 floor | Review | :lucide-triangle-alert:{ .lie-warn } |
+| W4 | [`document` / `window` → `activeDocument` / `activeWindow`](#w-active-doc) — deferred (Feature 39) | Review | :lucide-triangle-alert:{ .lie-warn } |
+| W5 | [Vault enumeration (`vault.getFiles`)](#w-vault-enum) — F26 picker | Review | :lucide-triangle-alert:{ .lie-warn } |
+| W6 | [`net` import in the dev-only bridge](#w-net) — tree-shaken, false positive | Review | :lucide-info:{ .lie-info } |
+| W7 | [raw `instanceof` in the runtime bundle](#w-instanceof) — off-Obsidian, false positive | Review | :lucide-info:{ .lie-info } |
+
+Rows **W1–W7** are the warnings/remarks the automated review still surfaces (and that may show on the
+directory page). None fails the review; each links to its one-sentence justification in
+[Automated plugin-review pass](#automated-plugin-review-pass-v06x) below, with the full detail in the
+[review reports](reviews/). :lucide-triangle-alert:{ .lie-warn } = kept by deliberate decision ·
+:lucide-info:{ .lie-info } = false positive (not in the shipped plugin).
 
 ## Fulfilled rules in detail
 
@@ -99,64 +115,28 @@ scan for `:has` / `!important`, and a behaviour scan — is reproduced locally a
 passes: `npm run lint:obsidian` (a dedicated `eslint.obsidian.config.mjs`) and `npm run lint:css`
 (stylelint). The **shipped** linter (`npm run lint` / `eslint.config.mjs`) is kept exactly as-is
 (requirement T9), so reproducing the review never touches the gate. `lint:obsidian` reports **0
-errors** (only the documented deprecation warnings below remain). Each v0.6.0 review finding and how
-it was handled:
+errors** (only the documented warnings below remain).
 
-**Errors — resolved (these are what failed the review):**
+The official review now **passes** (0 errors). Everything it still surfaces is a non-failing
+**warning** (:lucide-triangle-alert:{ .lie-warn } — kept by deliberate decision) or a **false
+positive** (:lucide-info:{ .lie-info } — never reaches the shipped plugin). Each is justified below;
+full per-item, line-referenced detail is in the review reports
+([`review-0.6.2.md`](reviews/review-0.6.2.md), [`review-0.6.5.md`](reviews/review-0.6.5.md); the
+original failing pass in [`review-0.6.0.md`](reviews/review-0.6.0.md) /
+[`review-0.6.1.md`](reviews/review-0.6.1.md)).
 
-- **Sets styles directly** (`obsidianmd/no-static-styles-assignment`). Static literal styles moved to
-  CSS classes / `RENDER_CSS`; per-image *dynamic* values stay inline (the rule flags only literals).
-  (Change 34.)
-- **Creating `<style>` elements** (`obsidianmd/no-forbidden-elements`). The plugin no longer injects a
-  `<style>`: `RENDER_CSS` + the built-in classes live in `styles.css`, preset widths are set as `body`
-  CSS variables, and disabled built-ins are body-class markers. (Change 33.) The same flag on
-  `runtime.ts` is a **false positive** — see below.
-
-**Kept with justification (warnings / recommendations — they do not fail the review):**
-
-- **`:has()`** (CSS scan). Minimised: the inline and embed-shrink-wrap `:has` were replaced by direct
-  classes, and the standalone runtime is now `:has`-free. The remaining `:has` are unavoidable — the
-  reveal slaving (`.cm-line:has(> .cm-formatting)`) reacts to Obsidian's OWN editor DOM, and the
-  alignment-float host rules (`.host:has(.lie-image-area.lie-…)`) must style a flow-participant host
-  the plugin does not own, reacting to the box's marker. Target is Electron/Chromium, where `:has` is
-  fully supported. (Decision 26 / 28.)
-- **`!important`** (CSS scan). Audited and minimised — the one defensive `!important` with no
-  competing rule (the float-out toolbar-hide; `display` is set by no other rule on that element) was
-  dropped. Each remaining one overrides an Obsidian-core or higher-specificity rule — the crop
-  `contain:none` beating app.css `contain:paint !important`, `.lie-frame > img { max-width:none }`
-  beating Obsidian/theme `img { max-width }`, the crop selection-frame suppression beating the
-  higher-specificity `:hover` frame, the dismissed/native reveal beating the reveal rules, the
-  tall-float cap — so removing it would rely on fragile cascade order and regress documented fixes.
-  (Decision 26.)
-- **`setWarning()` / `PluginSettingTab.display()` deprecations** (`@typescript-eslint/no-deprecated`).
-  Their replacements (`setDestructive` / `getSettingDefinitions`) are `@since 1.13.0`, but
-  `minAppVersion` is **1.12.7** and `display()` is the officially-sanctioned pre-1.13.0 fallback. Kept
-  until the floor is raised; reported as warnings, not errors. (Decision 26.)
-- **`net` Node-builtin import** (`dev-bridge.ts`). False positive: the dev-only CDP relay is gated
-  behind `__LIE_DEV__` and tree-shaken out of the production `main.js` (verified 0 hits). Excluded
-  from the `lint:obsidian` scope. (Decision 25.)
-- **`<style>` element + raw `instanceof`** (`runtime.ts`). False positives: the standalone,
-  framework-free `lie-runtime.js` bundle (for foreign, non-Obsidian pages) has no Obsidian-loaded
-  `styles.css` and no Obsidian helpers, so both are required and correct there. It is not the shipped
-  plugin. Excluded from scope. (Decision 25.)
-- **`@codemirror/state` / `@codemirror/view` "should be in dependencies".** Declared as
-  **devDependencies**, NOT runtime `dependencies`: they are Obsidian-provided esbuild externals, never
-  bundled (T1 — no runtime deps). The lint's literal "dependencies" prescription is wrong for a
-  host-provided external. (Change 35.)
-- **Vault Enumeration** (`vault.getFiles`). Required by the F26 Replace-image picker — a
-  `FuzzySuggestModal` needs the full image candidate set up front; it is already filtered to image
-  extensions and there is no narrower public API.
-- **Local Storage.** Was a READ of Obsidian's own `language` key (F21 — follow Obsidian's locale),
-  not plugin persistence; switched to Obsidian's `getLanguage()`. Plugin settings use
-  `loadData` / `saveData`. (Change 35.)
-- **Missing GitHub artifact attestations.** Adopted — the release workflow runs
-  `actions/attest-build-provenance` on `main.js` / `styles.css` (verify with `gh attestation verify`).
-  Attestation only happens in GitHub Actions, so the local `gh release` path stays unattested.
-  (Decision 27.)
-
-The behaviour-neutral lint cleanups — `instanceof` → `.instanceOf()`, bare `setTimeout` →
-`window.setTimeout`, promise-returned-where-void-expected, redundant type assertions, sentence-case
-notices — were applied (Change 35). Full per-item annotations are in `releast-state.md`.
+- :lucide-triangle-alert:{ .lie-warn } **`:has()`**{ #w-has } (CSS scan) — only used where unavoidable (the runtime itself is `:has`-free; target is Electron/Chromium, full support):
+    - the reveal slaving `.cm-line:has(> .cm-formatting)` reacts to Obsidian's own editor DOM;
+    - the alignment-float host rules `.host:has(.lie-image-area.lie-…)` style a flow-participant host the plugin does not own, reacting to the box's marker.
+- :lucide-triangle-alert:{ .lie-warn } **`!important`**{ #w-important } (CSS scan) — each beats an Obsidian-core or higher-specificity rule (removing them would rely on fragile cascade order):
+    - crop `contain:none` beats app.css `contain:paint !important`;
+    - `.lie-frame > img { max-width:none }` beats the theme's `img { max-width }`;
+    - the crop-frame suppression, the dismissed/native reveal and the tall-float cap each beat their higher-specificity counterparts.
+- :lucide-triangle-alert:{ .lie-warn } **`setWarning()` / `display()` deprecations**{ #w-deprecations } (`@typescript-eslint/no-deprecated`) — their replacements (`setDestructive` / `getSettingDefinitions`) are `@since 1.13.0`, but `minAppVersion` is **1.12.7**, where `display()` is the sanctioned fallback. Kept until the floor is raised.
+- :lucide-triangle-alert:{ .lie-warn } **`document` / `window` → `activeDocument` / `activeWindow`**{ #w-active-doc } (`obsidianmd/prefer-active-doc`) — popout-only; converting every site is large, cross-cutting churn, deferred to the popout-support feature (Feature 39).
+- :lucide-triangle-alert:{ .lie-warn } **Vault enumeration**{ #w-vault-enum } (`vault.getFiles`) — the F26 Replace-image picker needs the full image-candidate set up front; already filtered to image extensions; no narrower public API.
+- :lucide-info:{ .lie-info } **`net` import**{ #w-net } (`dev-bridge.ts`) — the dev-only CDP relay is gated behind `__LIE_DEV__` and tree-shaken out of production (0 hits). Never ships.
+- :lucide-info:{ .lie-info } **Raw `instanceof`**{ #w-instanceof } (`runtime.ts`) — the framework-free off-Obsidian bundle imports no `obsidian`, so the `.instanceOf()` helper does not exist there; raw `instanceof` against standard DOM is correct.
 
 ## Submission checklist (manual, at release time)
 

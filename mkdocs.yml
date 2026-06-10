@@ -51,6 +51,7 @@ theme:
         name: Switch to light mode
   features:
     - navigation.tabs          # top-level sections as tabs (Obsidian-Publish feel)
+    - navigation.tabs.sticky   # keep the top tab bar pinned + always visible while scrolling
     - navigation.sections
     - navigation.top
     - navigation.indexes
@@ -114,11 +115,12 @@ nav:
       - Issues & lessons: development/issues.md
       - Release compliance: development/release-compliance.md
   - Examples:
-      - examples/README.md
-      - Rotate & flip: examples/01 — Rotate & flip.md
-      - Crop: examples/02 — Crop.md
-      - Size & presets: examples/03 — Size & presets.md
-      - Filters: examples/04 — Filters.md
-      - Layout, float & wrap: examples/05 — Layout, float & wrap.md
-      - Captions: examples/06 — Captions.md
-      - Classes & snippets: examples/07 — Classes & snippets.md
+      - Overview: examples/README.md
+      - Rotate & flip: examples/01-rotate-flip.md
+      - Crop: examples/02-crop.md
+      - Size & presets: examples/03-size-presets.md
+      - Filters: examples/04-filters.md
+      - Layout, float & wrap: examples/05-layout-float-wrap.md
+      - Captions: examples/06-captions.md
+      - Classes & snippets: examples/07-classes-snippets.md
+  - Changelog: changelog.md
