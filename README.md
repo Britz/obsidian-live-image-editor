@@ -2,7 +2,7 @@
 
 Non-destructive image editing for Obsidian. Crop, rotate, flip, resize, and apply CSS filters — all live, without modifying the original file.
 
-![The Live Image Editor hover toolbar on a selected image](docs/img/toolbar.png)
+![The Live Image Editor hover toolbar in action — rotate, crop, resize and filter an image live](docs/img/usage.gif)
 
 ## Features
 
