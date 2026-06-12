@@ -8,11 +8,12 @@ COPY .env /tmp/build.env
 
 RUN set -eux; \
     . /tmp/build.env; \
+    : "${USER_GID:=20}"; \
     if id -u "${USER_NAME}" >/dev/null 2>&1 && [ "$(id -u "${USER_NAME}")" != "${USER_UID}" ]; then \
         userdel -r "${USER_NAME}"; \
     fi; \
     if ! id -nu "${USER_UID}" >/dev/null 2>&1; then \
-        useradd --uid "${USER_UID}" --create-home --shell /bin/bash --user-group "${USER_NAME}"; \
+        useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USER_NAME}"; \
         echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${USER_NAME}"; \
         chmod 0440 "/etc/sudoers.d/${USER_NAME}"; \
     fi

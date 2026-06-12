@@ -160,11 +160,14 @@ no language or link-format setting of its own.
   **degrade to the original, untransformed image** — inert but still visible (the `style="filter:…"`
   escape is the faithful alternative for a filter). This is the baseline that the storage
   and rendering choices (T2, T3) must satisfy.
-- **F26 — Replace image / Replace all.** Swap the underlying image for a different file
-  **non-destructively**: only the embed's link target changes — the trailing `{…}` attribute block
-  and the caption (alt text) are **kept** — so the new image inherits the existing transforms. A
-  single-image **Replace** and a note-wide **Replace all** (every occurrence of the same image)
-  are offered.
+- **F26 — Change image source (single embed).** Swap the underlying file of ONE embed for a different
+  file **non-destructively**: only the embed's link target changes — the trailing `{…}` attribute block
+  and the caption (alt text) are **kept**, so the new image inherits the existing transforms. (Formerly
+  "Replace image / Replace all"; renamed 2026-06-12 per user decision — the old name misleadingly implied
+  baking, and this link-swap is single-embed only.) **There is NO link-swap "replace all":** a note-wide
+  "replace all images" means BAKING every image to its displayed result and stripping the `{…}` — that is
+  the flatten path (**Feature 31**), not this requirement. The previous link-swap `Replace all` command
+  is a defect → **Bug 105**.
 
 ---
 

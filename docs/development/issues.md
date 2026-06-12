@@ -38,7 +38,7 @@ _**29 decisions total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.m
 
 ### Planned features (Feature)
 
-_**39 features total** — shipped (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the planned ones below._
+_**42 features total** — shipped (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the planned ones below._
 
 New capabilities, not yet F-items. Per `methodology.md` each starts at the top (a Functional/Design
 requirement + the storage/permission implications) before any code.
@@ -50,7 +50,13 @@ requirement + the storage/permission implications) before any code.
       blocks** from the Markdown — turning the non-destructive edits into permanent files. _Decisions
       to make first:_ what happens to the original (keep as `…-original`? move to a folder?), conflict
       / collision handling, undo/confirmation (this rewrites real files), and which transforms bake
-      vs. stay (e.g. `align`/`width` are already faithful — do they bake or remain attributes?).
+      vs. stay (e.g. `align`/`width` are already faithful — do they bake or remain attributes?). _The
+      redefined note-wide `Replace all` command is this feature's entry point — see Bug 105; the
+      single-image counterpart is Feature 41._ _German command working title (provisional, may change):
+      „Alle Bilder dauerhaft ersetzen"._ _Mechanism revised 2026-06-12 — supersedes the `…_old`-rename
+      sketch above: keep each original UNTOUCHED, write every flattened image as a NEW file and repoint its
+      link in ONE editor edit, so cmd+Z restores the note (see Feature 41 for the undo model + the
+      orphaned-file open decision)._
 - [ ] **Feature 32 — "Export" a page / vault — as a DOWNLOAD (non-destructive, off the live vault).** The same
       flatten-and-clean as above, but it produces a **separate downloadable copy** (a bundle of the
       baked images + the cleaned Markdown) and leaves the live vault **untouched**. Effectively the
@@ -102,10 +108,49 @@ requirement + the storage/permission implications) before any code.
       suppression). _Do first:_ confirm whether the plugin is even reachable in a popout (its hosts: LP
       editor + reading-view embeds) and scope which references are genuinely main-window-only (e.g. the
       `localStorage` language read) vs. document-relative. (2026-06-07.)
+- [ ] **Feature 41 — "Bake & replace" a SINGLE image IN PLACE (the per-image case of Feature 31).** What
+      the user means by "replace image" — NOT the shipped **Feature 35** (which only repoints the link to
+      another source file and touches nothing else). Here: turn THIS image's non-destructive edits into a
+      permanent file. Steps: (1) **export the image AS DISPLAYED** — all transforms/crop/filter baked into
+      the pixels (reuse F13 export, [export.ts](src/export.ts)); (2) leave the **ORIGINAL
+      untouched** and write the export to a NEW file via the export's
+      EXISTING unique-suffix naming ([export.ts](src/export.ts) — no new suffix invented); (3) **repoint
+      the embed's link** to the new file and **strip the `{…}` block** — a single editor edit. Because only the document text changes,
+      Obsidian's **cmd+Z undoes it** (restores the old link + `{…}`). _Shares_ the export + rename +
+      clean machinery with **Feature 31** (note/vault-wide flatten) — build the core once, this is its
+      single-image entry point. (The "rename" step is gone — the original is never renamed; only a new file is
+      written + the link repointed.) Keeping the original's NAME untouched also means **other notes that embed it
+      are unaffected** — the cross-cutting "renaming the shared file hits every other note" gotcha is gone.
+      The new file is written and **STAYS orphaned after a cmd+Z** (undo can't un-write a file) — **DECIDED:
+      accept the orphan** (Feature 42 sweeps it up) AND, on a flatten-undo, **show a non-blocking Obsidian
+      `Notice`** (the top-right toast) telling the user the written image file was NOT deleted (+ once
+      Feature 42 ships, that it can be removed via the cleanup). Hook it by **tagging the flatten
+      transaction** and detecting its reversal via `tr.isUserEvent('undo')` on `editor.cm`. Because the
+      notice is purely INFORMATIONAL (no file op on undo), it sidesteps the delete-on-undo fragility — no
+      redo re-write, no precise marker mapping, and a flatten-all simply fires one notice per affected
+      editor. **Redo is automatic:** the file write happens ONCE when the command runs; CM6's redo only
+      replays the document text (it never re-invokes the flatten code), and the orphaned file is still on
+      disk, so a re-applied link just reuses it — no re-write, nothing to detect (though `tr.isUserEvent('redo')`
+      is available if the notice logic should differ on redo). _Edge case to handle:_ if the orphan was
+      deleted between undo and redo (e.g. via Feature 42), the redone link is **dangling** → guard/notice. **A settings toggle turns the notice off** (it can get annoying) — a new D/T setting in
+      `settings.ts` (AB19). Naming reuses the export's existing scheme (decided). _Open (per
+      `methodology.md`, before code):_ export format/extension; the final confirm before writing.
+      (2026-06-11/12, user.) _German command working title (provisional, may change): „Bild dauerhaft
+      ersetzen"._
+- [ ] **Feature 42 — "Clean up unreferenced images" — a vault-wide review-and-delete command.** Scans the
+      WHOLE vault for image files that **no note links or embeds** (unreferenced — a SUPERSET of the flatten
+      leftovers from Feature 31/41, not limited to them; the orphan a cmd+Z leaves behind is just one case).
+      Opens a **review list**: each entry shows a **thumbnail** + the image's **full vault path** (not just
+      the basename — so same-named files in different folders are told apart), with a **checkbox**. Nothing
+      is pre-selected: the user **explicitly ticks** what to delete (+ a **Select all** toggle); only ticked
+      files are removed. _Decisions first (per `methodology.md`):_ how ROBUSTLY to detect "referenced" so
+      nothing in-use is ever offered (all embeds/links across notes, and consider canvas / non-Markdown
+      references — a false positive deletes a real file); images only or all attachment types; a final
+      confirm after ticking. (2026-06-12, user.)
 
 ### Known open bugs (Bug)
 
-_**91 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
+_**105 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
 
 - [ ] **Bug 65 — `<>` dismiss doesn't hide the FRONT of the link on the cursor line (fights the
       native widget).** When the editor cursor is on the image's line, the `<>` dismiss fails to hide the
@@ -161,6 +206,90 @@ _**91 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) e
       the line, or the reveal state flips), which reflows the line and **shifts the image inside the crop
       editor** — confusing mid-crop. Fix: freeze the reveal visibility for the crop duration (no
       reveal/dismiss changes while `.lie-cropping` is active). DEFERRED — track only. (2026-06-06.)
+
+> **Bugs 95–104 — a regression batch from the layout rework (`ba2dfa4`, "decouple size from layout"),
+> found in a CLEAN store install (v0.6.6).** The dev vault MASKED most of them: its `styles.css` was a
+> stale cached copy (the watch re-copied it only once at startup) and a snippet was already enabled, so
+> the broken current CSS + the State-A snippet path never showed in dev. A tooling fence was added to
+> stop the CSS drift (`esbuild.config.mjs` now re-syncs `styles.css`/`manifest.json` into the vault on
+> every build and force-reloads Obsidian via CDP on a `styles.css` change). The float vertical
+> one-line offset the user also hit is the SAME phenomenon as **Bug 67** ("extra leading line above
+> floating images") — tracked there, not duplicated. All reported 2026-06-11 (user).
+
+- [ ] **Bug 95 — Tall-float cap stacks normal/small floated images → "float doesn't work, image sits
+      inline, no text wrap" (intermittent).** A floated image with NO explicit px width/height hits
+      `estimatedBlockHeight`'s blind no-size fallback of **480px** ([renderer-logic.ts:106-115](src/renderer-logic.ts#L106-L115)),
+      which exceeds `TALL_FLOAT_THRESHOLD_PX = 250`, so `isTallFloat` is true and the safe-mode cap marks
+      it `.lie-tall` → it STACKS as a non-floated block. `ba2dfa4` DECOUPLED size from layout, so floats
+      now commonly carry no width → most floats stack → float looks broken; only an image with a small
+      explicit width (`width/aspect < 250`) still floats (the user's "bei einem Bild klappt es"). _Fix:_
+      the cap must decide on the REAL size — wait for `naturalWidth/Height` (the size lands declaratively
+      anyway) or use a non-blind fallback — so it never stacks a normally-sized image.
+- [ ] **Bug 96 — Link shown DOUBLED in Live Preview (Doppellink).** A standalone embed's raw link source
+      renders twice in LP. _Hypothesis (diagnose first):_ the FakeLinkWidget (the swallowed embed source,
+      [live-preview.ts](src/live-preview.ts)) is added while the native source still shows, or both the
+      `lineDecorations` and the `inlineEmbeds` paths fire on the same embed line — confirm which before
+      fixing. Decoration path (JS), not CSS.
+- [ ] **Bug 97 — (verify — possibly NOT a bug) the snippets toolbar button reportedly isn't hidden when
+      the feature is OFF.** The braces "snippets" button is ALREADY gated out at
+      [main.ts:583](src/main.ts#L583) (`...(cssClassesEnabled ? [b("snippets",…)] : [])`), and
+      `buildToolbarItems()` reads `this.settings` fresh on every toolbar build ([main.ts:545-550](src/main.ts#L545-L550))
+      → on the next hover the button SHOULD already be gone. So this is only a real defect if an
+      already-open toolbar isn't rebuilt after the toggle, or a stale dev build masked the current gate.
+      **Reproduce in a clean install before treating as a bug**; may be a non-issue.
+- [ ] **Bug 98 — Crop handles SCALE with the image instead of staying a fixed pixel size.** The crop
+      handles should be constant-size chrome; they grow/shrink with the image. Distinct from **Bug 80**
+      (handle DRAG geometry). _Hypothesis:_ the `handleBox` rides the placement transform
+      ([crop-editor.ts:490](src/crop-editor.ts#L490)) / sizes in relative units, so the image scale
+      propagates into the handle size. Fix in the crop chrome sizing.
+- [ ] **Bug 99 — Resize handle sits OUTSIDE the image and its box ENCLOSES the caption.** The resize
+      marker is mispositioned (outside the image bounds) and spans the caption area instead of hugging the
+      image's bottom-right corner. _Hypothesis:_ the chrome anchor shifted with the rework — the caption
+      host (`.lie-has-caption` inline-flex column) changes the box the marker anchors to. Chrome/caption
+      CSS interaction. (Same area as the CLOSED Bug 25 / Bug 43 / Feature 21 — a new bug per policy.)
+- [ ] **Bug 100 — Inline image: the LINK isn't shown, only the `{…}` attribute list, and the `{…}` has
+      NO syntax highlighting.** For an inline (mid-text) image the `![…](…)` head isn't displayed — only
+      the `{…}` — and the `{…}` renders as plain text (no markdown highlight). _Hypothesis:_ the inline
+      replace widget ([live-preview-logic.ts `inlineEmbeds`](src/live-preview-logic.ts)) covers the link
+      but not the `{…}`. The standalone-embed path DOES highlight the `{…}` (the `cm-url` mark,
+      [live-preview.ts:308](src/live-preview.ts#L308), + `highlightEmbed`); the INLINE path
+      ([live-preview-logic.ts `inlineEmbeds`](src/live-preview-logic.ts)) lacks that fake-link + `{…}`
+      treatment → no link, no highlight. (Same phenomenon as the CLOSED Bug 55 — which fixed the
+      STANDALONE case — so per policy this inline case is a NEW bug.) Live-preview decoration.
+- [ ] **Bug 101 — CSS-snippet install BOOTSTRAP DEADLOCK on a fresh vault.** Settings State A
+      ([settings.ts:217](src/settings.ts#L217)): with no Obsidian snippet enabled, the master toggle is
+      greyed (`setDisabled(true)`) and the install field (State C only) never renders → the bundled
+      snippet can't be installed → nothing to enable → the feature can never be turned on. The "Open
+      snippet manager" escape is empty (snippet not installed yet) — closed loop. _Fix:_ State A must
+      offer a real "install the bundled snippet now AND enable it" path (write the file +
+      `customCss.setCssEnabledStatus`), not just the empty manager link. (Masked in dev: the dev vault
+      already had a snippet enabled, so State A never appeared.)
+- [ ] **Bug 102 — The red State-A warning text sits orphaned BETWEEN entries, not inside its setting.**
+      [settings.ts:224](src/settings.ts#L224) appends the warning `<p>` to the container `c`, so it floats
+      between the card and the "Open snippet manager" button. It belongs INSIDE the setting entry (its
+      `descEl` / the card group `items`). Cosmetic; pairs with Bug 101.
+- [ ] **Bug 103 — Identity crop placement serialized as `translate(0%, 0%) rotate(0deg)` noise.** A real
+      crop (changed aspect) with an IDENTITY placement (tx=ty=0, rot=0, scale=1) still writes the noise
+      transform into the `{…}` block. The degenerate guard ([crop-editor.ts:497](src/crop-editor.ts#L497))
+      only nulls a FULLY-degenerate session (placement AND aspect identity); a real crop with an identity
+      placement isn't stripped. _Fix:_ serialization must omit an identity transform (drop
+      `translate(0%,0%)`, `rotate(0deg)`, `scale(1,1)`; keep only `aspect-ratio`).
+- [ ] **Bug 104 — The plugin's OWN `<>` reveal/toggle button is not shown.** The toolbar's `<>`
+      reveal/dismiss control ([live-preview.ts:205](src/live-preview.ts#L205)) doesn't render. No code is
+      meant to hide it (only **Bug 31** hides the NATIVE edit-block `<>`), so its absence is a regression —
+      likely `ba2dfa4`'s toolbar/overlay changes. Recurring area (Bug 29/53/54) but a NEW cause → new
+      number per the numbering policy.
+- [ ] **Bug 105 — `Replace all` link-swaps every occurrence of the SAME image instead of flattening all
+      images (wrong concept, user-declared).** The shipped `replace-all-images` command
+      ([commands.ts:70](src/commands.ts#L70), `planReplaceAll`) re-points every occurrence of one source
+      to a chosen file — coherent in isolation, but NOT what "replace all" was meant to be: flatten EVERY
+      image in the note to its displayed result (transforms applied into the pixels) and strip the `{…}`.
+      Per user decision (2026-06-12) `Replace all` is REDEFINED to the note-wide flatten — it becomes the
+      entry point for **Feature 31** ("Flatten & clean in place"). _Fix:_ build Feature 31 behind the
+      command (or remove the link-swap variant until it lands). The single-image link-swap stays as the
+      renamed **F26 "Change image source"**; the single-image flatten is **Feature 41**. Root cause: F26's
+      note-wide clause was an UNREVIEWED spec change — the very trigger for the CLAUDE.md non-negotiable
+      gate. (2026-06-12, user.)
 
 ---
 

@@ -1,5 +1,24 @@
 # CLAUDE.md
 
+> ## ⛔ NON-NEGOTIABLE GATE — APPLIES TO EVERY CODE CHANGE, NO EXCEPTIONS
+>
+> This is the **single highest-priority rule in this repository.** It OVERRIDES any urge to "just fix it", any time pressure, any apparent obviousness of a patch. It is not advice; it is a hard precondition for touching code. It has been ignored before — it must not be again.
+>
+> **Code (a bugfix or *anything* else) may change AT MOST the lowest altitude: `docs/development/implementation-plan.md` and the source it maps.** The four higher artifacts are **INVIOLABLE — they may NEVER be broken, bent, or "temporarily" worked around:**
+>
+> 1. `docs/development/methodology.md`
+> 2. `docs/development/requirements.md` (F/D/T)
+> 3. `docs/development/architecture.md` (AD/AB/R0)
+> 4. `docs/development/test-plan.md`
+>
+> **MANDATORY before you write or edit a single line of code — every time:**
+>
+> - State which of the four artifacts your change touches. The required answer is **none.**
+> - If a candidate fix would violate any F/D/T requirement, any AD/AB/R0 decision, the test plan, or the methodology, **it is NOT a valid fix. Discard it and find one that honours all four.** A fix that breaks a higher rule is worse than no fix.
+> - Verify a behaviour is a real defect and not a deliberate design before "fixing" it (e.g. decoration classes ride the img on purpose — Bug 10/27).
+>
+> **STOP CONDITION — the user decides, never you:** If, and only if, *no* valid fix exists without changing one of the four inviolable artifacts, **do not change it and do not proceed.** Stop, explain why every compliant fix fails, and ask the user to make the call. Changing a higher artifact yourself — or shipping a fix that quietly breaks one — is a hard failure.
+
 ## Project
 
 Obsidian plugin: **Live Image Editor** (id `live-image-editor`; GitHub repo `obsidian-live-image-editor`).
@@ -19,6 +38,8 @@ This file is the **build & debug guide** only. The design — requirements, arch
 - **`docs/development/test-plan.md`** — the test strategy (currently a draft).
 - **`docs/development/issues.md`** — the **backlog + lessons**. **OPEN** at the top: numbered registry items in the changelog's own per-category sequences — **open decisions** (`Decision N`), **planned features** (`Feature N`), **known open bugs** (`Bug N`) — each assigned its number when opened and **keeping it** when it ships (→ moves to the changelog); plus a **Meta level** of process/quality work (**verifications**, **refactoring**, **housekeeping**, and the hard-won **`Lesson 1–17`**) that stays here and is **unnumbered**. The **solved** Bug / Feature / Change / Decision entries (with cause + fix) live in **`CHANGELOG.md`** — see *Versioning, changelog & commits* below.
 - **`docs/development/methodology.md`** — the core principles (DRY, KISS, elegance, think-first, ground-up), the abstraction-level model, and how we work.
+
+**Altitude discipline is governed by the [⛔ NON-NEGOTIABLE GATE](#-non-negotiable-gate--applies-to-every-code-change-no-exceptions) at the top of this file:** code may change at most `implementation-plan.md`; `methodology.md`, `requirements.md`, `architecture.md` and `test-plan.md` are inviolable, and only the user may decide to change one. Re-read that gate before every code change.
 
 ## Build & Test
 

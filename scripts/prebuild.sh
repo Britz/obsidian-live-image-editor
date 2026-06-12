@@ -24,8 +24,3 @@ upsert() {
 upsert USER_NAME "${USER}"
 upsert USER_UID "${HOST_UID}"
 upsert VARIANT "${VARIANT}"
-
-if command -v xattr >/dev/null 2>&1; then
-  xattr -rsd user.containers.override_stat "${ROOT_DIR}" 2>/dev/null || true
-  echo "Cleared stale podman override_stat xattrs in ${ROOT_DIR}"
-fi
