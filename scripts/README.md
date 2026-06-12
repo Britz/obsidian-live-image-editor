@@ -9,11 +9,10 @@ each one runs — some are container-side, some must run on the **host** (macOS)
 
 ## Build & install
 
-- **`prebuild.sh`** *(host)* — the devcontainer `initializeCommand` (see
-  `.devcontainer/devcontainer.json`). Writes `USER_NAME` / `USER_UID` / `VARIANT` into
-  `.devcontainer/.env` so the container runs as the host user (matching uid → no root-owned files),
-  and clears stale podman `override_stat` xattrs. Runs automatically when the container starts; you
-  rarely call it by hand.
+- Devcontainer setup (the `initializeCommand` **`prebuild.sh`**, the `Dockerfile` and `.env`) lives in
+  **`.devcontainer/`**, not here. On the **host**, `prebuild.sh` writes `USER_NAME` / `USER_UID` /
+  `USER_GID` / `VARIANT` into `.devcontainer/.env` — all derived from the host — so the container user
+  matches the host (uid + gid → files stay host-owned, never root). Runs automatically on container start.
 - **`dev-install.sh <vault-path> [--dev]`** — build the plugin and copy `main.js` / `manifest.json` /
   `styles.css` into `<vault>/.obsidian/plugins/live-image-editor/`. Detects its context: on the
   **host** it spins up the devcontainer (`@devcontainers/cli`) and builds inside it; **inside** the

@@ -7,7 +7,7 @@
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "initializeCommand": "./scripts/prebuild.sh",
+  "initializeCommand": "./.devcontainer/prebuild.sh",
   "containerUser": "${localEnv:USER}",
   "remoteUser": "${localEnv:USER}",
   "postCreateCommand": "sudo chown -R \"$(id -u)\":\"$(id -g)\" \"$HOME/.claude\"",

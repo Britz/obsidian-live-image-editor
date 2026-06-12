@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ROOT_DIR}/.devcontainer/.env"
 
 HOST_UID="$(id -u)"
+HOST_GID="$(id -g)"
 VARIANT="22"
 
 touch "${ENV_FILE}"
@@ -23,4 +24,5 @@ upsert() {
 
 upsert USER_NAME "${USER}"
 upsert USER_UID "${HOST_UID}"
+upsert USER_GID "${HOST_GID}"
 upsert VARIANT "${VARIANT}"
