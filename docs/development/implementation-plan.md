@@ -343,7 +343,7 @@ there is no second crop/rotate/scale implementation. (This collapses the old dup
 - **Tall-float cap** — a float marked `.lie-tall` by the renderer (a declarative height estimate,
   AD6) stacks as a non-floated block under `body.lie-safe-tall-float` in **both** views
   (`.lie-wrapper:has(img.lie-tall)` in LP, `.image-embed:has(img.lie-tall)` in reading view), so a
-  tall LP float can't derender on scroll (the `tallFloatSafe` setting, default on).
+  tall LP float can't derender on scroll (the `tallFloatSafe` setting, default off).
 - The bulk lives in the shipped static `styles.css`: the box/overflow rules, the alignment `:has()`
   float routing (with `z-index:1` keeping the floated image clickable), inline, the
   native-suppression/reveal rules and the tall-float cap. `styles-injector.ts` (AB20) adds only the

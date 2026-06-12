@@ -380,7 +380,7 @@ Grouped by area; each line states what is checked.
   live preview the float is the inline widget in its own non-BFC cm-line that **escapes** into
   `.cm-content` (multi-line wrap on hard-wrapped paragraphs, **zero height desync** per line, **no
   click-steal**, image clickable via `z-index:1`). A float taller than ~250px **stacks as a
-  non-floated block in BOTH views** under the *Stack tall floated images* setting (default safe), so
+  non-floated block in BOTH views** under the *Stack tall floated images* setting (default permissive — off), so
   it can't derender on scroll in LP and the reader matches it (`tallFloatSafe`; the tall-float cap).
 - **Settings (`F20`, `D11`).** General toggles (hover toolbar, captions, default reveal state),
   preset widths, snippet list with per-class toggles and install/reset, and editing-toolbar

@@ -110,6 +110,23 @@ const runtimeContext = await esbuild.context({
   treeShaking: true,
   outfile: "lie-runtime.js",
   minify: prod,
+  plugins: [
+    {
+      // The top-level `lie-runtime.js` is a git-ignored build artifact (like `main.js`) that the
+      // release attaches as a GitHub asset. For versioned jsDelivr-gh embedding we ALSO keep a
+      // committed copy under `dist/` — the one generated output that lives in the tree, kept
+      // separate from hand-written source. Only the PROD (minified, no-sourcemap) bundle is copied,
+      // so the committed `dist/lie-runtime.js` is never a fat dev build.
+      name: "lie-runtime-dist-copy",
+      setup(build) {
+        build.onEnd((result) => {
+          if (!prod || result.errors.length) return;
+          fs.mkdirSync("dist", { recursive: true });
+          fs.copyFileSync("lie-runtime.js", "dist/lie-runtime.js");
+        });
+      },
+    },
+  ],
 });
 
 if (watch) {

@@ -225,11 +225,6 @@ _**105 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       explicit width (`width/aspect < 250`) still floats (the user's "bei einem Bild klappt es"). _Fix:_
       the cap must decide on the REAL size — wait for `naturalWidth/Height` (the size lands declaratively
       anyway) or use a non-blind fallback — so it never stacks a normally-sized image.
-- [ ] **Bug 96 — Link shown DOUBLED in Live Preview (Doppellink).** A standalone embed's raw link source
-      renders twice in LP. _Hypothesis (diagnose first):_ the FakeLinkWidget (the swallowed embed source,
-      [live-preview.ts](src/live-preview.ts)) is added while the native source still shows, or both the
-      `lineDecorations` and the `inlineEmbeds` paths fire on the same embed line — confirm which before
-      fixing. Decoration path (JS), not CSS.
 - [ ] **Bug 97 — (verify — possibly NOT a bug) the snippets toolbar button reportedly isn't hidden when
       the feature is OFF.** The braces "snippets" button is ALREADY gated out at
       [main.ts:583](src/main.ts#L583) (`...(cssClassesEnabled ? [b("snippets",…)] : [])`), and
@@ -247,15 +242,6 @@ _**105 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       image's bottom-right corner. _Hypothesis:_ the chrome anchor shifted with the rework — the caption
       host (`.lie-has-caption` inline-flex column) changes the box the marker anchors to. Chrome/caption
       CSS interaction. (Same area as the CLOSED Bug 25 / Bug 43 / Feature 21 — a new bug per policy.)
-- [ ] **Bug 100 — Inline image: the LINK isn't shown, only the `{…}` attribute list, and the `{…}` has
-      NO syntax highlighting.** For an inline (mid-text) image the `![…](…)` head isn't displayed — only
-      the `{…}` — and the `{…}` renders as plain text (no markdown highlight). _Hypothesis:_ the inline
-      replace widget ([live-preview-logic.ts `inlineEmbeds`](src/live-preview-logic.ts)) covers the link
-      but not the `{…}`. The standalone-embed path DOES highlight the `{…}` (the `cm-url` mark,
-      [live-preview.ts:308](src/live-preview.ts#L308), + `highlightEmbed`); the INLINE path
-      ([live-preview-logic.ts `inlineEmbeds`](src/live-preview-logic.ts)) lacks that fake-link + `{…}`
-      treatment → no link, no highlight. (Same phenomenon as the CLOSED Bug 55 — which fixed the
-      STANDALONE case — so per policy this inline case is a NEW bug.) Live-preview decoration.
 - [ ] **Bug 101 — CSS-snippet install BOOTSTRAP DEADLOCK on a fresh vault.** Settings State A
       ([settings.ts:217](src/settings.ts#L217)): with no Obsidian snippet enabled, the master toggle is
       greyed (`setDisabled(true)`) and the install field (State C only) never renders → the bundled

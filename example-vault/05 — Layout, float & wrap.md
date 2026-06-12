@@ -36,6 +36,21 @@ And now, to give the right-hand wrap enough to run along, some random filler: *S
 Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.
 Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet.*
 
+## Tall-float cap — a tall float stacks as a block keeping its side
+
+A separate safety case (off by default). A left/right float whose *rendered* height tops ~250px would
+derender on scroll in Live Preview (the wrap dissolves). Turn on **Settings → Stack tall floated images**
+and a too-tall float falls back to a **block on its own line, flushed to the same side** — a float-left
+becomes a block-left, a float-right a block-right — instead of sitting inline. With the setting **off**
+(the default) the image below floats normally and the text wraps it.
+
+![](images/sample-portrait.png){align=left height=320}
+With the cap **on**, this tall portrait stops wrapping and stacks as a **right-aligned block** — text above
+and below, image flush right — so it can't vanish on scroll; the chosen *right* side survives as block alignment.
+And now, to give the wrap something to do while the cap is off, some random filler: *Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.*
+
 ## Block, centered — `align=block-center`
 
 Not a float at all: the image becomes a **block on its own line**, centered in the column, with text sitting **above and below** it rather than beside it.

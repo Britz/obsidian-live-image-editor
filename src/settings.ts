@@ -97,7 +97,7 @@ export const DEFAULT_SETTINGS: LieSettings = {
   disabledSnippetClasses: [],
   cssClassesEnabled: true, // preserve the prior always-on behaviour
   editingToolbarEnabled: false,
-  tallFloatSafe: true, // on by default = safe (stack tall floats); off = permissive float
+  tallFloatSafe: false, // off by default = permissive float (always wrap); on = safe (stack tall floats)
   buttonOutlines: "auto", // follow the OS/Obsidian accessibility signal by default
 };
 

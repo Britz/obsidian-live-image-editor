@@ -12,7 +12,8 @@
 #   commit  : <COMMIT-MSG>                    (verbatim)
 #   tag     : annotated, named <VERSION> (the tag NAME is the bare version), message <TAG-MSG> verbatim
 #   release : gh release on tag <VERSION>; notes = <TAG-MSG> + "\n\n" + the CHANGELOG section;
-#             assets main.js + manifest.json + styles.css attached as binaries (Obsidian SR rule).
+#             assets main.js + manifest.json + styles.css attached as binaries (Obsidian SR rule),
+#             plus lie-runtime.js (portable runtime AB7a — extra asset, Obsidian ignores it).
 #
 # It BUILDS first (npm run build → generates main.js; a build failure aborts immediately), then
 # summarises EVERYTHING (with the asset sizes) and waits for an explicit "y". Anything else aborts and
@@ -95,8 +96,8 @@ SCOPE_COUNT="$(git status --porcelain | wc -l | tr -d ' ')"
 printf '\n══ RELEASE SUMMARY ════════════════════════════════════════════\n'
 # single-line fields first; the potentially multi-line commit + notes go last.
 printf '  version : %s   (from package.json; tag name is bare — no leading v)\n' "$VERSION"
-printf '  assets  : main.js (%s), manifest.json (%s), styles.css (%s)\n' \
-  "$(hsize main.js)" "$(hsize manifest.json)" "$(hsize styles.css)"
+printf '  assets  : main.js (%s), manifest.json (%s), styles.css (%s), lie-runtime.js (%s)\n' \
+  "$(hsize main.js)" "$(hsize manifest.json)" "$(hsize styles.css)" "$(hsize lie-runtime.js)"
 printf '  scope   : %s changed path(s) — ALL staged via `git add -A` (run `git status` for the list)\n' "$SCOPE_COUNT"
 printf '  tag msg : %s\n' "$TAG_FULL"
 printf '  commit  : %s\n' "$COMMIT_FULL"
@@ -128,7 +129,7 @@ git push origin HEAD
 git push origin "$VERSION"
 
 step "creating the GitHub release with assets…"
-gh release create "$VERSION" --title "$VERSION" --notes "$NOTES" main.js manifest.json styles.css
+gh release create "$VERSION" --title "$VERSION" --notes "$NOTES" main.js manifest.json styles.css lie-runtime.js
 
 step "verifying the release went through…"
 FAIL=0
@@ -137,7 +138,7 @@ git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1 \
 if gh release view "$VERSION" >/dev/null 2>&1; then
   echo "  ✓ GitHub release $VERSION exists"
   ASSETS="$(gh release view "$VERSION" --json assets -q '.assets[].name' 2>/dev/null || true)"
-  for a in main.js manifest.json styles.css; do
+  for a in main.js manifest.json styles.css lie-runtime.js; do
     printf '%s\n' "$ASSETS" | grep -qx "$a" \
       && echo "  ✓ asset $a attached" || { echo "  ✗ asset $a MISSING from the release"; FAIL=1; }
   done

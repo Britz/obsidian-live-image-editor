@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut a release of the Live Image Editor plugin — verifies the version, drafts the commit/tag/release-notes messages, shows the WHOLE release as one summary in the chat, and (only after the user replies YES/JA) runs the release: versioned commit + annotated tag + GitHub release with main.js/manifest.json/styles.css attached. Use when the user wants to release, publish, tag, or ship a new plugin version.
+description: Cut a release of the Live Image Editor plugin — verifies the version, drafts the commit/tag/release-notes messages, shows the WHOLE release as one summary in the chat, and (only after the user replies YES/JA) runs the release: versioned commit + annotated tag + GitHub release with main.js/manifest.json/styles.css/lie-runtime.js attached. Use when the user wants to release, publish, tag, or ship a new plugin version.
 ---
 
 # Release
@@ -51,7 +51,7 @@ CHANGELOG body itself).
 ## 3 — Build, so the summary has real asset sizes
 
 Run `npm run build` (tsc + esbuild → regenerates `main.js`). A build failure STOPS the release here,
-before the summary. Read the byte sizes of `main.js`, `manifest.json`, `styles.css` for the summary.
+before the summary. Read the byte sizes of `main.js`, `manifest.json`, `styles.css`, `lie-runtime.js` for the summary.
 (The script builds again itself; this build is just to populate the summary with accurate sizes.)
 
 ## 4 — THE GATE: show the full summary in the chat, wait for `YES` / `JA`
@@ -62,7 +62,7 @@ Print the **complete release summary** in the chat — everything, in full, read
 - the **complete** tag message,
 - the **complete** release notes (the body that will be posted) — shown **in full**, including the
   whole `## [VERSION]` CHANGELOG section verbatim, NOT just a reference to it,
-- assets **with sizes**: `main.js`, `manifest.json`, `styles.css`,
+- assets **with sizes**: `main.js`, `manifest.json`, `styles.css`, `lie-runtime.js`,
 - commit scope: how many paths `git add -A` stages — and a clear warning that `-A` sweeps the
   **ENTIRE** working tree into the release commit, not just the release files (tell the user to run
   `git status` if unsure),
@@ -81,7 +81,7 @@ Then ask the user to reply **`YES` or `JA`** to release.
   RELEASE_ASSUME_YES=1 bash scripts/release.sh "<commit msg>" "<tag msg>" "<release notes>"
   ```
   (`RELEASE_ASSUME_YES=1` skips the script's own `y` prompt — the chat YES/JA already replaced it.)
-  The script builds, then self-verifies at the end (tag on origin, release + the three assets present)
+  The script builds, then self-verifies at the end (tag on origin, release + the four assets present)
   — report that result and the release URL, and surface any `✗` if a check failed.
 - **On anything else** → do nothing (no build-for-release, commit, tag, push, or release). Revise if
   they asked for changes; otherwise stop. (The user can also run `bash scripts/release.sh` themselves;
@@ -94,4 +94,4 @@ Then ask the user to reply **`YES` or `JA`** to release.
 | commit | `<commit msg>` (verbatim — include any `chore(release): v<VERSION> — ` prefix yourself) |
 | tag | name `<VERSION>` (no `v`), annotated message `<tag msg>` (verbatim) |
 | release notes | `<release notes>` (verbatim arg 3; default = tag msg + blank line + CHANGELOG section → pass empty arg 3) |
-| assets | `main.js`, `manifest.json`, `styles.css` |
+| assets | `main.js`, `manifest.json`, `styles.css`, `lie-runtime.js` |

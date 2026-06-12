@@ -73,7 +73,7 @@ export default {
   settingsRevealDefault: "Always show the link source",
   settingsRevealDefaultDesc: "Off: the link source appears on hover or while editing its line. On: always visible. The toolbar's <> button hides it per image.",
   settingsTallFloat: "Stack tall floated images",
-  settingsTallFloatDesc: "A left/right-floated image taller than ~250px stacks as a block (both views) so it can't vanish while scrolling in Live Preview. Off: always wrap.",
+  settingsTallFloatDesc: "A left/right-floated image whose rendered height exceeds ~250px stacks as a block (both views) so it can't vanish while scrolling in Live Preview. Triggers early: without a set height even a moderate width already counts as tall. Off (default): always wrap.",
   settingsButtonOutlines: "Toolbar button outlines",
   settingsButtonOutlinesDesc: "Toolbar buttons are flat by default. Auto: show outlines when the system requests higher contrast. Always: always show. Never: keep flat.",
   settingsButtonOutlinesAuto: "Auto (follow system)",

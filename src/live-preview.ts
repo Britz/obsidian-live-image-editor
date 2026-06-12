@@ -279,7 +279,6 @@ export function createLivePreviewExtension(
     const sourcePath = getSourcePath();
     const showCaptions = getShowCaptions();
     const revealMode: RevealMode = getAlwaysShow() ? "always" : "auto";
-    const head = state.selection.main.head;
 
     for (let i = 1; i <= state.doc.lines; i++) {
       const line = state.doc.line(i);
@@ -333,14 +332,24 @@ export function createLivePreviewExtension(
         }
       }
       if (isLivePreview) {
+        // Inline (mid-text / in-list) embeds get the SAME reveal machinery as the standalone path
+        // (architecture AB16: "Inline embeds get the same widget; only chrome placement differs"). The
+        // OLD cursor-skipped `Decoration.replace` DEVIATED from that: when the cursor entered the embed
+        // the replace was dropped, so the native image (uniformly CSS-suppressed) vanished and the bare
+        // `{…}` was left as stray text with NO link (Bug 100; the "double"/missing-attr reveal glitches).
+        // Now — exactly like standalone — we never replace and never skip on the cursor: a fake link paints
+        // the source for the reveal-for-looking, the `{…}` is a marked + highlighted native text, and the
+        // plugin draws its own INLINE image widget after it. The native embed stays (image CSS-suppressed).
         for (const ie of inlineEmbeds(line.text, line.from)) {
-          if (head >= ie.from && head <= ie.to) continue;
-          builder.add(
-            ie.from, ie.to,
-            Decoration.replace({
-              widget: new EmbedWidget(app, ie.embed, ie.params, sourcePath, getActions, "inline", "auto", false, false),
-            })
-          );
+          const attrStart = ie.from + ie.embed.length;
+          // (1) The fake link (the source), revealed on cursor/hover via CSS.
+          builder.add(ie.from, ie.from, Decoration.widget({ widget: new FakeLinkWidget(ie.embed, revealMode), side: -1 }));
+          // (2) The {…} block — native editable text, marked + url-string highlighted (as standalone).
+          if (ie.to > attrStart) {
+            builder.add(attrStart, ie.to, Decoration.mark({ class: `lie-attr lie-rev-${revealMode} ${URL_CLASS}` }));
+          }
+          // (3) The transformed inline image widget, drawn by the plugin (native image suppressed).
+          builder.add(ie.to, ie.to, Decoration.widget({ widget: new EmbedWidget(app, ie.embed, ie.params, sourcePath, getActions, "inline", revealMode, false, false), side: 1 }));
         }
       }
     }

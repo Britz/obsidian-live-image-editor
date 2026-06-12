@@ -73,7 +73,7 @@ export default {
   settingsRevealDefault: "Linkquelle immer anzeigen",
   settingsRevealDefaultDesc: "Aus: Linkquelle erscheint beim Hovern oder Bearbeiten der Zeile. An: immer sichtbar. Die <>-Schaltfläche blendet sie pro Bild aus.",
   settingsTallFloat: "Hohe umflossene Bilder als Block",
-  settingsTallFloatDesc: "Ein links/rechts umflossenes Bild über ~250px wird als Block gestapelt (beide Ansichten), damit es beim Scrollen in der Live-Vorschau nicht verschwindet. Aus: immer umfließen.",
+  settingsTallFloatDesc: "Ein links/rechts umflossenes Bild, dessen gerenderte Höhe ~250px übersteigt, wird als Block gestapelt (beide Ansichten), damit es beim Scrollen in der Live-Vorschau nicht verschwindet. Greift früh: ohne gesetzte Höhe zählt schon eine mäßige Breite als „hoch“. Aus (Standard): immer umfließen.",
   settingsButtonOutlines: "Umrandung der Toolbar-Schaltflächen",
   settingsButtonOutlinesDesc: "Toolbar-Schaltflächen sind standardmäßig flach. Auto: Umrandung zeigen, wenn das System höheren Kontrast anfordert. Immer: stets zeigen. Nie: flach lassen.",
   settingsButtonOutlinesAuto: "Auto (System folgen)",
