@@ -250,6 +250,13 @@ current code and are restated here as architecture, not invented anew.
   manager's link generation for link-form conversion (used defensively), and Obsidian's locale
   and strings for i18n. The plugin adds the missing logic around these, never a parallel
   reimplementation.
+  - **Runtime exception (off-Obsidian).** "Reuse the platform" only binds where the platform
+    actually provides the capability. On a foreign page the standalone runtime (AB7a) has **no**
+    Obsidian — no `MarkdownRenderer` — so it MAY carry its own **minimal inline-Markdown renderer**
+    for captions (bold / italic / code / link). That is not a parallel reimplementation of a
+    platform capability (there is none to reuse here) and stays **runtime-only** — the plugin's
+    caption path keeps using `MarkdownRenderer`. Full fidelity is still bounded by the **lossy alt
+    attribute** (e.g. python-markdown strips code-span backticks before the runtime sees the alt).
 
 ---
 

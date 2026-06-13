@@ -12,14 +12,14 @@ there is no separate caption store to keep in sync.
 The simplest case — plain alt text becomes the caption.
 The text *A calm landscape at dusk* appears centered just below the image, in the muted caption style.
 
-![A calm landscape at dusk](images/sample-landscape.png){width=360}
+![A calm landscape at dusk](images/sample-landscape.png){width=360 .lie}
 
 ## Markdown in the caption
 
 The caption is rendered, not shown raw:
 this alt text mixes **bold**, *italic* and a `code` span, and each should appear formatted below the image rather than as literal `**` / `*` / backtick markup.
 
-![A **bold** word, an *italic* word and a `code` word](images/sample-square.png){width=240}
+![A **bold** word, an *italic* word and a `code` word](images/sample-square.png){width=240 .lie}
 
 ## Long caption wraps within the image width
 
@@ -28,7 +28,7 @@ The caption below is deliberately long so you can confirm it stays no wider than
 The opening sentence says what to check;
 the trailing *italic* run is just filler to push the caption past one line.
 
-![This deliberately long caption proves the caption never grows wider than its 240px image — it wraps onto centered lines below the picture instead of stretching the layout — and, to push it past a single line, some filler: *lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua*](images/sample-square.png){width=240}
+![This deliberately long caption proves the caption never grows wider than its 240px image — it wraps onto centered lines below the picture instead of stretching the layout — and, to push it past a single line, some filler: *lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua*](images/sample-square.png){width=240 .lie}
 
 ## Caption on a rotated image
 
@@ -49,7 +49,7 @@ The image is rendered grayscale, but the caption is ordinary note text and stays
 For a `![](wikilink)` embed the **display text** after the `|` becomes the caption (here *A portrait*).
 A bare `|size` value such as `|160` is treated as a size, not a caption, so it would produce no text.
 
-![[sample-portrait.png|160 "*A portrait*"]]
+![[sample-portrait.png|160 "*A portrait*"]]{.lie}
 
 ## No alt text → no caption
 

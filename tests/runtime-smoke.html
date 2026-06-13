@@ -66,6 +66,30 @@
   <section><h3>Pandoc data- variant (data-rotate=90) + .lie marker — claimed</h3>
     <img data-smoke alt="" class="lie" data-rotate="90" width="200"></section>
 
+  <h2>Captions (D9) — alt text → caption, off-Obsidian</h2>
+  <p>A CLAIMED image with non-empty <code>alt</code> gets a plain-text caption below it, sized to the
+  image width. Markdown in the alt is NOT rendered off-Obsidian (no platform renderer) — it shows
+  literally (a documented degradation). A NOT-claimed (width-only) image gets no caption even with
+  alt — add <code>.lie</code> to claim it.</p>
+
+  <section><h3>rotate=90 + alt — claimed → caption below the (rotated) footprint</h3>
+    <img data-smoke alt="A rotated landscape" rotate="90" width="200"></section>
+
+  <section><h3>.lie marker + width only + alt — claimed via .lie → caption (the "plain caption" case)</h3>
+    <img data-smoke alt="A calm landscape at dusk" class="lie" width="240"></section>
+
+  <section><h3>transform crop + long alt — caption wraps within the image width</h3>
+    <img data-smoke alt="This deliberately long caption proves the caption never grows wider than its image — it wraps onto centered lines below the picture instead of stretching the layout" transform="translate(-20%, -10%) scale(1.8)" aspect-ratio="4/3" width="240"></section>
+
+  <section><h3>align=center + alt — claimed (center) → centered image+caption unit</h3>
+    <img data-smoke alt="A centered caption" align="center" width="200"></section>
+
+  <section><h3>width-only + alt — NOT claimed → NO caption (native image, documents the limit)</h3>
+    <img data-smoke alt="This alt does NOT become a caption (image is not claimed)" width="200"></section>
+
+  <section><h3>empty alt — claimed but no caption (no empty gap)</h3>
+    <img data-smoke alt="" rotate="-90" width="200"></section>
+
   <!-- Comment out the next line + reload to see the no-JS fallback (original images). -->
   <script src="../lie-runtime.js"></script>
 </body>

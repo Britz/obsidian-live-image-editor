@@ -13,6 +13,8 @@ prompts/
 **/.obsidian/workspace.json
 **/.obsidian/workspace-mobile.json
 example-vault/.obsidian/plugins/live-image-editor/data.json
+# regenerated build artifact (npm run build / dev:vault writes it) — like main.js, don't track
+example-vault/.obsidian/plugins/live-image-editor/styles.css
 
 # MkDocs site build (docs/ -> GitHub Pages)
 /site/

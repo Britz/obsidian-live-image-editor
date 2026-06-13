@@ -159,7 +159,17 @@ class EmbedWidget extends WidgetType {
     area.appendChild(img);
     applyTransformToImage(img, this.parsedTransform());
 
-    area.appendChild(this.makeResizeCorner(view, wrapper, img));
+    // Wrap the image (`.lie-image-area`) and the resize handle in a non-clipping host that
+    // shrink-wraps the IMAGE only, so the handle's `bottom:0` anchors to the image corner — not the
+    // `.lie-box` bottom, which a caption (a sibling flex item, D9) extends below the image. The box
+    // stays the caption shrink-host (D9); the host has no `overflow:hidden`, so the corner marker
+    // sits centred on the corner (half outside) without being clipped by the image-area's own clip.
+    const host = document.createElement("div");
+    host.className = "lie-image-host";
+    const imageArea = img.closest<HTMLElement>(".lie-image-area");
+    if (imageArea) host.appendChild(imageArea);
+    host.appendChild(this.makeResizeCorner(view, wrapper, img));
+    area.appendChild(host);
     area.appendChild(this.makeToolbar(view, img, wrapper));
     if (this.showCaptions) {
       const caption = createCaption(this.app, captionMarkdown(this.embed), this.sourcePath);
@@ -248,7 +258,11 @@ class EmbedWidget extends WidgetType {
         const line = view.state.doc.lineAt(view.posAtDOM(wrapper));
         const replacement = rewriteWidth(line.text, widthAt(ev));
         if (replacement === null) return;
-        writeSource(view, { from: line.from, to: line.to, insert: replacement });
+        // Move the cursor onto the resized image's line (D11): the resize handle is reachable on
+        // HOVER without first clicking the image, so the caret may sit anywhere (offset 0). Pass
+        // `line.from` so writeSource seeds the change's startSelection — otherwise cmd+Z restores
+        // the offset-0 selection and scrolls to the document top.
+        writeSource(view, { from: line.from, to: line.to, insert: replacement }, line.from);
       };
       document.addEventListener("pointermove", onMove);
       document.addEventListener("pointerup", onUp);

@@ -399,9 +399,15 @@ body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall.lie-float-rig
    separate native source for the `![…]` part, so the painted fake is the ONLY thing showing the
    link: it MUST stay visible so the source is readable while you edit the {…} (else the link
    vanishes the moment the cursor enters the line — the bug this fixes). */
-.cm-line:hover .lie-fake-link.lie-rev-auto,
+/* The HOVER reveal is SUPPRESSED on a line that is being CROPPED (`:not(:has(.lie-cropping))`).
+   The crop chrome (rotate handle etc.) extends well beyond the image/crop-frame, so dragging the
+   pointer onto it leaves the `.cm-line` and would FLIP the hover reveal mid-crop. During a crop the
+   source must NOT change visibility: it follows ONLY the stable signals — `.cm-active`, always-mode,
+   and the `<>` dismiss — so an OFF source (auto-mode resting state, or `<>`-dismissed) STAYS off and
+   an always-shown one stays shown, regardless of where the crop drags the mouse. */
+.cm-line:not(:has(.lie-cropping)):hover .lie-fake-link.lie-rev-auto,
 .cm-active .lie-fake-link.lie-rev-auto,
-.cm-line:hover .lie-attr.lie-rev-auto,
+.cm-line:not(:has(.lie-cropping)):hover .lie-attr.lie-rev-auto,
 .lie-fake-link.lie-rev-always,
 .lie-attr.lie-rev-always { display: inline; }
 /* The `<>` toggle DISMISSED this line's source (build() stamps `.lie-dismissed` on it):
@@ -445,8 +451,22 @@ body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall.lie-float-rig
   align-items: flex-start;
 }
 
+/* Non-clipping shrink-wrap host for the image + its resize handle. The handle's `bottom:0` must
+   anchor to the IMAGE corner, but the caption (a sibling flex item in `.lie-box`, D9) extends the
+   box below the image. So the image-area and the handle live in this host, which shrink-wraps the
+   image only; the box stays the caption shrink-host. The host has NO `overflow:hidden` (unlike the
+   image-area, which is RENDER_CSS), so the corner marker can sit centred on the corner (half
+   outside) without being clipped. */
+.lie-image-host {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+  vertical-align: bottom;
+}
+
 /* Selection frame on hover (D4), hidden while cropping. */
-.lie-box:hover > .lie-image-area::after {
+.lie-box:hover .lie-image-area::after {
   content: "";
   position: absolute;
   inset: 0;

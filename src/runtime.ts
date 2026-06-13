@@ -13,7 +13,10 @@
 // Limitation: kramdown/Jekyll never attach the bare-brace `{…}` to the DOM, so there it is
 // unsupported (the plain original shows) — documented, out of scope.
 
-import { buildLayers, readTransform, RENDER_CSS, CLAIM_SELECTOR } from "./render-core";
+import { buildLayers, readTransform, RENDER_CSS, CAPTION_CSS, CLAIM_SELECTOR } from "./render-core";
+import { captionFromAlt } from "./caption-logic";
+import { mountCaption } from "./caption-dom";
+import { renderInlineMarkdown } from "./runtime-markdown";
 import { BUNDLED_SNIPPET_CSS } from "./bundled-snippet";
 
 // On a foreign page the OUTER `.lie-image-area` IS the flow participant (no Obsidian embed
@@ -60,12 +63,26 @@ function hydrate(root: Node): void {
   for (const img of claimedImages(root)) {
     if (img.closest(".lie-frame")) continue; // already wrapped
     buildLayers(img, readTransform(img));
+    addCaption(img);
   }
+}
+
+// Caption (D9, off-Obsidian): when a claimed image carries alt text, render it as a caption below
+// the image — reusing the plugin's caption-TEXT logic (`captionFromAlt`, which strips a native size
+// token) and the shared caption host builder (`mountCaption`). Then upgrade the plain text with the
+// runtime's own minimal inline-Markdown renderer (AD9: no platform renderer off-Obsidian, so this
+// is not a parallel reimplementation; runtime-only). Fidelity is bounded by the lossy alt attribute.
+function addCaption(img: HTMLImageElement): void {
+  const outer = img.closest<HTMLElement>(".lie-image-area");
+  if (!outer) return;
+  const caption = mountCaption(outer, captionFromAlt(img.getAttribute("alt") ?? ""));
+  if (caption) caption.innerHTML = renderInlineMarkdown(caption.textContent ?? "");
 }
 
 function run(): void {
   inject("lie-runtime-render-css", RENDER_CSS);
   inject("lie-runtime-css", RUNTIME_CSS);
+  inject("lie-runtime-caption-css", CAPTION_CSS);
   // Ship the plugin's DEFAULT decoration-class stack (F16.1: rounded/shadow/bordered/circle) so a
   // foreign page renders class-styled images the same as Obsidian. The plugin installs this as an
   // opt-in vault snippet; the runtime always injects this shipped default (shipping the user's

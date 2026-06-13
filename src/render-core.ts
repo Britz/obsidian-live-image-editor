@@ -370,6 +370,37 @@ export const RENDER_CSS = `
 .lie-image-area.lie-inline { vertical-align: middle; }
 `;
 
+// Caption CSS for the STANDALONE RUNTIME (D9). The plugin gets the equivalent rules from its
+// auto-loaded styles.css (where the caption host is `.lie-box`); off-Obsidian the runtime wraps the
+// image-area in a `.lie-has-caption` shrink-wrap host and injects this. The host is the caption's
+// containing block, so `width:0; min-width:100%` sizes the caption to the image width with NO JS
+// width-sync (D9). The host carries the layout marker (moved off the outer, Decision 28) so a
+// captioned image still floats/centres — as the host, not the image alone. Theme vars get plain
+// fallbacks since a foreign page has no Obsidian theme.
+export const CAPTION_CSS = `
+.lie-has-caption { display: inline-flex; flex-direction: column; align-items: stretch; }
+.lie-caption {
+  display: block;
+  width: 0;
+  min-width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  text-align: center;
+  font-size: var(--font-smaller, 0.85em);
+  color: var(--text-muted, #888);
+  line-height: var(--line-height-tight, 1.3);
+}
+.lie-caption > :first-child { margin-top: 0; }
+.lie-caption > :last-child { margin-bottom: 0; }
+.lie-caption p { margin: 0; overflow-wrap: anywhere; }
+.lie-caption img { max-width: 100%; }
+.lie-has-caption.lie-float-left { float: left; clear: none; margin: 0 1em 0.5em 0; }
+.lie-has-caption.lie-float-right { float: right; clear: none; margin: 0 0 0.5em 1em; }
+.lie-has-caption.lie-block-left { display: flex; width: fit-content; margin-right: auto; }
+.lie-has-caption.lie-block-center { display: flex; width: fit-content; margin-left: auto; margin-right: auto; }
+.lie-has-caption.lie-block-right { display: flex; width: fit-content; margin-left: auto; }
+`;
+
 // ---------------------------------------------------------------------------
 // Identification (AB7a) — claim an `<img>` IFF it carries a distinctive RUNTIME-ONLY key
 // (`rotate`/`flip`/`transform`/`aspect-ratio`/`filter`) OR a non-native LAYOUT (the `.lie-inline`

@@ -1,4 +1,5 @@
 import { App, Component, MarkdownRenderer } from "obsidian";
+import { createCaptionEl } from "./caption-dom";
 
 // Pure caption-text extraction lives in caption-logic.ts (no obsidian import, so it
 // unit-tests in vitest, Lesson 6); re-exported here for convenience.
@@ -25,9 +26,7 @@ export function createCaption(
 ): CaptionHandle | null {
   if (!text) return null;
 
-  const el = document.createElement("div");
-  el.className = "lie-caption";
-  el.setAttribute("contenteditable", "false");
+  const el = createCaptionEl();
 
   const component = new Component();
   component.load();
