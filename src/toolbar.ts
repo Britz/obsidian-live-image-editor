@@ -58,7 +58,7 @@ export interface ToolbarAction {
 }
 
 function makeButton(btn: ToolbarButton): HTMLButtonElement {
-  const el = document.createElement("button");
+  const el = activeDocument.createElement("button");
   el.classList.add("lie-toolbar-btn");
   if (btn.active) { el.classList.add("is-active"); el.setAttribute("aria-pressed", "true"); }
   el.dataset["lieId"] = btn.id;
@@ -95,14 +95,14 @@ interface PopupEl extends HTMLElement { _lieDetach?: () => void; }
 // hovered and closes the popup (bar + popup fade together) when the whole region is left. Esc /
 // click-outside also close it.
 function openGroupPopup(trigger: HTMLElement, group: ToolbarGroup): void {
-  const existing = document.querySelector<HTMLElement>(".lie-group-popup");
+  const existing = activeDocument.querySelector<HTMLElement>(".lie-group-popup");
   if (existing) {
     const wasSame = existing.dataset["forId"] === group.id;
     closeGroupPopup(existing);
     if (wasSame) return; // toggle off
   }
 
-  const popup = document.createElement("div") as PopupEl;
+  const popup = activeDocument.createElement("div") as PopupEl;
   popup.className = "lie-group-popup";
   popup.dataset["forId"] = group.id;
   const close = (): void => closeGroupPopup(popup);
@@ -117,7 +117,7 @@ function openGroupPopup(trigger: HTMLElement, group: ToolbarGroup): void {
   // coordinates are dynamic and stay inline.
   popup.style.top = `${rect.bottom + 6}px`;
   popup.style.left = `${rect.left}px`;
-  document.body.appendChild(popup);
+  activeDocument.body.appendChild(popup);
 
   const unbindRegion = couplePaletteToRegion(popup, {
     wrapper: trigger.closest<HTMLElement>(".lie-wrapper"),
@@ -133,17 +133,17 @@ function openGroupPopup(trigger: HTMLElement, group: ToolbarGroup): void {
   };
   popup._lieDetach = (): void => {
     unbindRegion();
-    document.removeEventListener("mousedown", onDown, true);
-    document.removeEventListener("keydown", onKey, true);
+    activeDocument.removeEventListener("mousedown", onDown, true);
+    activeDocument.removeEventListener("keydown", onKey, true);
   };
   window.setTimeout(() => {
-    document.addEventListener("mousedown", onDown, true);
-    document.addEventListener("keydown", onKey, true);
+    activeDocument.addEventListener("mousedown", onDown, true);
+    activeDocument.addEventListener("keydown", onKey, true);
   }, 0);
 }
 
 function makeGroupTrigger(group: ToolbarGroup): HTMLButtonElement {
-  const el = document.createElement("button");
+  const el = activeDocument.createElement("button");
   el.classList.add("lie-toolbar-btn", "lie-toolbar-group-trigger");
   el.dataset["lieGroup"] = group.id;
   const anim = ANIM_BY_ID[group.id];
@@ -169,7 +169,7 @@ function makeGroupTrigger(group: ToolbarGroup): HTMLButtonElement {
  * DIVIDERS (Bug 37: fold first, then wrap). An "always" group starts folded.
  */
 export function buildToolbarElement(items: ToolbarItem[]): HTMLElement {
-  const toolbar = document.createElement("div");
+  const toolbar = activeDocument.createElement("div");
   toolbar.classList.add("lie-toolbar");
 
   const clusters: HTMLElement[] = [];
@@ -178,18 +178,18 @@ export function buildToolbarElement(items: ToolbarItem[]): HTMLElement {
 
   for (const item of items) {
     if (item.kind === "button") {
-      if (!run) { run = document.createElement("span"); run.className = "lie-toolbar-cluster"; }
+      if (!run) { run = activeDocument.createElement("span"); run.className = "lie-toolbar-cluster"; }
       run.appendChild(makeButton(item));
       continue;
     }
     flushRun();
-    const slot = document.createElement("span");
+    const slot = activeDocument.createElement("span");
     slot.classList.add("lie-toolbar-cluster", "lie-toolbar-group-slot");
     slot.dataset["lieGroup"] = item.id;
     // Fold priority: "always" groups fold first (highest), then the rest by document
     // order — so Layout (later) folds before Edit when both are "auto".
     slot.dataset["lieFold"] = String(item.collapse === "always" ? 100 : clusters.length);
-    const expanded = document.createElement("span");
+    const expanded = activeDocument.createElement("span");
     expanded.className = "lie-toolbar-group";
     for (const btn of item.buttons) expanded.appendChild(makeButton(btn));
     slot.appendChild(expanded);
@@ -201,7 +201,7 @@ export function buildToolbarElement(items: ToolbarItem[]): HTMLElement {
 
   clusters.forEach((cluster, i) => {
     if (i > 0) {
-      const sep = document.createElement("span");
+      const sep = activeDocument.createElement("span");
       sep.className = "lie-toolbar-sep";
       toolbar.appendChild(sep);
     }
@@ -263,7 +263,7 @@ export class ImageToolbar {
     this.activeImg = img;
     const toolbar = buildToolbarElement(items);
     toolbar.classList.add("lie-toolbar-floating");
-    document.body.appendChild(toolbar);
+    activeDocument.body.appendChild(toolbar);
     this.el = toolbar;
 
     // Scroll WITH the image, not page-fixed (D1): re-anchor on scroll/resize.

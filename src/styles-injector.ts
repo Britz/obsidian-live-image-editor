@@ -36,7 +36,7 @@ export class StylesInjector {
 
   // Clear all the body-level state this injector set (mirrors the onunload cleanup in main.ts).
   remove(): void {
-    const { style, classList } = document.body;
+    const { style, classList } = activeDocument.body;
     style.removeProperty(`--${PREFIX}-size-small`);
     style.removeProperty(`--${PREFIX}-size-medium`);
     style.removeProperty(`--${PREFIX}-size-large`);
@@ -44,7 +44,7 @@ export class StylesInjector {
   }
 
   update(): void {
-    const { style, classList } = document.body;
+    const { style, classList } = activeDocument.body;
     // Preset widths override the styles.css defaults; setProperty with a dynamic value is the
     // sanctioned non-`<style>` path (a static literal would be flagged, a CSS var/dynamic value is not).
     style.setProperty(`--${PREFIX}-size-small`, `${this.presetWidths.small}px`);

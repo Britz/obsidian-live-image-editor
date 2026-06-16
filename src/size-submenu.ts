@@ -27,11 +27,11 @@ export function buildSizeBody(
   state.width = current.width ?? null;
   state.height = current.height ?? null;
 
-  const body = document.createElement("div");
+  const body = activeDocument.createElement("div");
   body.classList.add("lie-size-body");
 
-  const widthInput = document.createElement("input");
-  const heightInput = document.createElement("input");
+  const widthInput = activeDocument.createElement("input");
+  const heightInput = activeDocument.createElement("input");
 
   const sync = (): void => {
     widthInput.value = pxNumber(state.width);
@@ -39,7 +39,7 @@ export function buildSizeBody(
   };
   const preview = (): void => onPreview(state);
 
-  const quick = document.createElement("div");
+  const quick = activeDocument.createElement("div");
   quick.classList.add("lie-size-quick");
   for (const p of sizePresets(presetWidths)) {
     quick.appendChild(textButton(t(p.labelKey), "lie-size-choice", () => {
@@ -51,7 +51,7 @@ export function buildSizeBody(
   }
   body.appendChild(quick);
 
-  const fields = document.createElement("div");
+  const fields = activeDocument.createElement("div");
   fields.classList.add("lie-size-fields");
   fields.appendChild(makeField("move-horizontal", t("width"), widthInput, (v) => {
     state.width = v;
@@ -84,10 +84,10 @@ function pxNumber(v: string | null): string {
 }
 
 function makeField(icon: string, placeholder: string, input: HTMLInputElement, onInput: (v: string | null) => void): HTMLElement {
-  const row = document.createElement("div");
+  const row = activeDocument.createElement("div");
   row.classList.add("lie-size-custom");
 
-  const iconEl = document.createElement("span");
+  const iconEl = activeDocument.createElement("span");
   iconEl.classList.add("lie-size-icon");
   setIcon(iconEl, icon);
   row.appendChild(iconEl);

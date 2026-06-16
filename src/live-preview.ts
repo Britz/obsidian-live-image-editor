@@ -38,10 +38,10 @@ type WidgetMode = "block" | "inline" | "standalone";
 // classes (themed because the widget lives inside `.cm-editor`). Only the embed part
 // (`![[…]]` / `![](…)`) — the trailing `{…}` is the NATIVE marked text, never the fake.
 function highlightEmbed(embed: string): DocumentFragment {
-  const frag = document.createDocumentFragment();
+  const frag = activeDocument.createDocumentFragment();
   const span = (cls: string, text: string): void => {
     if (!text) return;
-    const s = document.createElement("span");
+    const s = activeDocument.createElement("span");
     s.className = cls;
     s.textContent = text;
     frag.appendChild(s);
@@ -74,7 +74,7 @@ class FakeLinkWidget extends WidgetType {
   constructor(private embed: string, private mode: RevealMode) { super(); }
   eq(o: FakeLinkWidget): boolean { return o.embed === this.embed && o.mode === this.mode; }
   toDOM(): HTMLElement {
-    const el = document.createElement("span");
+    const el = activeDocument.createElement("span");
     el.className = `lie-fake-link lie-rev-${this.mode}`;
     el.setAttribute("contenteditable", "false");
     el.appendChild(highlightEmbed(this.embed));
@@ -127,7 +127,7 @@ class EmbedWidget extends WidgetType {
   }
 
   toDOM(view: EditorView): HTMLElement {
-    const wrapper = document.createElement("div");
+    const wrapper = activeDocument.createElement("div");
     // Inline icons never carry an in-chrome toolbar (too small) — flag them `lie-float` so
     // the plugin shows the floating toolbar on hover (standalone/block widgets get the flag
     // dynamically from the reflow when they turn out too short).
@@ -141,7 +141,7 @@ class EmbedWidget extends WidgetType {
     if (!file) { wrapper.textContent = this.embed; return wrapper; }
 
     if (this.mode === "inline") {
-      const inlineImg = document.createElement("img");
+      const inlineImg = activeDocument.createElement("img");
       inlineImg.src = this.app.vault.getResourcePath(file);
       inlineImg.dataset["lieSrc"] = file.path;
       wrapper.appendChild(inlineImg);
@@ -149,11 +149,11 @@ class EmbedWidget extends WidgetType {
       return wrapper;
     }
 
-    const area = document.createElement("div");
+    const area = activeDocument.createElement("div");
     area.className = "lie-box";
     wrapper.appendChild(area);
 
-    const img = document.createElement("img");
+    const img = activeDocument.createElement("img");
     img.src = this.app.vault.getResourcePath(file);
     img.dataset["lieSrc"] = file.path;
     area.appendChild(img);
@@ -164,7 +164,7 @@ class EmbedWidget extends WidgetType {
     // `.lie-box` bottom, which a caption (a sibling flex item, D9) extends below the image. The box
     // stays the caption shrink-host (D9); the host has no `overflow:hidden`, so the corner marker
     // sits centred on the corner (half outside) without being clipped by the image-area's own clip.
-    const host = document.createElement("div");
+    const host = activeDocument.createElement("div");
     host.className = "lie-image-host";
     const imageArea = img.closest<HTMLElement>(".lie-image-area");
     if (imageArea) host.appendChild(imageArea);
@@ -205,7 +205,7 @@ class EmbedWidget extends WidgetType {
   private makeToolbar(view: EditorView, img: HTMLImageElement, wrapper: HTMLElement): HTMLElement {
     const toolbar = buildToolbarElement(this.getActions(img));
     toolbar.classList.add("lie-toolbar-in-image");
-    const sep = document.createElement("span");
+    const sep = activeDocument.createElement("span");
     sep.className = "lie-toolbar-sep";
     toolbar.prepend(sep);
     toolbar.prepend(this.makeRevealButton(view, wrapper));
@@ -217,7 +217,7 @@ class EmbedWidget extends WidgetType {
   // faint (`is-off`) and the tooltip/aria flips, so the affordance stays honest without changing
   // the icon to an eye.
   private makeRevealButton(view: EditorView, wrapper: HTMLElement): HTMLElement {
-    const button = document.createElement("button");
+    const button = activeDocument.createElement("button");
     button.className = "lie-toolbar-btn lie-toolbar-reveal";
     if (this.dismissed) button.classList.add("is-off");
     const label = this.dismissed ? t("revealLink") : t("hideLinkSource");
@@ -242,7 +242,7 @@ class EmbedWidget extends WidgetType {
   }
 
   private makeResizeCorner(view: EditorView, wrapper: HTMLElement, img: HTMLImageElement): HTMLElement {
-    const corner = document.createElement("div");
+    const corner = activeDocument.createElement("div");
     corner.className = "image-resize-corner";
     corner.addEventListener("pointerdown", (e) => {
       e.preventDefault();
@@ -253,8 +253,8 @@ class EmbedWidget extends WidgetType {
       const widthAt = (ev: PointerEvent) => Math.max(40, Math.round(startWidth + (ev.clientX - startX)));
       const onMove = (ev: PointerEvent) => { box.style.width = `${widthAt(ev)}px`; };
       const onUp = (ev: PointerEvent) => {
-        document.removeEventListener("pointermove", onMove);
-        document.removeEventListener("pointerup", onUp);
+        activeDocument.removeEventListener("pointermove", onMove);
+        activeDocument.removeEventListener("pointerup", onUp);
         const line = view.state.doc.lineAt(view.posAtDOM(wrapper));
         const replacement = rewriteWidth(line.text, widthAt(ev));
         if (replacement === null) return;
@@ -264,8 +264,8 @@ class EmbedWidget extends WidgetType {
         // the offset-0 selection and scrolls to the document top.
         writeSource(view, { from: line.from, to: line.to, insert: replacement }, line.from);
       };
-      document.addEventListener("pointermove", onMove);
-      document.addEventListener("pointerup", onUp);
+      activeDocument.addEventListener("pointermove", onMove);
+      activeDocument.addEventListener("pointerup", onUp);
     });
     return corner;
   }

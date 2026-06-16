@@ -41,11 +41,15 @@ export default defineConfig([
       // hard errors; the bot (review-0.6.1.md) shows them as warnings (Decision 29 — same drift the
       // original pass corrected for `no-deprecated`).
       //
-      // The bot flags `prefer-active-doc` (`document` → `activeDocument`) as warnings across ~all
-      // files — popout-window correctness, not a review-failing error. Converting every `document`
-      // is large, risky churn tracked as Feature 39 (popout support). Kept OFF so this gate stays
-      // focused on the ERRORS that actually fail the review (deliberate decision, not suppression).
-      "obsidianmd/prefer-active-doc": "off",
+      // `prefer-active-doc` (`document` → `activeDocument`) — popout-window correctness. The bot
+      // reports it as warnings across ~all files; each occurrence drags the community-review rating
+      // (it counts per occurrence, not per rule), so Feature 39 converted every global `document` in
+      // the IN-OBSIDIAN plugin source to `activeDocument`. The only remaining flags are runtime.ts's
+      // 6 — that off-Obsidian bundle imports no `obsidian`, so the `activeDocument` global does not
+      // exist there and it MUST use raw `document` (same exception class as `prefer-instanceof`).
+      // Kept at "warn" (matches the bot's severity) rather than "off" so a regression in the plugin
+      // source resurfaces here instead of being silenced.
+      "obsidianmd/prefer-active-doc": "warn",
       // runtime.ts uses raw `instanceof` — it imports no `obsidian`, so the `instanceOf()` helper
       // does not exist in that off-Obsidian bundle. Bot: warning.
       "obsidianmd/prefer-instanceof": "warn",

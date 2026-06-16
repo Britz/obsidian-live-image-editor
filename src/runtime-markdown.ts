@@ -27,7 +27,7 @@ export function renderInlineMarkdown(text: string): string {
   return escapeHtml(text).split(/(`[^`]+`)/).map((part, i) => {
     if (i % 2 === 1) return `<code>${part.slice(1, -1)}</code>`;
     // Links [text](url) — the label is already escaped; the href is sanitised.
-    let s = part.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, label, url) => `<a href="${safeHref(url)}" target="_blank" rel="noopener">${label}</a>`);
+    let s = part.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m: string, label: string, url: string) => `<a href="${safeHref(url)}" target="_blank" rel="noopener">${label}</a>`);
     // Bold before italic so `**x**` is not consumed by the single-asterisk rule. Only `*...*` (not
     // `_..._`) to avoid mangling snake_case / URLs in plain captions.
     s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");

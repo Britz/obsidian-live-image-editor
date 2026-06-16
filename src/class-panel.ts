@@ -43,7 +43,7 @@ export class ClassPanel {
   open(anchorEl: HTMLElement | null, toolbarEl?: HTMLElement | null, centeredTitle?: string): void {
     if (this.submenu) return;
 
-    const body = document.createElement("div");
+    const body = activeDocument.createElement("div");
     body.classList.add("lie-class-body");
     body.appendChild(this.buildSearch());
     this.list = this.buildList();
@@ -88,7 +88,7 @@ export class ClassPanel {
   }
 
   private buildSearch(): HTMLElement {
-    const input = document.createElement("input");
+    const input = activeDocument.createElement("input");
     input.type = "text";
     input.classList.add("lie-class-search");
     input.placeholder = t("searchClasses");
@@ -98,7 +98,7 @@ export class ClassPanel {
   }
 
   private buildList(): HTMLElement {
-    const list = document.createElement("div");
+    const list = activeDocument.createElement("div");
     list.classList.add("lie-class-list");
     return list;
   }
@@ -113,7 +113,7 @@ export class ClassPanel {
     const matches = filterClasses(this.available, query);
 
     if (matches.length === 0) {
-      const empty = document.createElement("div");
+      const empty = activeDocument.createElement("div");
       empty.classList.add("lie-class-empty");
       empty.textContent = t("noMatchingClasses");
       this.list.appendChild(empty);
@@ -121,7 +121,7 @@ export class ClassPanel {
     }
 
     for (const className of matches) {
-      const row = document.createElement("button");
+      const row = activeDocument.createElement("button");
       row.classList.add("lie-class-item");
       if (applied.includes(className)) row.classList.add("is-active");
       row.textContent = className;

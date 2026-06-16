@@ -90,7 +90,7 @@ export class AnchoredSubmenu {
     this.opts = opts;
     this.closed = false;
 
-    const panel = document.createElement("div");
+    const panel = activeDocument.createElement("div");
     panel.classList.add("lie-submenu");
     if (opts.rootClass) panel.classList.add(opts.rootClass);
     panel.appendChild(this.buildHeader(opts.title));
@@ -102,7 +102,7 @@ export class AnchoredSubmenu {
     // at 0,0 (visibility:hidden, so it still lays out and is measurable) while we measure — both in
     // styles.css. Removed once placed (no inline style writes — Obsidian-review compliance).
     panel.classList.add("lie-measuring");
-    document.body.appendChild(panel);
+    activeDocument.body.appendChild(panel);
     this.el = panel;
 
     // Grey out + disable the toolbar while open (D8). Set BEFORE the hover binding/reposition so
@@ -114,7 +114,7 @@ export class AnchoredSubmenu {
     this.reposition();
     panel.classList.remove("lie-measuring");
 
-    document.addEventListener("keydown", this.handleKeyDown, true);
+    activeDocument.addEventListener("keydown", this.handleKeyDown, true);
     window.addEventListener("resize", this.reposition);
     window.addEventListener("scroll", this.reposition, true);
   }
@@ -204,7 +204,7 @@ export class AnchoredSubmenu {
     this.closed = true;
     this.hoverCleanup?.();
     this.hoverCleanup = null;
-    document.removeEventListener("keydown", this.handleKeyDown, true);
+    activeDocument.removeEventListener("keydown", this.handleKeyDown, true);
     window.removeEventListener("resize", this.reposition);
     window.removeEventListener("scroll", this.reposition, true);
     this.toolbar?.classList.remove("lie-toolbar-inactive", "lie-region-active");
@@ -235,15 +235,15 @@ export class AnchoredSubmenu {
   };
 
   private buildHeader(title?: string): HTMLElement {
-    const header = document.createElement("div");
+    const header = activeDocument.createElement("div");
     header.classList.add("lie-submenu-header");
 
-    const label = document.createElement("span");
+    const label = activeDocument.createElement("span");
     label.classList.add("lie-submenu-title");
     label.textContent = title ?? "";
     header.appendChild(label);
 
-    const actions = document.createElement("div");
+    const actions = activeDocument.createElement("div");
     actions.classList.add("lie-submenu-actions");
 
     // The header actions (F14/AD8/D6): the optional per-panel Reset (resets only this panel's
@@ -265,7 +265,7 @@ export class AnchoredSubmenu {
   // accept triggers stays one native undo step (mirrors the toolbar buttons); the click stops
   // propagating so it never reaches the document click-away dismiss.
   private iconButton(cls: string, icon: string, label: string, onClick: () => void): HTMLButtonElement {
-    const btn = document.createElement("button");
+    const btn = activeDocument.createElement("button");
     btn.classList.add("lie-submenu-icon-btn", cls);
     btn.setAttribute("aria-label", label);
     btn.title = label;

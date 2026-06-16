@@ -9,7 +9,7 @@
 //     the lossy alt attribute.
 // The caption TEXT logic is reused too — both paths derive the text from `caption-logic.ts`.
 export function createCaptionEl(tag: "div" | "span" = "div"): HTMLElement {
-  const el = document.createElement(tag);
+  const el = activeDocument.createElement(tag);
   el.className = "lie-caption";
   el.setAttribute("contenteditable", "false");
   return el;
@@ -32,7 +32,7 @@ const LAYOUT_MARKERS = ["lie-float-left", "lie-float-right", "lie-block-left", "
 export function mountCaption(outer: HTMLElement, text: string): HTMLElement | null {
   const parent = outer.parentElement;
   if (!text || !parent || parent.classList.contains("lie-has-caption")) return null;
-  const host = document.createElement("span");
+  const host = activeDocument.createElement("span");
   host.className = "lie-has-caption";
   for (const m of LAYOUT_MARKERS) {
     if (outer.classList.contains(m)) { outer.classList.remove(m); host.classList.add(m); }

@@ -44,7 +44,7 @@ export async function renderTransformedImage(
 // ORIGINAL resolution, with the `filter` baked in. The inner-frame ORIENTATION is NOT applied
 // here (orient() does it), matching the layer split: crop placement + filter ride the img.
 function renderContent(img: HTMLImageElement, transform: ImageTransform): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
+  const canvas = activeDocument.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Cannot get canvas context");
 
@@ -110,7 +110,7 @@ function renderContent(img: HTMLImageElement, transform: ImageTransform): HTMLCa
 function orient(content: HTMLCanvasElement, deg: number, flipH: boolean, flipV: boolean): HTMLCanvasElement {
   if (deg % 360 === 0 && !flipH && !flipV) return content;
   const box = rotatedAabb(content.width, content.height, deg);
-  const out = document.createElement("canvas");
+  const out = activeDocument.createElement("canvas");
   out.width = Math.max(1, Math.round(box.w));
   out.height = Math.max(1, Math.round(box.h));
   const ctx = out.getContext("2d");

@@ -154,7 +154,7 @@ function buildSubmenu(): MenuCommand {
 function refreshLiveToolbar(app: App, plugin: EditingToolbarLike): void {
   try {
     plugin.clearToolbarCache?.();
-    const doc: Document = typeof activeDocument !== "undefined" ? activeDocument : document;
+    const doc: Document = typeof activeDocument !== "undefined" ? activeDocument : activeDocument;
     doc.querySelectorAll(".editingToolbarModalBar").forEach((el) => el.remove());
     app.workspace.trigger("layout-change");
   } catch {

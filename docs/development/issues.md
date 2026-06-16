@@ -100,14 +100,15 @@ requirement + the storage/permission implications) before any code.
 - [ ] **Feature 39 — Popout-window support (`activeDocument` / `activeWindow` throughout).** The Obsidian
       review bot flags `obsidianmd/prefer-active-doc` as WARNINGS across ~all files: every bare
       `document` / `window` reference assumes the main window and is wrong when the note (and its
-      images/toolbar/panels) live in a **detached popout window**. Converting them to `activeDocument`
-      / `activeWindow` (Obsidian's window-aware globals) is the real fix, but it is large, cross-cutting
-      churn (~100 sites: `render-core`, `live-preview`, `toolbar`, the panels, `crop-editor`, `caption`,
-      `export`, …) with real regression risk and **no review-failing impact** (warning-level), so it is
-      deferred and kept off in `lint:obsidian` by deliberate decision (Decision 29 — not a blind
-      suppression). _Do first:_ confirm whether the plugin is even reachable in a popout (its hosts: LP
-      editor + reading-view embeds) and scope which references are genuinely main-window-only (e.g. the
-      `localStorage` language read) vs. document-relative. (2026-06-07.)
+      images/toolbar/panels) live in a **detached popout window**. **PARTIALLY DONE (Change 40, [0.6.9]):**
+      the `document` → `activeDocument` half landed — all ~95 in-Obsidian plugin sites converted (only the
+      exact eslint-flagged positions; runtime.ts keeps raw `document`, off-Obsidian), and
+      `lint:obsidian`'s `prefer-active-doc` is now `warn` (was `off`). This was driven by the review
+      RATING (it counts warnings per occurrence), not by a review-failing error. _Still open:_ the
+      `window` → `activeWindow` half, and the original prerequisite — **confirm whether the plugin is even
+      reachable in a popout** (its hosts: LP editor + reading-view embeds) and scope which references are
+      genuinely main-window-only (e.g. the `localStorage` language read) vs. document-relative — plus a
+      real popout-window behaviour test (CDP). (2026-06-07; partial 2026-06-16.)
 - [ ] **Feature 41 — "Bake & replace" a SINGLE image IN PLACE (the per-image case of Feature 31).** What
       the user means by "replace image" — NOT the shipped **Feature 35** (which only repoints the link to
       another source file and touches nothing else). Here: turn THIS image's non-destructive edits into a

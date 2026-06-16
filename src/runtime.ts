@@ -76,7 +76,13 @@ function addCaption(img: HTMLImageElement): void {
   const outer = img.closest<HTMLElement>(".lie-image-area");
   if (!outer) return;
   const caption = mountCaption(outer, captionFromAlt(img.getAttribute("alt") ?? ""));
-  if (caption) caption.innerHTML = renderInlineMarkdown(caption.textContent ?? "");
+  if (!caption) return;
+  // `renderInlineMarkdown` yields a SAFE HTML string (alt is escaped + hrefs sanitised). Parse it to
+  // DOM nodes via DOMParser and graft them in, rather than assigning `innerHTML` — the Obsidian
+  // review bot forbids innerHTML/outerHTML writes (review-0.6.8). The parse runs in a detached
+  // document (no script execution); combined with the upstream escaping the result is inert.
+  const parsed = new DOMParser().parseFromString(renderInlineMarkdown(caption.textContent ?? ""), "text/html");
+  caption.replaceChildren(...Array.from(parsed.body.childNodes));
 }
 
 function run(): void {

@@ -287,16 +287,16 @@ function ensureLayers(img: HTMLImageElement): HTMLElement {
   }
   // Legacy 2-layer (outer > img): insert a frame between them.
   if (parent && parent.classList.contains(BOX_CLASS)) {
-    const frame = document.createElement("span");
+    const frame = activeDocument.createElement("span");
     frame.classList.add(FRAME_CLASS);
     parent.insertBefore(frame, img);
     frame.appendChild(img);
     return parent;
   }
   // Fresh build: outer > frame > img.
-  const outer = document.createElement("span");
+  const outer = activeDocument.createElement("span");
   outer.classList.add(BOX_CLASS);
-  const frame = document.createElement("span");
+  const frame = activeDocument.createElement("span");
   frame.classList.add(FRAME_CLASS);
   parent?.insertBefore(outer, img);
   outer.appendChild(frame);

@@ -185,7 +185,7 @@ export class CropEditor {
     // DIM ghost (behind): a clone of the image, un-clipped, dimmed — shows the croppable surround.
     const ghostFrame = this.makeFrameBox(orient);
     ghostFrame.classList.add("lie-crop-ghost");
-    const ghostImg = document.createElement("img");
+    const ghostImg = activeDocument.createElement("img");
     ghostImg.className = "lie-crop-ghost-img";
     ghostImg.src = this.img.src;
     ghostImg.draggable = false;
@@ -198,17 +198,17 @@ export class CropEditor {
     // box is pointer-transparent (so a drag on the image background pans); only the handles catch.
     const chromeFrame = this.makeFrameBox(orient);
     chromeFrame.classList.add("lie-crop-chrome");
-    const handleBox = document.createElement("div");
+    const handleBox = activeDocument.createElement("div");
     handleBox.className = "lie-crop-handles";
     handleBox.style.width = `${this.frameW}px`;
     handleBox.style.height = `${this.imgDisplayH()}px`;
     for (const h of HANDLES) {
-      const el = document.createElement("div");
+      const el = activeDocument.createElement("div");
       el.className = `lie-crop-handle lie-crop-handle-${h.key}`;
       el.dataset["handle"] = h.key;
       handleBox.appendChild(el);
     }
-    const rotateKnob = document.createElement("div");
+    const rotateKnob = activeDocument.createElement("div");
     rotateKnob.className = "lie-crop-rotation-handle";
     rotateKnob.dataset["handle"] = "rotate";
     handleBox.appendChild(rotateKnob);
@@ -231,8 +231,8 @@ export class CropEditor {
     this.img.classList.remove("lie-crop-img");
     this.areaEl?.removeEventListener("pointerdown", this.onPointerDown);
     this.areaEl?.removeEventListener("wheel", this.onWheel);
-    document.removeEventListener("pointermove", this.onPointerMove);
-    document.removeEventListener("pointerup", this.onPointerUp);
+    activeDocument.removeEventListener("pointermove", this.onPointerMove);
+    activeDocument.removeEventListener("pointerup", this.onPointerUp);
     // Detach the macOS rotate gesture (exact same handler ref) — this is the ONE teardown the
     // single onClose runs on every exit path, so confirm + cancel/Esc/close all unsubscribe here.
     if (this.gestureWin && this.onRotateGesture) {
@@ -249,7 +249,7 @@ export class CropEditor {
   // The cut-frame positioning box (top/left 50%, centred + oriented like the live `.lie-frame`),
   // sized to the cut window; overflow visible so the image inside shows beyond the cut.
   private makeFrameBox(orient: string): HTMLElement {
-    const box = document.createElement("div");
+    const box = activeDocument.createElement("div");
     box.classList.add("lie-crop-frame-box"); // position / top:50% / left:50% / transform-origin in styles.css
     box.style.width = `${this.frameW}px`;     // dynamic px — stays inline
     box.style.height = `${this.frameH}px`;
@@ -285,7 +285,7 @@ export class CropEditor {
   // ---- The shared sub-menu host (aspect presets + Reset) ---------------------------------------
 
   private openControls(toolbarEl?: HTMLElement | null, anchorEl?: HTMLElement | null): void {
-    const body = document.createElement("div");
+    const body = activeDocument.createElement("div");
     body.classList.add("lie-crop-presets");
     for (const ratio of Object.keys(ASPECT_RATIOS) as AspectRatio[]) {
       body.appendChild(textButton(ratio === "free" ? t("free") : ratio, "lie-crop-preset-btn",
@@ -344,8 +344,8 @@ export class CropEditor {
     if (!area) return;
     area.addEventListener("pointerdown", this.onPointerDown);
     area.addEventListener("wheel", this.onWheel, { passive: false });
-    document.addEventListener("pointermove", this.onPointerMove);
-    document.addEventListener("pointerup", this.onPointerUp);
+    activeDocument.addEventListener("pointermove", this.onPointerMove);
+    activeDocument.addEventListener("pointerup", this.onPointerUp);
     this.bindRotateGesture();
   }
 

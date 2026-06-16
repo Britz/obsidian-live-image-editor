@@ -126,7 +126,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.closeCrop(false);
     this.toolbar.hide();
     this.stylesInjector.remove();
-    document.body.classList.remove("lie-safe-tall-float", "lie-btn-outline-always", "lie-btn-outline-never");
+    activeDocument.body.classList.remove("lie-safe-tall-float", "lie-btn-outline-always", "lie-btn-outline-never");
   }
 
   async loadSettings(): Promise<void> {
@@ -147,15 +147,15 @@ export default class LiveImageEditorPlugin extends Plugin {
   // Tall-float cap: the setting flips a body class the stylesheet keys on to stack tall floats
   // as blocks (safe) or let them float (permissive). Governs Live Preview and Reading view alike.
   private applyTallFloatClass(): void {
-    document.body.classList.toggle("lie-safe-tall-float", this.settings.tallFloatSafe);
+    activeDocument.body.classList.toggle("lie-safe-tall-float", this.settings.tallFloatSafe);
   }
 
   // Button-outline a11y setting (Feature 2): the stylesheet keys "always"/"never" off a body class;
   // "auto" sets neither, leaving the media-query rule (prefers-contrast / forced-colors) in charge.
   private applyButtonOutlines(): void {
     const mode = this.settings.buttonOutlines;
-    document.body.classList.toggle("lie-btn-outline-always", mode === "always");
-    document.body.classList.toggle("lie-btn-outline-never", mode === "never");
+    activeDocument.body.classList.toggle("lie-btn-outline-always", mode === "always");
+    activeDocument.body.classList.toggle("lie-btn-outline-never", mode === "never");
   }
 
   private refreshLivePreviewDecorations(): void {
@@ -431,7 +431,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   private static readonly PANEL_SELECTOR = ".lie-submenu, .lie-filter-panel, .lie-toolbar";
 
   private registerImageSelectionHandler(): void {
-    this.registerDomEvent(document, "click", (evt: MouseEvent) => {
+    this.registerDomEvent(activeDocument, "click", (evt: MouseEvent) => {
       const target = evt.target as HTMLElement;
       const panelOpen = !!this.filterPanel || !!this.classPanel || !!this.submenu;
       // Re-select an image on click ONLY when the bar is "bare" — no modal panel open, not cropping.
@@ -463,7 +463,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     // floating on the body (outside `contain: paint`). One delegated `mouseover` both opens it
     // (entering a `.lie-float` image) and dismisses it (leaving the image AND the toolbar) —
     // the floating bar sits over the image, so moving onto it stays "inside" and keeps it.
-    this.registerDomEvent(document, "mouseover", (evt: MouseEvent) => {
+    this.registerDomEvent(activeDocument, "mouseover", (evt: MouseEvent) => {
       const target = evt.target;
       if (!(target instanceof HTMLElement)) return;
       if (target.closest(".lie-toolbar, .lie-group-popup, .lie-class-panel, .lie-submenu, .lie-filter-panel, .lie-cropping")) return;
@@ -480,7 +480,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       // is open (the panel/palette is a hover member of the region, D6/Bug 64; the host governs its
       // own close-on-leave and keeps the bar up until then).
       if (this.hoverShown && !this.filterPanel && !this.classPanel && !this.submenu && !this.cropEditor &&
-          !document.querySelector(".lie-group-popup")) {
+          !activeDocument.querySelector(".lie-group-popup")) {
         this.dismissToolbar();
       }
     });
@@ -496,10 +496,10 @@ export default class LiveImageEditorPlugin extends Plugin {
         }
       }
     });
-    observer.observe(document.body, { childList: true });
+    observer.observe(activeDocument.body, { childList: true });
     this.register(() => observer.disconnect());
 
-    this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
+    this.registerDomEvent(activeDocument, "keydown", (evt: KeyboardEvent) => {
       if (evt.key !== "Escape") return;
       if (this.filterPanel || this.classPanel || this.submenu || this.cropEditor) return;
       this.dismissToolbar();
@@ -1082,7 +1082,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   private activeToolbarEl(): HTMLElement | null {
-    if (this.toolbar.isVisible()) return document.querySelector<HTMLElement>(".lie-toolbar-floating");
+    if (this.toolbar.isVisible()) return activeDocument.querySelector<HTMLElement>(".lie-toolbar-floating");
     return this.activeImage?.closest(".lie-wrapper")?.querySelector<HTMLElement>(".lie-toolbar-in-image") ?? null;
   }
 

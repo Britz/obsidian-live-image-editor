@@ -79,7 +79,7 @@ export class FilterPanel {
   open(anchorEl: HTMLElement | null, toolbarEl?: HTMLElement | null, centeredTitle?: string): void {
     if (this.submenu) return;
 
-    const body = document.createElement("div");
+    const body = activeDocument.createElement("div");
     body.classList.add("lie-filter-body");
     body.appendChild(this.buildHistogram());
     body.appendChild(this.buildPresets());
@@ -144,9 +144,9 @@ export class FilterPanel {
   }
 
   private buildHistogram(): HTMLElement {
-    const container = document.createElement("div");
+    const container = activeDocument.createElement("div");
     container.classList.add("lie-filter-histogram");
-    this.histogramCanvas = document.createElement("canvas");
+    this.histogramCanvas = activeDocument.createElement("canvas");
     this.histogramCanvas.width = 200;
     this.histogramCanvas.height = 60;
     container.appendChild(this.histogramCanvas);
@@ -154,15 +154,15 @@ export class FilterPanel {
   }
 
   private buildPresets(): HTMLElement {
-    const container = document.createElement("div");
+    const container = activeDocument.createElement("div");
     container.classList.add("lie-filter-presets");
 
-    const label = document.createElement("span");
+    const label = activeDocument.createElement("span");
     label.classList.add("lie-filter-section-label");
     label.textContent = t("presets");
     container.appendChild(label);
 
-    const btnRow = document.createElement("div");
+    const btnRow = activeDocument.createElement("div");
     btnRow.classList.add("lie-filter-preset-row");
     for (const preset of PRESETS) {
       btnRow.appendChild(textButton(t(preset.labelKey), "lie-filter-preset-btn", () => this.applyPreset(preset)));
@@ -173,7 +173,7 @@ export class FilterPanel {
 
   // Sliders grouped Light / Color / Effect (D5).
   private buildSliders(): HTMLElement {
-    const container = document.createElement("div");
+    const container = activeDocument.createElement("div");
     container.classList.add("lie-filter-sliders");
 
     const groups: { label: TranslationKey; keys: (keyof FilterData)[] }[] = [
@@ -183,10 +183,10 @@ export class FilterPanel {
     ];
 
     for (const group of groups) {
-      const section = document.createElement("div");
+      const section = activeDocument.createElement("div");
       section.classList.add("lie-filter-group");
 
-      const label = document.createElement("span");
+      const label = activeDocument.createElement("span");
       label.classList.add("lie-filter-section-label");
       label.textContent = t(group.label);
       section.appendChild(label);
@@ -211,14 +211,14 @@ export class FilterPanel {
   }
 
   private buildSlider(config: FilterSlider): HTMLElement {
-    const row = document.createElement("div");
+    const row = activeDocument.createElement("div");
     row.classList.add("lie-filter-slider-row");
 
-    const label = document.createElement("span");
+    const label = activeDocument.createElement("span");
     label.classList.add("lie-filter-slider-label");
     label.textContent = t(config.label);
 
-    const input = document.createElement("input");
+    const input = activeDocument.createElement("input");
     input.type = "range";
     input.min = String(config.min);
     input.max = String(config.max);
@@ -228,7 +228,7 @@ export class FilterPanel {
     // Tag by key so refreshSliders() matches by key, not DOM index (robust to reordering).
     input.dataset["key"] = String(config.key);
 
-    const valueDisplay = document.createElement("span");
+    const valueDisplay = activeDocument.createElement("span");
     valueDisplay.classList.add("lie-filter-slider-value");
     valueDisplay.textContent = this.formatValue(this.values[config.key] ?? config.default, config);
 
@@ -297,7 +297,7 @@ export class FilterPanel {
     const ctx = this.histogramCanvas.getContext("2d");
     if (!ctx) return;
 
-    const tempCanvas = document.createElement("canvas");
+    const tempCanvas = activeDocument.createElement("canvas");
     const tempCtx = tempCanvas.getContext("2d");
     if (!tempCtx) return;
 
