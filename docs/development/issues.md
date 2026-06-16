@@ -340,6 +340,14 @@ when one is actually carried out it ships as a **Change** in the changelog._
       this pair — both have zero callers in `src/` and `tests/`
       ([styles-injector.ts:86](src/styles-injector.ts#L86)). Clean removal (no behaviour change).
       (Clean-room analysis reconcile, 2026-06-05.)
+- [ ] **Reduce the `:has` selector count in `styles.css` (community-review warning).** The 0.6.9 scan
+      flags **31 `:has` warnings** (generic perf advice; all currently marked "reviewed & justified",
+      Decision 26). _Do first (read-only audit, not yet done):_ categorise all 31 into **needed**
+      (parent-from-descendant in the Reading view, where we hold no JS handle on the element),
+      **replaceable** (where `:has` only reads a parent _state_ we could instead mark with a JS-set
+      class), and **removable**. Only the replaceable/removable ones are worth touching; each group
+      ships as a **Change**. Pairs with the **12 `!important`** warnings (same scan, same Decision 26
+      justification, lower priority). _Effort M; deferred (review-warning reduction, 2026-06-16)._
 
 ### Housekeeping
 
@@ -351,6 +359,33 @@ when one is actually carried out it ships as a **Change** in the changelog._
       elements right before each action (never a stale captured ref), a retry-on-churn wrapper, and a
       `run-all` harness that reloads to a clean state between guards and prefers `CDP_PORT=9223` direct.
       The symptom is recorded in Lesson 16; this is the fix.
+- [ ] **Reduce the community-review warnings — get the runtime out of the scan (+ trim CSS).** The
+      0.6.9 release scans as **"Caution": 62 findings, 0 errors** (v0.6.8 was FAILED on the now-fixed
+      `innerHTML`, Bug 110; the `document`→`activeDocument` sweep, Change 40, cut the `activeDocument`
+      hits from ~95 to 6). The 62 break down as: **43 CSS** (`:has` 31 + `!important` 12 — Decision 26;
+      see the `:has` item under Refactoring) · **11 off-Obsidian false positives** in
+      `runtime.ts`/`dev-bridge.ts` (`activeDocument` 6 + `instanceof` 4 + `net` 1 — these bundles
+      import no `obsidian`, so the Obsidian helpers/globals do not exist there; NOT fixable in place) ·
+      **6 deprecations** (`display` 4 + `setWarning` 2 — only clearable by raising `minAppVersion` to
+      1.13.0, which drops <1.13.0 users) · **2 recommendations** (`lie-runtime.js` as an "extra
+      unsupported file" + vault enumeration). **The 11 runtime false positives + the `lie-runtime.js`
+      "extra file" (≈12 of 62) only disappear if the scanned tree no longer contains
+      `runtime.ts`/`dev-bridge.ts` AND the release no longer attaches `lie-runtime.js`** — i.e. a
+      **repo split** (own lib + release; cost: a second release process + version sync) or a
+      **dedicated release branch/tag** whose tree omits those two source files and whose release omits
+      the runtime asset (cheaper, but ongoing merge discipline). Both are real architecture/packaging
+      decisions, not a quick edit. _Open prerequisite — which tree the bot scans (researched 2026-06-16,
+      not fully resolved):_ Obsidian's docs say the **directory reads `manifest.json` at the HEAD of the
+      DEFAULT branch** (end-users download assets from the matching release TAG); the new automated
+      review (Community hub, 2026-05) scans every version and the **developer dashboard can preview-scan
+      any branch/tag/commit**. The source scan reads the **source tree** (findings cite `src/…:line`,
+      not the minified `main.js`). **Unconfirmed whether the latest-release badge scan reads
+      default-branch HEAD or the release-tag commit** — and that decides everything: if it's
+      default-branch HEAD, a **release branch does NOT help** (the two files would have to leave `main`
+      entirely) and only a **repo split** works. _Cheapest way to settle it before any rebuild: use the
+      developer dashboard to preview-scan a throwaway commit that drops `runtime.ts`/`dev-bridge.ts` and
+      ships no `lie-runtime.js`, and see whether the ≈12 findings vanish._ (review-warning reduction,
+      2026-06-16.)
 
 _(The release-requirement housekeeping items RC1/R20, RC8/R27, RC9/R28 and RC10/R29 are DONE in
 v0.4.2 — see Change 25 in the changelog.)_
