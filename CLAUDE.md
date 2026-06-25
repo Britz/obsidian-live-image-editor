@@ -28,6 +28,21 @@ Non-destructive image editing via CSS transforms and filters — the original im
 
 Work conversationally — short, back-and-forth replies in the user's language (German). Don't charge ahead or make changes on a whim, and don't dump walls of text or big tables: surface the decision in a sentence or two and wait for direction. (Recurring user preference.)
 
+> ### 🛑 STOP before acting — think first, then act
+>
+> A hard precondition before **every** action (any Edit/Write, command, or outward step), no exceptions:
+>
+> 1. **What exactly am I about to do?** State it in one line.
+> 2. **Did the user clearly approve THIS specific thing?** A principle-confirmation, a related remark, or an ambiguous "ok" that may belong to another open item is **not** a yes. If I asked for consent, I **wait** for a clear, specific yes.
+> 3. **Sure, or guessing?** If I'm inferring intent or only "pretty sure" — **STOP and ask.** Default to asking, not acting.
+>
+> Running off half-specified is the exact failure this prevents (methodology.md's *think-first* core principle).
+>
+> **Let the user finish; don't run on half-typed input.** Rapid follow-up messages are usually ONE unfinished thought (the user hit Enter early), not separate finished commands — gather the complete intent and reconcile before acting, rather than reacting to each fragment.
+> - **If an instruction isn't yet clearly formulated, wait for clarification** — and if nothing more comes, **ask**. Don't fill the gap by guessing.
+> - **If the user starts typing again right after a message, wait until their input is finished** before acting — especially when there's no clear parallel task already running.
+> - A comment on what I DID (past tense, e.g. "you shouldn't have built that") is an **observation, not a command to instantly undo it** — acknowledge and ask what they want NOW. Never delete-then-recreate on the fly; that churn is the smell that I reacted too fast.
+
 ## Documentation
 
 This file is the **build & debug guide** only. The design — requirements, architecture, plan, tests, bugs — lives in `docs/development/`, one source of truth per altitude (see its `README.md` for the index). Ground any research or change on the artifact at the right altitude, not on this file's prose.
@@ -40,6 +55,8 @@ This file is the **build & debug guide** only. The design — requirements, arch
 - **`docs/development/methodology.md`** — the core principles (DRY, KISS, elegance, think-first, ground-up), the abstraction-level model, and how we work.
 
 **Altitude discipline is governed by the [⛔ NON-NEGOTIABLE GATE](#-non-negotiable-gate--applies-to-every-code-change-no-exceptions) at the top of this file:** code may change at most `implementation-plan.md`; `methodology.md`, `requirements.md`, `architecture.md` and `test-plan.md` are inviolable, and only the user may decide to change one. Re-read that gate before every code change.
+
+**Honour the rules the chain establishes — including each document's own.** The GATE governs *which* artifact may change; altitude discipline equally means obeying the rules each artifact sets — and each document additionally states **rules about its own content** (what belongs at its altitude versus below, e.g. an artifact meant to stay codebase-unspecific, or a requirement that must not carve out a case a higher model already covers). Those self-rules bind too: a rule leaking to the wrong altitude is itself a defect. They live **at each artifact** and are deliberately **not restated here** (one source of truth).
 
 ## Build & Test
 

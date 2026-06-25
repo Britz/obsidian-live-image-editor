@@ -70,10 +70,9 @@ no language or link-format setting of its own.
   overwrite, or relocate. It never overwrites silently, and falls back to an in-app dialog where no
   native one is reachable (mobile).
 - **F14 — Shared editing sub-menu.** Crop, Filters and Resize all open through **one
-  shared host element** (`AnchoredSubmenu`) — a modular component, not reimplemented per feature.
+  shared host element** — a modular component, not reimplemented per feature.
   **Export is not one of these live panels:** it raises the **OS-native save dialog** on desktop
-  (`@electron/remote` `showSaveDialog`) and an **Obsidian vault-path modal** on mobile
-  (`adapter.writeBinary`), then writes the file directly (F13). While a panel is open
+  and an **Obsidian vault-path modal** on mobile, then writes the file directly (F13). While a panel is open
   the working state is a **live preview** only (no source write). The host carries three icon
   actions: a per-panel **reset**, a **cancel** (✗) and an **accept** (✓). **Accept** — and every
   other way of **leaving** the panel (Enter / click-away / dismiss / context loss) — persists the
@@ -187,9 +186,8 @@ no language or link-format setting of its own.
 - **D3 — Responsive & column-capped.** Every image — including rotated and cropped — scales to
   the available text column and **never exceeds it** (Obsidian has no horizontal scroll), and
   stays responsive to column and window resize.
-- **D4 — Resize affordance.** Resizing uses Obsidian's **native resize handle**, shown on
-  hover and hidden while cropping. On a rotated image the dragged width is the **bounding-box
-  width**, so the handle behaves intuitively.
+- **D4 — Resize handle.** Resizing uses Obsidian's **native resize handle**, shown on hover.
+  **While cropping the handle is hidden and inert** (sizing happens outside crop).
 - **D5 — Raw-link reveal appearance.** The editable raw link (F8) reads like a normal document
   line above the image: borderless, full content width, auto-height (wraps fully, never
   clipped), never a boxed or resizable text field.
@@ -226,7 +224,7 @@ no language or link-format setting of its own.
   right) has more room within the canvas**, with a live histogram at the top and vertical
   sliders grouped by purpose. The panel **tracks the image and hides when the image scrolls
   out of view**. The "more room" side is a **guarded flip measured within the editor pane**
-  (`.markdown-source-view` / `.markdown-reading-view`, excluding the sidebar), flipping only when
+  (excluding the sidebar), flipping only when
   the panel fits there — so it never spills over the file explorer (Bug 77).
 - **D8 — In-place crop.** Activating crop keeps the image's exact size and position — **no
   jump or reflow** — and overlays the current state. Outside the frame is dimmed, inside is
@@ -236,9 +234,6 @@ no language or link-format setting of its own.
   (Decision 24). *(The current build still stretches the whole image on an axis instead — Bug 80.)* The cut window and the footprint **box stay fixed**
   during the session — the cut **shape** changes only via the aspect presets, and the box
   **size** is changed *outside* crop (the native resize handle D4 / the resize menu F24).
-  *(Realized in place on the live 3-layer DOM — no clone; the frame/area `overflow:hidden` and
-  the host `contain:paint` are lifted for the crop duration. See issues.md → Resolved by the
-  crop-editor in-place rework.)*
 - **D9 — Caption appearance.** A borderless, muted, slightly smaller line centred below the
   image and **never wider than the image** (a long caption wraps within the image width); it
   tracks the image through resize and column changes.
@@ -265,6 +260,9 @@ no language or link-format setting of its own.
   outlines around the toolbar's icon buttons with three modes — **Auto / Always / Never**. **Auto**
   follows the platform: outlines appear when `prefers-contrast` (high contrast) or `forced-colors`
   is active, and are otherwise off. (Surfaced in Settings, F20.)
+- **D15 — Selection frame.** A **selection frame** is shown on hover, outlining the image.
+  **While cropping the frame stays visible**, outlining the bounds of the resulting (cropped)
+  image, so the user always sees where the target image sits.
 
 ---
 
@@ -286,14 +284,13 @@ no language or link-format setting of its own.
   - **T2.3 — Block grammar (target).** The block is a Material-/MkDocs-style attribute list of
     **bare keys** (no `lie-` prefix — the block is hand-edited plain text in the Markdown, so
     brevity is a hard requirement, T11): the layout key `align=left|right` (float, HTML-faithful) /
-    `align=block-left|block-center|block-right` (block) — inline layout is the `.lie-inline` class;
+    `align=block-left|block-center|block-right` (block) — inline layout is carried as a **CSS class** (not a key);
     `width=N` / `height=N` (a pure px value is unitless, other units pass through — both round-trip as
     bare keys), `rotate=<deg>`, `flip=horizontal|vertical`, `transform="<2D-affine CSS transform>"`
     (the inner crop placement — pan / zoom / optional content-rotate), `filter="<CSS filter>"`,
     `aspect-ratio=<ratio>` (the footprint shape, stored **only** for a deliberate crop shape ≠
     original, AD6/T11), plus `.class` (built-in / vault-snippet / decoration classes, F16) and a
-    `style="…"` power-user escape. Read-compat: legacy `align=center` (→ block-center) and the legacy
-    `.lie-left|right|center` classes still parse, migrating to the new form on next save. An optional bare `.lie` is an explicit claim marker. **Presets
+    `style="…"` power-user escape. Read-compat: legacy `align=center` (→ block-center) and **legacy alignment classes** still parse, migrating to the new form on next save. An optional **explicit claim-marker class** may be present. **Presets
     and `auto` sizing never co-emit `width=` and `height=`** (a derived height would distort the
     image); the **explicit custom-size path** (D6.1/F24), where the user types both fields, **may**
     emit both — a fixed width **and** height is deliberately non-responsive user intent, not a

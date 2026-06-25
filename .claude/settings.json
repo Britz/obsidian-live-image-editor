@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "ask": [
+      "Edit(docs/development/**)",
+      "Write(docs/development/**)",
+      "Edit(CLAUDE.md)",
+      "Write(CLAUDE.md)"
+    ]
+  }
+}

@@ -25,7 +25,7 @@ flowchart TD
     SHELL["<b>Plugin shell</b><br/>lifecycle · commands · settings · styles<br/>i18n · editing-toolbar integration · dev"]
     SRC["<b>Markdown source</b><br/>image embed + attribute block {…}"]
     MODEL["<b>Model &amp; source layer</b><br/>transform model · link form &amp; size<br/>source↔DOM map · snippet discovery"]
-    CORE["<b>Render core</b><br/>geometry (pure) · uniform box &amp; measure<br/>caption · CSS-custom-property contract"]
+    CORE["<b>Render core</b><br/>geometry (pure) · uniform box &amp; measure<br/>caption · declarative CSS contract"]
     RV["<b>View adapter: RV</b><br/>post-processor"]
     LP["<b>View adapter: LP</b><br/>CM6 widget"]
     UI["<b>Editing UI</b><br/>toolbar · shared sub-menu host · crop editor<br/>filter panel · size · raw-link reveal · export"]
@@ -71,8 +71,8 @@ current code and are restated here as architecture, not invented anew.
   faithful. The **runtime-only** keys (`rotate`, `flip`, the inner crop `transform`, and a bare
   `filter=`) have no faithful native path — `transform` does not reflow, so a rotated **footprint**
   needs its own element, and a browser ignores a bare `filter` attribute (the faithful filter path
-  is the `style="filter:…"` escape) — and are realized by the render core / runtime (so the runtime's
-  `CLAIM_SELECTOR` must include `filter`, AB7a), degrading to the original image otherwise (F25).
+  is the `style="filter:…"` escape) — and are realized by the render core / runtime (so the runtime
+  must claim a bare `filter=` image too, AB7a), degrading to the original image otherwise (F25).
   Each datum is routed to the layer it must act on (AD3, 3-layer model):
   `align` / `width` / `aspect-ratio` / `style` / `.class` → the **outer** (the flow footprint);
   `rotate` + `flip` → the **inner-frame** (orientation + crop clip); `transform` (crop placement)
@@ -94,7 +94,7 @@ current code and are restated here as architecture, not invented anew.
     `style`, `.class`. It reserves the (possibly swapped) flow space and **does not rotate**, so
     the footprint stays correct even though `rotate` would not reflow.
   - **inner-frame** — **orientation + crop clip**: carries `rotate` + `flip` on **one** element
-    (composed in written `{}` order) and `overflow:hidden`.
+    (composed in written `{}` order) and **clips its content**.
   - **`<img>`** — **content**: carries the crop `transform` (pan / zoom / optional content-rotate)
     and `filter`.
 
@@ -108,38 +108,38 @@ current code and are restated here as architecture, not invented anew.
   never the reverse; the permanent guard against the recurring rotated-image sizing drift (no
   measure-then-resize loop). Layout and alignment act on the **outer** (the document-flow
   participant), not the image, so surrounding text wraps. *(Implemented — the plugin builds the three
-  layers `.lie-image-area` (outer) → `.lie-frame` (inner-frame) → `<img>`, upgrading a reused legacy
+  layers outer → inner-frame → `<img>`, upgrading a reused legacy
   2-layer DOM.)*
 
   - **The R0 box invariant (Decision 19).** The 3-layer DOM is **invariant** — the box is **never
     empty** and the `<img>` is **never naked**. Whatever the parameters, the outer always carries at
-    least the **native defaults** (`max-width:100%`, capped at the rotation-correct intrinsic
+    least the **native defaults** (column-capped to the rotation-correct intrinsic
     dimension — the height or width axis chosen by the box angle — with the aspect-ratio derived
     natively), and the `<img>` is **always boxed** inside the inner-frame. Only the
     **parameterization** changes across normal / rotated / cropped / filtered / resized images; the
     structure does not. **Crop only affects the inner `<img>`** (its placement `transform`) — it is
-    never a special case for the box's sizing rules. So `reset()` falls back to the native-default
-    parameters rather than leaving an empty box, and `clearStaleTransform` re-parameterizes rather
+    never a special case for the box's sizing rules. So a reset falls back to the native-default
+    parameters rather than leaving an empty box, and clearing a stale transform re-parameterizes rather
     than un-wrapping to a naked image (the two ways the invariant was previously broken).
   - **The display-mode residual is by design (Decision 13).** Alignment necessarily varies the box's
     `display`: a centered image is a centered **block**, an inline image is **inline**. This residual
     coupling is intentional and harmless — the explicit px `width` makes the flow footprint identical
     either way, so no refactor is warranted.
   - **Self-set markers ride the element they style; `:has()` is reserved for Obsidian's own DOM
-    (Decision 28).** The plugin BUILDS the outer (and, in LP, the host `.lie-wrapper`), so every class
-    or marker IT sets — the user's `.class` / `style` (AD2: on the **outer**), the
-    `lie-float-left/float-right/block-left/block-center/block-right` layout marker, `lie-inline`,
-    `lie-tall` — is placed on the element that must react and selected **directly** (e.g.
-    `.lie-image-area.lie-float-left`; the float on the flow participant), **never** via `:has(img.lie-*)`. `:has()` is used **only** to react to Obsidian's
-    OWN, uncontrolled DOM — the source-reveal slaving (`.cm-line:has(> .cm-formatting)`) — where the
-    plugin cannot add a class of its own. The **F18 alignment-float routing** on the CM `.cm-line`
-    context is a TOLERATED `:has` site for the same reason (an edge case partly controlled by
-    CodeMirror): a direct class is preferred, but `:has` is acceptable there if removal is risky. This is what makes decoration classes (`shadow` / `bordered`)
-    work on the outer box without being clipped, and it removes the marker-on-`<img>` shortcut the code
+    (Decision 28).** The plugin BUILDS the outer (and, in LP, its host wrapper), so every class
+    or marker IT sets — the user's `.class` / `style` (AD2: on the **outer**), the layout/alignment
+    markers, the inline marker, the tall-float marker — is placed on the element that must react and
+    selected **directly** (the float on the flow participant), **never** by matching the image via
+    `:has()`. `:has()` is used **only** to react to Obsidian's OWN, uncontrolled DOM — the
+    source-reveal slaving — where the plugin cannot add a class of its own. The **F18 alignment-float
+    routing** on the CodeMirror line context is a TOLERATED `:has` site for the same reason (an edge
+    case partly controlled by CodeMirror): a direct class is preferred, but `:has` is acceptable there
+    if removal is risky. This is what makes decoration classes (e.g. `shadow` / `bordered`)
+    work on the outer box without being clipped, and it removes the marker-on-image shortcut the code
     took against AD2/AD3. **Snippet contract (F16):** because the user's class lands on the outer (the
-    conceptual image box), an example / vault snippet is authored as a plain `.classname` (box effects)
-    plus `.classname img` for pixel effects (e.g. `circle`'s `object-fit:cover`) — it NEVER references
-    the plugin's internal `.lie-*` structure. *(Implemented — Change 36 / Bug 91: the user classes +
+    conceptual image box), an example / vault snippet is authored as a plain class for box effects
+    plus a descendant `… img` rule for pixel effects (e.g. a `circle` snippet's cover crop) — it NEVER
+    references the plugin's internal structure. *(Implemented — Change 36 / Bug 91: the user classes +
     the align/tall/inline markers ride the outer; the standalone runtime floats it with a direct
     selector; only the plugin's host-float `:has` (now reading the outer's marker) and the reveal
     remain, both the tolerated Obsidian/CM-DOM case.)*
@@ -179,7 +179,7 @@ current code and are restated here as architecture, not invented anew.
   and **dismissed by the `<>` (eye) toggle** — a transient, not-persisted per-image class that
   auto-clears in auto mode; (3) **editing** is
   Obsidian's **own cursor-reveal** of the source as real document text (F9) — caret, selection and copy
-  are native, and the fake link **yields** to the native source while the line is active (`.cm-active`)
+  are native, and the fake link **yields** to the native source while the line is active
   so the link is never shown twice. A **tall-float cap** preserves cross-view consistency: a float
   taller than CM6's ~250px render margin (which would derender on scroll in LP) falls back to a
   non-floated block in **both** views, governed by a setting (AB19). This **embraces** the behaviour the
@@ -322,7 +322,7 @@ the correct geometry.
   outer-relative units, and the **inner-frame** clips uniformly. Orientation (`rotate` + `flip`)
   sits on the inner-frame; the image's content visuals (`filter`, a crop's pan/zoom `transform`)
   sit on the `<img>` (AD2). *(Implemented — the render core builds the three layers; orientation on
-  `.lie-frame`, the crop placement + filter on the `<img>`.)*
+  the inner-frame, the crop placement + filter on the `<img>`.)*
 - **AB7 — Caption** — renders the alt text as a Markdown caption below the image via the platform
   renderer (AD9). It is a child of the **embed** (below the box, never inside it) and is sized to
   the box width by the **embed's own CSS** — the embed shrink-wraps to the box and the caption is
@@ -333,15 +333,15 @@ the correct geometry.
 - **AB7a — Portable runtime (the T3 portability mechanism).** *(T3, T4, T5, F25; IMPLEMENTED —
   `src/render-core.ts` is the Obsidian-free core, `src/runtime.ts` → the `lie-runtime.js` bundle.)*
   The framework-free read-render core (the T4/T5 goal) is **lifted out as a standalone JS bundle**
-  (`lie-runtime.js`, a second esbuild entry) that shares the model + geometry and the 3-layer
-  builder `buildLayers`; the structural **render CSS is inlined as a string (`RENDER_CSS`)** —
+  (a second build entry) that shares the model + geometry and the **3-layer
+  builder**; the structural **render CSS is inlined as a string** —
   CSS-in-JS, so a single `<script>` include suffices, and it is the **same source** the plugin
   injects (R0). **One format, three consumers**: the no-JS fallback, this runtime, and the
   toolbar writer — there is no parallel format. On a foreign page the runtime **hydrates claimed
-  `<img>`s** (on `DOMContentLoaded` + a `MutationObserver`) by building the **3-layer structure**
+  `<img>`s** (on load and as nodes are inserted) by building the **3-layer structure**
   (AD3) and routing the CSS per layer.
   **Identification rule:** an `<img>` is claimed **iff** it carries a distinctive runtime-only key
-  (`rotate` / `flip` / `transform` / `aspect-ratio` / `filter`) **or** the explicit `.lie` marker;
+  (`rotate` / `flip` / `transform` / `aspect-ratio` / `filter`) **or** the explicit claim marker;
   `align` / `width` / `style` / `class` alone do **not** claim (native CSS already handles them, and
   an align-only image needs no runtime structure). A bare `filter=` IS claimed — a browser ignores
   the bare attribute, so the runtime must apply it (the `style="filter:…"` escape needs no runtime).
@@ -400,15 +400,15 @@ display state — each produces an edit that round-trips through the model layer
   moves/scales/rotates the original under a fixed cut window, the editor driving the SAME
   `toCropResult` placement the render core commits (centre origin) so **preview == committed**.
   Handles (corner aspect-locked + edge single-axis + rotate) sit on the inner `<img>`; the cut
-  window + footprint box stay fixed (presets reshape the cut). For the crop duration it lifts the
-  frame/area `overflow:hidden` + the host `contain:paint` and dims the overflow (a ghost copy) — no
+  window + footprint box stay fixed (presets reshape the cut). For the crop duration it **suspends
+  the box's clipping** and dims the overflow (a ghost copy) — no
   reflow. Quantization to whole pixels / fixed angle steps **during** the interaction is pure and
-  tested; the structural facts are CDP-verified (`tests/cdp/verify-crop.mjs`), the drag feel manual
+  tested; the structural facts are CDP-verified, the drag feel manual
   (F12, D8). On **macOS** the editor additionally subscribes Electron's native `rotate-gesture`
-  window event (via the existing `@electron/remote` path) so a two-finger trackpad turn rotates the
+  window event so a two-finger trackpad turn rotates the
   content about the cut centre — same accumulate/quantize as the handle, which stays the cross-
   platform fallback; the listener is scoped to the crop session and removed on every exit path
-  (leak-checked in `tests/cdp/verify-crop-teardown.mjs`). macOS-only — no gesture code runs elsewhere.
+  (leak-checked). macOS-only — no gesture code runs elsewhere.
 - **AB13 — Filter panel** — the docked panel with a live histogram and sliders grouped by purpose
   (brightness, contrast, saturation, hue, blur, grayscale, sepia) plus named presets; reads/writes
   the declarative `filter` contract (F11, D7).
@@ -419,13 +419,13 @@ display state — each produces an edit that round-trips through the model layer
   canvas whose bounds clip the result like the inner-frame — the **same visual** as displayed, but
   sized from the **original image's native resolution** (highest quality; the display size does not
   reduce it, F13), with **no** parallel crop/rotate math. The canvas loads the **original** at
-  native resolution and replays the transform via `ctx`: the `filter` string passes through 1:1 as
-  `ctx.filter`; rotate / scale / translate become the canvas matrix; the crop is the
-  `drawImage` source rectangle; the output canvas is the rotated bounding box. Export and the CSS
+  native resolution and replays the transform: the `filter` string passes through 1:1; rotate / scale /
+  translate become the canvas matrix; the crop is the source rectangle drawn; the output canvas is the
+  rotated bounding box. Export and the CSS
   adapter **share the transform model, not the renderer** — two thin adapters over one model (the
   same shape as the two view-render paths, AD4): no parallel structure. Composition is by
-  **replaying the layer nesting** (`save` → inner-frame transforms → img transform → `drawImage` →
-  `restore`); the canvas matrix composes automatically, stored values are never rewritten, and the
+  **replaying the layer nesting** (inner-frame transforms, then the img transform, then the draw); the
+  canvas matrix composes automatically, stored values are never rewritten, and the
   only extra computation is the output bounding box. This is **not** DOM-to-image (a `foreignObject`
   taints the canvas and only captures display resolution) and **not** canvas-as-display (which would
   break R0/T3/T5). The **export-fidelity limit** is 2D-affine + standard filters: 3D / perspective,
@@ -434,7 +434,7 @@ display state — each produces an edit that round-trips through the model layer
   silently (F13, AD9).
 - **AB16 — Raw-link reveal & edit** *(F8, F9, D5)* — **reveal** is a display-only fake raw link the
   plugin paints before the `{…}`. Its **natural state** has two modes from the **global default-state
-  setting** (AB19/F20): *auto* — revealed on cursor (`.cm-active`) or hover of the image's line — or
+  setting** (AB19/F20): *auto* — revealed on cursor (the active line) or hover of the image's line — or
   *always* — revealed everywhere; both are pure CSS. The **`<>` (eye) reveal control** is a
   **transient per-image dismiss** (**not persisted**, F8): it hides this one image's source to inspect
   the layout, then **auto-clears in auto mode** (the source returns on the next hover/edit) and
@@ -469,16 +469,16 @@ display state — each produces an edit that round-trips through the model layer
   changed/deleted status shows warning/error colours; restore is **per-class** only (no whole-file
   reset).
 - **AB20 — Style injection** — installs the internal prefixed CSS: the alignment/inline classes
-  and their float routing (per Decision 28 the marker rides the OUTER `.lie-image-area`; off Obsidian
-  the runtime floats it DIRECTLY, in the plugin the host above the box floats via
-  `:has(.lie-image-area.lie-…)` — the tolerated CM-context `:has`; a `lie-float-left/right` float escapes the
-  non-BFC cm-line; `z-index:1` keeps the floated image clickable), the box/overflow rules, the
-  **tall-float cap** (a `.lie-tall` float stacks as a block under `body.lie-safe-tall-float`), and the
+  and their float routing (per Decision 28 the marker rides the OUTER box; off Obsidian
+  the runtime floats it DIRECTLY, in the plugin the host above the box floats via the tolerated
+  CM-context `:has`; the float escapes the non-BFC cm-line; a small z-index keeps the floated image
+  clickable), the box/overflow rules, the
+  **tall-float cap** (a tall float stacks as a block under a body-level setting class), and the
   configurable preset-width variables, shared with the render
   core (F15, F18, F24, T9). It also carries the **live-preview reveal
   CSS** (AD5): the rule that hides Obsidian's native image **uniformly in every embed** (never the
-  plugin's own `.lie-wrapper`), and the
-  hover/`.cm-active`-keyed rules — plus the `<>`-toggle class and the global default-state class — that
+  plugin's own widget), and the
+  hover/active-line-keyed rules — plus the `<>`-toggle class and the global default-state class — that
   hide the `{…}` and the fake raw link when rendered and reveal them otherwise. It also carries the **a11y
   button-outline** rules: a setting (AB19) draws visible outlines on the toolbar/chrome buttons in
   three modes — *Auto* (outlines only when the platform signals a need, via `prefers-contrast` /
@@ -506,12 +506,12 @@ Confirms every requirement is realized by a building block or decision (and surf
 |---|---|
 | F1 Non-destructive | AD1, AD2 · Transform model |
 | F2 Source is truth | AD1, AD5 · view adapters re-render from source |
-| F3 Block never shown as text | AD5 · `{…}` CSS-hidden when rendered (keyed on `.cm-active`), shown when editing |
+| F3 Block never shown as text | AD5 · `{…}` CSS-hidden when rendered (keyed on the active line), shown when editing |
 | F4 Both views | AD4 · Render core + two adapters |
 | F5 Link form follows Obsidian | AD9 · Link form normalization |
 | F6 Native size folded in | Link form normalization |
 | F7 Toolbar activation | Toolbar (selection + hover) |
-| F8 Raw-link reveal | AB16 · display-only fake link, CSS-toggled (hover/focus/`.cm-active`) · Settings (default state) |
+| F8 Raw-link reveal | AB16 · display-only fake link, CSS-toggled (hover/focus/active line) · Settings (default state) |
 | F9 Raw-link edit | AB16 · Obsidian's native cursor-reveal of source (AD5) |
 | F10 Transform set | Render core · Toolbar · Size sub-menu |
 | F11 Filters | Filter panel · AD2 contract |

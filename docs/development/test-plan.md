@@ -41,20 +41,32 @@ above it:
   loop, the shared sub-menu host, and the platform-reuse seams. Verified by CDP eval in a running vault.
 - **Behaviour / acceptance tests (High)** confirm the **requirements** (`Fn`/`Dn`) as observed by
   a user. Verified by CDP eval in a running vault on the example pages.
-- **Regression tests** pin every entry in the CLAUDE.md *Known bugs* list and every `T-Ln`
-  lesson, at whichever level catches it (a pure-logic regression becomes a unit test per the
+- **Regression tests** pin every solved bug (the `Bug N` entries in `CHANGELOG.md`) and every `T-Ln`
+  lesson (in `issues.md`), at whichever level catches it (a pure-logic regression becomes a unit test per the
   *write-tests-for-behaviour-changes* working rule; an integration-only one stays CDP).
+
+Behaviour/acceptance and regression checks are written **implementation-independent** — black-box,
+the way a user would test (observe the running app for the visible result) — so they survive
+refactors and Obsidian version changes. They are **additive** to the implementation-coupled
+unit/structural checks, not a replacement.
 
 The pure units live under `tests/unit/*.test.ts`; the CDP checks run via the dev-bridge
 (`AB23` / CLAUDE.md *Live debugging*) against the example vault pages (`example-vault/`), which are
-fixtures exercising each requirement area. The two runnable read-back CDP checks are
+fixtures exercising each requirement area. The read-back CDP checks are
 `tests/cdp/verify-write-path.mjs` (the §3 AD1 write-path matrix, the Bug 56 guard) and
 `tests/cdp/verify-crop.mjs` (the Bug 51 crop editor — 20 structural facts read back from the live
 DOM/source in Live Preview **and** reading view: no `document.body` clone, centre origin, handles
 on the inner image, 4 corner + 4 edge + rotate, native handle hidden, no reflow, one undo step per
 session, a width edit preserves the crop) plus `tests/cdp/verify-crop-teardown.mjs` (the crop editor
 fully restores every transient override — esp. the lifted host `contain:paint` — on EVERY exit path,
-read back from the live computed style). The crop scripts **self-create** their `_crop-fixture.md`
+read back from the live computed style). Further CDP scripts cover the reveal
+(`tests/cdp/verify-reveal.mjs`), the sub-menu icons/region (`verify-submodal-icons.mjs`,
+`verify-submodal-region.mjs`), click-away / popup coupling (`verify-region-clickaway.mjs`,
+`verify-popup-region.mjs`), crop pan hit-testing (`verify-crop-pan.mjs`) and render gaps
+(`verify-render-gaps.mjs`). The **optical / black-box** slice is `verify-resize-affordance.mjs`,
+which OBSERVES painted pixels + pointer hit-tests (never CSS properties) via a reusable `_optical.mjs`
+CDP client — region screenshots decoded to RGBA, a real `:hover` (CDP `Input`, since synthetic events
+don't trigger `:hover`), and `elementFromPoint`. The crop scripts **self-create** their `_crop-fixture.md`
 (and delete it); the manual crop demo is `example-vault/02 — Crop.md`.
 
 > **The load-bearing rule (the Bug 56 lesson).** A green suite must mean an **edit actually
@@ -156,7 +168,11 @@ Pure box / inner-image geometry; the single source shared by the renderer and th
   `filter` to the img verbatim (a bare `transform`'s own `rotate()` stays content, not decomposed),
   `aspect-ratio` to the cut shape; a legacy `style="transform: rotate(…) scaleX(-1)"` **decomposes**
   into the orientation fields (back-compat) while a legacy crop placement stays whole. `.class`,
-  `style=` and the `.lie` marker survive. *(Deferred: `width`/`align` still ride `style=` / a class.)*
+  `style=` and the `.lie` marker survive. Per **T2.3**, **both `width=N` and `height=N`** round-trip
+  as **bare keys** for **every unit** — a pure px value drops the unit (`200px`→`200`), any other
+  unit (`1.4em`, `%`, …) passes through verbatim. Layout serializes HTML-faithfully — `align=left|right`
+  (float) / `align=block-*` (block) / the `.lie-inline` class (inline), reading legacy `align=center` +
+  `.lie-*` (Decision 30).
   Verifies the routed-per-layer format and the orientation↔placement split (`AD2`, `AD3`, Bug 50).
 - **Bug 50 regression (orientation never touches the placement)** — `setRotation` on a cropped
   transform sets `rotate` and leaves `transform` (the crop placement) byte-identical; a rotated crop
@@ -194,10 +210,12 @@ serialize → parse → the op's field is back):
 - **`setRotation` (90 / 180 / 270 / free)** → `rotate=` present with the angle; back to 0 → absent.
 - **`toggleFlipH` / `toggleFlipV`** → `flip=horizontal` / `vertical`; toggled off → absent.
 - **`setFilter(...)`** → `filter="…"` with the non-default values; all-default → absent.
-- **alignment (left / right / center)** → `align=` with the value; reset → absent.
+- **layout (each of the six states)** → float `align=left|right`, block
+  `align=block-left|center|right`, inline the `.lie-inline` class; reset → absent (legacy
+  `align=center` / `.lie-*` still read, Decision 30).
 - **preset width (small / medium / large) via `setWidthPx`** → `width=N` (the baked px);
   **`original`** → absent. *(Pins the "small preset does nothing" symptom.)*
-- **inline toggle** → the inline marker; **`addClass`** → the class in `.class`.
+- **`addClass`** → the class in `.class`.
 - **crop `toCropResult`** → `transform=` placement (+ `aspect-ratio=` only when shape ≠ original).
 
 Verifies that **every** op persists, not just `width` (`AD1`, `T2.3`; pins **Bug 56**, supports
@@ -213,16 +231,22 @@ Verifies that **every** op persists, not just `width` (`AD1`, `T2.3`; pins **Bug
 
 ### 2.10 `size-submenu-logic.ts` — size presets (`AB14`)
 
-- **`sizePresets`** — `icon` sets `inline=true` (the F17 inline rendering) at a line-height size;
-  `small`/`medium`/`large` bake the configured px width and are NOT inline; `original` clears all.
-  Verifies the icon→inline coupling (`F24`/`F17`; fails if icon's inline flag is dropped).
+- **`sizePresets`** — `icon` sets a **line-height height only** (no width); `small`/`medium`/`large`
+  bake the configured px width (no height); `original` clears both. Verifies that **size is set
+  independently of layout** (`F24`, Decision 30 / Change 38): a preset carries **no** `inline` flag —
+  the inline rendering is the separate **inline layout state** (`F15`/`F17`). Fails if a preset's
+  width/height is not set/unset as expected, or if a preset re-introduces an inline flag.
 
 ### 2.11 `render-core.ts` — runtime identification (`AB7a`)
 
 - **`CLAIM_SELECTOR`** — claims every runtime-only key (`rotate`/`flip`/`transform`/`aspect-ratio`/
-  **`filter`**) + their `data-` variants + the `.lie` marker, and does **not** claim the
-  native-faithful `align`/`width` alone. Verifies a bare `filter=` image is hydrated by the runtime
-  (`F25`/`T3`; fails if `filter` is dropped from the selector).
+  **`filter`**) + their `data-` variants and the `.lie` marker, **the non-native layout states**
+  (`.lie-inline`, `[align="center"]`, `[align^="block-"]` + `data-` variants, Bug 76), **and a
+  `width`/`height` carrying a non-px unit** (em/%/… — no faithful HTML attribute, runtime-only). It
+  does **not** claim the native-faithful `align=left|right` (float) or a **pure-px** `width`/`height`
+  alone (the browser floats / sizes those itself). Verifies a bare `filter=`, a block/center/inline
+  image **and** a unit-sized image are hydrated off-Obsidian (`F25`/`T3`/`T2.3`/`F15`); fails if any
+  non-native key, layout, or unit-size is dropped.
 
 ---
 
@@ -240,8 +264,8 @@ run via CDP eval against the example vault (`Lesson 6`, `AD7`).
   - **Write-path persistence matrix (MUST actually run — read the source, never assume; Bug 56).**
     In the running vault, perform **each** op and **read the real source line `{…}` back**,
     asserting its key landed — then confirm the re-render reflects it: rotate cw / ccw, flip h / v,
-    each filter, align left / center / right, each size preset (icon/small/medium/large/original),
-    inline toggle, add-class, crop accept, reset. The native resize handle's `width` **and** every
+    each filter, **each layout state** (float-left/right, block-left/center/right, inline), each size
+    preset (icon/small/medium/large/original), add-class, crop accept, reset. The native resize handle's `width` **and** every
     toolbar/menu op must persist. *This is exactly the check Bug 56 slipped through (only `width`,
     via the handle's separate path, persisted) — the CDP step must read the written source, not
     assume the DOM changed. Pins **Bug 56**.*
@@ -315,11 +339,13 @@ run via CDP eval against the example vault (`Lesson 6`, `AD7`).
   Obsidian markdown):
   - **Hydration** — the runtime claims the right images and builds the **3-layer** structure
     around each via the shared `buildLayers`, injecting `RENDER_CSS` (CSS-in-JS) + a runtime
-    alignment rule. *Verifies one shared builder hydrates a foreign page (`T3`, `T5`). ✓ CDP.*
+    alignment rule. *Verifies one shared builder hydrates a foreign page (`T3`, `T5`). ✓ via
+    `tests/runtime-smoke.html` (browser fixture; an automated CDP runner is still TODO).*
   - **Identification** — an `<img>` is claimed **iff** it carries a distinctive key
     (`rotate`/`flip`/`transform`/`aspect-ratio`) or `.lie`; an `align`-only / `width`-only /
     `style`-only / `class`-only image is **not** claimed (no runtime structure built). Both the
-    bare and the `data-`-prefixed Pandoc variants are recognized. *Verifies the claim rule (`T3`). ✓ CDP.*
+    bare and the `data-`-prefixed Pandoc variants are recognized. *Verifies the claim rule (`T3`). ✓ via
+    `tests/runtime-smoke.html` (browser fixture; an automated CDP runner is still TODO).*
   - **Fallback degradation per key (no runtime, no plugin)** — with neither plugin nor runtime:
     `align` and `width` (and a `style="filter:…"`) render **faithfully** (real HTML attrs); `rotate`,
     `flip` and the inner crop `transform` are **inert and the original, untransformed image still
@@ -329,6 +355,12 @@ run via CDP eval against the example vault (`Lesson 6`, `AD7`).
   - **Import discipline** — the runtime bundle pulls **no** obsidian/CodeMirror (the runtime esbuild
     entry has no `obsidian` external, so a stray import fails the build). *Verifies the Obsidian-free
     core (`T3`, AB7a).*
+  - **Caption off-Obsidian (Feature 41 / Decision 31).** On a foreign page (no Obsidian, no
+    `MarkdownRenderer`) a claimed image with alt text gets its caption rendered by the runtime's
+    **own** minimal inline-Markdown renderer (bold / italic / code / link), in a shrink-wrap host
+    sized to the image width by CSS alone (`D9`, no JS width-sync); the HTML is built **without
+    `innerHTML`** (parsed + grafted, Bug 110). Fidelity is bounded by the lossy `alt` attribute.
+    *Verifies the AD9 runtime exception (`F22`, `AD9`).*
 
 - **Format migration (width/align → bare keys) — IMPLEMENTED.** Render parity (CDP): a new
   `align=`/`width=N` image and the legacy `.lie-left`/`style="width:…"` form render identically
@@ -352,39 +384,63 @@ Grouped by area; each line states what is checked.
   is movable / rotatable / scalable under a resizable frame; outside is dimmed, inside full
   opacity; the live cut quantizes to whole pixels and fixed angle steps **during** the drag; the
   result clips correctly and the box is the cut frame.
+- **Resize affordance (`D4`, `D15`).** On hover or when the image is selected, the **selection
+  frame and the native resize handle are both visible** (the handle resizes). **While cropping the
+  selection frame stays visible** — outlining the resulting cropped image so its location is always
+  shown — **while the resize handle is absent and inert**, and the croppable area outside the cut
+  window is **visible** (the image extends beyond the cut). Verified black-box: the running app is
+  observed for the frame / handle / overflow actually being visible or absent, independent of any
+  specific CSS. Pinned by `tests/cdp/verify-resize-affordance.mjs` — hover → the handle is grabbable
+  (`elementFromPoint`) and the selection frame is painted (a hover/no-hover pixel diff); crop → the
+  handle is inert, an accent frame still outlines the cut, and the image is hit-testable **outside**
+  the cut window (the **containment-lift canary**: clipped overflow = the Obsidian 1.12.7 regression).
 - **Filters (`F11`, `D7`).** Each slider (brightness, contrast, saturate, hue, blur, grayscale,
   sepia) changes the image live; named presets apply; double-click resets a slider; the panel docks
   on the roomier side and hides when the image scrolls out of view.
 - **Export (`F13`).** Exported file reproduces all transforms + filters **exactly as displayed**
   (rotation → rotated output, crop → clipped output, filters baked in); the save offers the
   native dialog at the original folder with a free `{name}-{n}` pre-filled and never overwrites
-  silently (native dialog verified manually — not CDP-reachable, §6).
+  silently (native dialog verified manually — not CDP-reachable, §6). A denied/failed vault write
+  surfaces an error notice, never silently swallowed (Bug 89).
 - **Captions (`F22`, `D9`).** Alt text renders as a Markdown caption below the image (bold /
   italic / code / links formatted), centred, muted, **never wider than the image** (long caption
   wraps within the image width), tracking the image through resize / column change; width
   follows the **visible** box (rotated/cropped → visible cut width); toggle off by default;
   too-small images show the caption on delayed hover (`D9.1`).
-- **Classes & snippets (`F15`, `F16`, `F24`).** Built-in alignment (left/right/center) and inline
-  classes toggle and reset; size presets (icon/small/medium/large/original) apply via the width
-  mechanism; vault-snippet classes are discovered, offered, individually de-selectable, and
-  refresh on change; bundled example snippets install opt-in and reset to shipped (`F16.1`).
+- **Layout — six states (`F15`, `F18`, Decision 30).** The six mutually-exclusive states —
+  **block-left / center / right** (own line, no text wrap), **float-left / right** (text wraps the
+  side), **inline** (within a text line) — each render correctly in **both** views; reset restores the
+  default. Exactly **one** of the six toolbar controls is highlighted, matching the image's current
+  state. Layout is **independent of size** (`F24`) and decoration classes (`F16`). Block vs float is
+  observable by whether surrounding text wraps beside the image (float) or sits above/below it (block);
+  a block-aligned image keeps its source on one line in live preview (Bug 78).
+- **Classes & snippets (`F16`, `F24`).** Size presets (icon/small/medium/large/original) apply via the
+  width mechanism; vault-snippet classes are discovered, offered, individually de-selectable, and
+  refresh on change; bundled example snippets install opt-in and reset to shipped (`F16.1`). (The
+  built-in layout states are the **Layout** item above, not classes.)
 - **Link form (`F5`, `F6`).** Toggling Obsidian's *Use [[Wikilinks]]* converts the link while the
   trailing block stays intact; a Markdown native size folds into the block; a wikilink native
-  size is left as written.
+  size is left as written. A native pipe / Markdown size is folded into the rendered width in **both**
+  views (the `{…}` block wins), and an actual edit normalizes it into the block, off the pipe (Bug 94).
+- **Change image source (`F26`).** Swapping one embed's file keeps the `{…}` block **and** the caption
+  (alt) — only the link target changes, so the new image inherits the existing transforms. There is
+  **no link-swap "replace all"** (a note-wide replace means baking → the flatten path, not this).
 - **Inline images (`F17`).** An image mid-sentence renders at its inline size in both views — not
   Obsidian's native full-size inline image — through the **same** uniform widget and chrome
   as standalone (only the placement differs), with no `{…}` shown as text.
-- **Float & wrap (`F18`).** Left / right alignment floats the image and the surrounding text
-  wraps around it in both views, including the hard cases (rotated + float + wrapped, cropped +
+- **Float & wrap (`F18`).** The **float-left / float-right** states float the image and the
+  surrounding text wraps around it in both views, including the hard cases (rotated + float + wrapped, cropped +
   float + wrapped), verified by measuring actual line-box rects (not the full-width border box). In
   live preview the float is the inline widget in its own non-BFC cm-line that **escapes** into
   `.cm-content` (multi-line wrap on hard-wrapped paragraphs, **zero height desync** per line, **no
   click-steal**, image clickable via `z-index:1`). A float taller than ~250px **stacks as a
   non-floated block in BOTH views** under the *Stack tall floated images* setting (default permissive — off), so
   it can't derender on scroll in LP and the reader matches it (`tallFloatSafe`; the tall-float cap).
-- **Settings (`F20`, `D11`).** General toggles (hover toolbar, captions, default reveal state),
-  preset widths, snippet list with per-class toggles and install/reset, and editing-toolbar
-  integration all take effect live; edits never jump scroll or move the cursor.
+- **Settings (`F20`, `D11`, `D14`).** General toggles (hover toolbar, captions, default reveal state,
+  button-outlines Auto/Always/Never), preset widths, snippet list with per-class toggles and
+  install/reset, and editing-toolbar integration all take effect live; edits never jump scroll, and a
+  single-image edit places the caret on its image's line (`D11` revised) — keeping undo anchored there —
+  while hovering never moves the cursor (Bug 77/108).
 - **i18n (`F21`).** Switching Obsidian's locale switches the plugin's strings (reusing platform
   strings where available) with English fallback; the filter panel widens so translated labels
   fit, never clipped (`D6`).
@@ -397,10 +453,10 @@ Grouped by area; each line states what is checked.
 
 ## 5. Regression tests — one per fixed bug + per learned lesson
 
-A regression test pins each entry once it is fixed (CLAUDE.md *Known bugs* + the `T-Ln`
-lessons). Pure-logic regressions become **unit** tests (§2); the rest are **CDP** checks (§3/§4).
+A regression test pins each entry once it is fixed (the solved `Bug N` entries in `CHANGELOG.md` + the `T-Ln`
+lessons in `issues.md`). Pure-logic regressions become **unit** tests (§2); the rest are **CDP** checks (§3/§4).
 
-### 5.1 Per fixed bug (CLAUDE.md *Known bugs*)
+### 5.1 Per fixed bug (`CHANGELOG.md` solved `Bug N` entries)
 
 | Bug | What it pins | Level |
 |---|---|---|
@@ -414,7 +470,7 @@ lessons). Pure-logic regressions become **unit** tests (§2); the rest are **CDP
 | Bug 8 | Temperature slider moves itself and the others (match by key, not index) | CDP |
 | Bug 9 | Custom-size sub-menu has width **and** height fields | CDP (`D6.1`) |
 | Bug 10 | Alignment classes float the embed (`:has()` on the container) | CDP (`AD3`) |
-| Bug 11 | Native resize handle/frame shown on hover, hidden while cropping | CDP (`D4`) |
+| Bug 11 | Native resize **handle** shown on hover, **hidden** while cropping (`D4`); the **selection frame** shows on hover/selection and **stays visible while cropping** (`D15`) | CDP (`D4`, `D15`) |
 | Bug 12 | Export never overwrites silently (superseded by the save dialog) | CDP (`F13`) |
 | Bug 13 | ~~Revealed link editor is borderless~~ — **obsolete**: there is no plugin-owned editable field anymore; editing is native document text (Obsidian's own cursor-reveal), so `D5`'s borderless requirement is satisfied natively | n/a (`D5`) |
 | Bug 14 | No-size image fits the column, no overflow | CDP (`D3`) |
@@ -428,13 +484,27 @@ lessons). Pure-logic regressions become **unit** tests (§2); the rest are **CDP
 | Inline-icon / tiny toolbar | the floating bar sits truly ABOVE a too-small image (`rect.top − h − gap`, below-fallback near the viewport top); float-out fires by coverage | CDP (`D1.1`) |
 | Bug 50 | rotate/flip of a cropped image rides the inner-frame (centre pivot) and never touches the `<img>` crop placement — no drift; export composes content → orient the same way | **unit** (`transforms` setRotation-on-crop, `crop-editor-logic`) + CDP (`AD3`, the 3-layer geometry) |
 | Bug 56 *(SOLVED — basename-collision in the source resolver; fixed via DOM-position resolution)* | **every** toolbar/menu op persists to `{…}`, not only `width` — the per-op persistence matrix + the read-source-back behaviour check | **unit** (§2.8) + CDP (§3 `AD1` write-path matrix) |
-| Bug 51 *(open)* | crop editor on the **live 3-layer** structure: centre origin, handles on the inner `<img>`, the frame/box stays fixed, the overlay image rotates, a `width` resize **preserves** the crop, and the crop/rotate edits **persist** to `{…}` | **unit** (`toCropResult` / §2.8) + CDP (`AD3`, `D8`) |
+| Bug 51 *(SOLVED — migrated to the live 3-layer model)* | crop editor on the **live 3-layer** structure: centre origin, handles on the inner `<img>`, the frame/box stays fixed, the overlay image rotates, a `width` resize **preserves** the crop, and the crop/rotate edits **persist** to `{…}` | **unit** (`toCropResult` / §2.8) + CDP (`AD3`, `D8`) |
 | Crop pan hit-area *(SOLVED)* | the pan grip is the **whole visible image** — the dim ghost img is the pan hit-surface (`pointer-events:auto`), so a drag started **outside** the cut frame pans too, while the handles still win their own hits | CDP (`D8`; `tests/cdp/verify-crop-pan.mjs` — real `elementFromPoint` hit-test) |
 | Bug 53 *(SOLVED)* | the reveal toggle shows the **`<>` (code)** icon, not an eye | CDP (`F8`); `tests/cdp/verify-reveal.mjs` |
 | Bug 54 *(SOLVED)* | a `<>` dismiss hides the **whole** raw embed (fake `![](…)` + `{…}`), not just `{…}`; the dismiss/auto-clear state machine resets only on *leave* (a fresh dismiss survives its own tx) | **unit** (`reduceReveal`, `tests/unit/regressions.test.ts`) + CDP (`F8`, `F3`; `tests/cdp/verify-reveal.mjs`) |
 | Bug 55 *(SOLVED)* | the revealed `{…}` attribute list keeps its **CM syntax highlighting** (URL tokens), via a single `URL_CLASS` mark that carries **no** `cm-formatting` | **unit** (`URL_CLASS` invariant, `tests/unit/regressions.test.ts`) + CDP (`tests/cdp/verify-reveal.mjs`) |
+| Bug 76 | A block/center/inline image (no faithful HTML rendering) is **claimed** so it renders off-Obsidian; `align=left/right` float stays unclaimed | **unit** (`CLAIM_SELECTOR`, §2.11) + CDP (`T3`, `F15`) |
+| Bug 77 | Undo after a toolbar edit **stays on the image** — the edit seeds the caret on the image's line, so cmd+Z does not scroll to the document top (`D11` revised) | CDP (`D11`) |
+| Bug 78 | A block-aligned image (`align=block-*` / legacy center) keeps its source on **one** line in live preview (block layout styles the plugin widget, not the suppressed native embed) | CDP (`AD5`, `F15`) |
+| Bug 89 | A failed/denied vault write during Export surfaces an **"Export failed" notice**, never silently swallowed | CDP / manual (`F13`) |
+| Bug 90 | Rotating an explicitly-sized image **swaps the footprint** (w↔h) instead of stretching the height | **unit** (`rotatedFootprint`, renderer-logic) + CDP (`AD3`, `AD6`) |
+| Bug 91 | Decoration/snippet classes + the layout markers ride the **outer box**, not the `<img>` — an outset box-shadow / border is not clipped | **unit** (render-core `applyClasses`) + CDP (`AD2`, `AD3`, Decision 28) |
+| Bug 92 | Editing chrome is **live-preview only** — a touch long-press in reading view opens no toolbar | CDP (`F7`, Decision 22) |
+| Bug 93 | The plugin follows Obsidian's locale **even when Obsidian is set to English** (`detectLocale` mirrors `getLanguage`) | **unit** (i18n `detectLocale`) + CDP (`F21`) |
+| Bug 94 | A native pipe/markdown size (`![[img\|160]]`) is **folded into the render width in both views** (the explicit `{…}` block wins); an edit normalizes it into the block, off the pipe | **unit** (`applyNativeSize` / `foldNativeSize`) + CDP (`F6`, `T2`) |
+| Bug 96 / 100 / 106 | Raw-link reveal is correct for **inline / list / callout** embeds: link shown **once** (no double), the `{…}` syntax-highlighted, never a stray `{…}` with no link | CDP (`F8`, `AD5`; `verify-reveal.mjs`) |
+| Bug 107 | With a caption the resize handle anchors to the **image corner**, not the caption's bottom | CDP (`D4`, `D9`) |
+| Bug 108 | Resizing via the **hover handle without a prior click** keeps cmd+Z on the image (resize write passes the `D11` cursor) | CDP (`D11`) |
+| Bug 109 | The link-source reveal **stays put during a crop** (hover reveal suppressed on a cropping line) | CDP (`F8`, `D8`) |
+| Bug 110 | The standalone runtime renders the caption **without `innerHTML`** (DOMParser + `replaceChildren` on escaped HTML) | **unit** (`runtime-markdown`) + CDP / manual (off-Obsidian) |
 
-### 5.2 Per learned lesson (`T-Ln`)
+### 5.2 Per learned lesson (`T-Ln`, in `issues.md`)
 
 | Lesson | Regression it guards | Level |
 |---|---|---|
