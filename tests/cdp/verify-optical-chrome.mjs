@@ -81,17 +81,19 @@ async function main() {
       };
     })()`);
 
-    // (2b) the resize handle MARKER must be VISIBLE (painted), not merely present/grabbable — the
-    // marker is centred on the corner tip, half OUTSIDE the image, so a 24px box straddling the corner
-    // should carry MORE accent in the 3 outside-corner quadrants than in the single image-side one. A
-    // containment clip that eats the outside half = handle not fully visible = FAIL (D4).
+    // (2b) the resize handle MARKER must be VISIBLE (painted) AND not contain-clipped. It MIRRORS
+    // Obsidian's native handle (D4): the dot sits flush in the corner (its accent ring mostly INSIDE
+    // the image) with only its 2px outline bleeding ~2px OUTSIDE. So a 24px box straddling the corner
+    // must carry accent BOTH inside the corner (the ring body, mIn) AND in the outside band (the 2px
+    // bleed, mOut); a containment clip eats the outside bleed → mOut == 0 → FAIL. (The block-layout
+    // clip itself is exercised in verify-resize-affordance; here the image is standalone/unclipped.)
     const cornerShot = await cdp.screenshot({ x: B.x + B.w - 12, y: B.y + B.h - 12, width: 24, height: 24 });
     let mIn = 0, mOut = 0;
     { const sx = cornerShot.width / 24, sy = cornerShot.height / 24;
       for (let yy = 0; yy < 24; yy++) for (let xx = 0; xx < 24; xx++) {
         if (near(pixel(cornerShot, xx * sx, yy * sy), accent, 80)) (xx >= 12 || yy >= 12) ? mOut++ : mIn++;
       } }
-    const resizeHandleVisible = mOut > 0 && mOut >= mIn;
+    const resizeHandleVisible = mIn > 0 && mOut > 0;
 
     // (3)(4) open the filter panel → it docks beside the image, toolbar greyed (inactive)
     const filt = await cdp.evaluate(`(async () => {

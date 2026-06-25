@@ -415,7 +415,11 @@ Grouped by area; each line states what is checked.
   `elementFromPoint` for being *hit-testable*. A handle that is present and grabbable but visually
   **clipped / not fully painted** (e.g. a containment clip eating the half that sits outside the image
   or cut window) is a **FAIL** — hittability alone is insufficient. This is the load-bearing rule for
-  the affordance checks, the resize-handle analogue of the Bug 56 "never assume the write" rule.
+  the affordance checks, the resize-handle analogue of the Bug 56 "never assume the write" rule. The
+  marker check covers the layouts that actually trigger the clip: a **block-layout** image (tall-float
+  / bare-embed, paint-contained by the block widget) — the native marker stays **fully painted, not
+  clipped**; and a **captioned** image — the handle anchors to the **image** corner, not the caption's
+  bottom (Bug 99/107). Pixel-observed, independent of the mechanism that prevents the clip.
 - **Filters (`F11`, `D7`).** Each slider (brightness, contrast, saturate, hue, blur, grayscale,
   sepia) changes the image live; named presets apply; double-click resets a slider; the panel docks
   on the roomier side and hides when the image scrolls out of view.

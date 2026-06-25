@@ -343,14 +343,19 @@ body {
 }
 /* block:true FALLBACK (tall-float / bare-embed). Obsidian paint-contains block widgets
    (app.css `.cm-content > [contenteditable="false"] { contain: paint }`), which CLIPS the
-   lower half of the resize marker (centred on the image's bottom-right corner). Reserve that
-   overflow INSIDE the box with padding-bottom and cancel the flow gap with a negative margin:
-   the marker is fully painted (and, via the containment's stacking context, above the
-   following line) with no layout shift. */
+   native resize marker where the image edge meets the widget edge: the marker dot sits flush
+   in the corner, but its 2px accent outline bleeds past it (D4 — native look). Reserve that 2px
+   INSIDE the clip with PADDING on the marker's overhang sides (`inline-end` for a full-width
+   block, `bottom` for a caption-less block — a caption already extends the box past the marker).
+   No compensating negative margin: the block widget is over-constrained, so the engine DROPS a
+   negative margin (verified — even `!important` resolves to 0) and absorbs the padding by shrinking
+   the content, so a full-width block image gives up 2px (0.3%, D3-safe, no overflow; standalone
+   images carry no containment and are untouched). If that 2px ever matters, the alternative is a
+   body portal for the marker (cf. the AB12 crop portal) — deliberately deferred for KISS. */
 .lie-wrapper-block {
   display: block;
-  padding-bottom: 5px;
-  margin-bottom: -5px;
+  padding-inline-end: 2px;
+  padding-bottom: 2px;
 }
 
 /* Tall-float cap (R0): a FLOATED image taller than CM6's ~250px render margin would derender
@@ -479,14 +484,14 @@ body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall.lie-float-rig
 /* The resize handle — the plugin's own (it draws its own image, not Obsidian's native
    embed), but styled to LOOK like Obsidian's native image handle: a small rounded accent
    square (`--background-primary` fill + a `--color-accent` outline) in the bottom-right,
-   fading in on hover. Values mirror app.css `div.image-embed .image-resize-corner`; the
-   deviations: the trigger (hover, since our image isn't the focusable native embed) and the
-   marker sits CENTERED on the corner tip (half outside) rather than just inside. Hidden while
-   cropping (D4). */
+   fading in on hover. Values MIRROR app.css `div.image-embed .image-resize-corner` exactly
+   (box at -3px; the marker dot sits flush in the corner with only its 2px outline bleeding
+   out — D4, "visually indistinguishable from native"). The sole deviation is the trigger
+   (hover, since our image isn't the focusable native embed). Hidden while cropping (D4). */
 .lie-box .image-resize-corner {
   position: absolute;
-  inset-inline-end: 0;
-  bottom: 0;
+  inset-inline-end: -3px;
+  bottom: -3px;
   width: 30px;
   height: 30px;
   z-index: 11;
@@ -496,10 +501,11 @@ body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall.lie-float-rig
   content: " ";
   position: absolute;
   display: block;
-  /* centre the 4×4 marker on the corner tip: half its width past each edge (negative inset),
-     so the dot's centre lands exactly on the image's bottom-right corner. */
-  inset-inline-end: -2px;
-  bottom: -2px;
+  /* mirror native: the 4×4 dot's bottom-right lands ON the image corner — the dot fill sits
+     INSIDE the image, only its 2px outline bleeds ~2px out. The block-widget reserve in
+     `.lie-wrapper-block` keeps that 2px inside the `contain:paint` clip (D4 — never clipped). */
+  inset-inline-end: 3px;
+  bottom: 3px;
   width: 4px;
   height: 4px;
   background-color: var(--background-primary);

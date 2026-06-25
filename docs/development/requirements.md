@@ -186,8 +186,12 @@ no language or link-format setting of its own.
 - **D3 — Responsive & column-capped.** Every image — including rotated and cropped — scales to
   the available text column and **never exceeds it** (Obsidian has no horizontal scroll), and
   stays responsive to column and window resize.
-- **D4 — Resize handle.** Resizing uses Obsidian's **native resize handle**, shown on hover.
-  **While cropping the handle is hidden and inert** (sizing happens outside crop).
+- **D4 — Resize handle.** Resizing uses a resize handle, shown on hover, that is **visually
+  indistinguishable from Obsidian's native image resize handle** — same corner placement and
+  marker appearance (a fixed design constraint; the marker is **not** relocated or shrunk to ease
+  implementation). The handle **must never be clipped**, including in layouts where the surrounding
+  view would otherwise crop it. **While cropping the handle is hidden and inert** (sizing happens
+  outside crop).
 - **D5 — Raw-link reveal appearance.** The editable raw link (F8) reads like a normal document
   line above the image: borderless, full content width, auto-height (wraps fully, never
   clipped), never a boxed or resizable text field.

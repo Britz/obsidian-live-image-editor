@@ -65,8 +65,10 @@ async function main() {
     const setup = await cdp.evaluate(`(async () => {
       const plugin = app.plugins.plugins["live-image-editor"];
       if (!plugin) return { fatal: "plugin not loaded" };
+      // the caption case (1c) needs captions ON; force it for the render (restored in finally)
+      plugin.settings.showCaptions = true;
       const vault = app.vault;
-      const content = "# Resize affordance fixture\\n\\nbody text body text body text body text\\n\\n![](images/sample-landscape.png){width=320}\\n\\nmore body text below the image\\n";
+      const content = "# Resize affordance fixture\\n\\nbody text body text body text body text\\n\\n![](images/sample-landscape.png){width=320}\\n\\nmore body text below the image\\n\\n![[images/sample-landscape.png]]\\n\\n![[images/sample-landscape.png|A caption here]]\\n";
       let f = vault.getAbstractFileByPath(${JSON.stringify(FIXTURE)});
       if (f) await vault.modify(f, content); else f = await vault.create(${JSON.stringify(FIXTURE)}, content);
       await app.workspace.getLeaf(false).openFile(f);
@@ -88,7 +90,26 @@ async function main() {
       document.body.appendChild(probe);
       const accent = getComputedStyle(probe).color;
       probe.remove();
-      return { ok: true, accent, area: { x: r.left, y: r.top, w: r.width, h: r.height } };
+      // Classify the other rendered images: the BARE embed renders as a full-width BLOCK widget
+      // (paint-contained — the real clip case); the wikilink with an alias renders WITH a caption.
+      const items = Array.from(document.querySelectorAll(".lie-image-area")).map((a) => ({
+        a, block: !!a.closest(".lie-wrapper-block"), cap: !!a.closest(".lie-has-caption"),
+      }));
+      const blockIt = items.find((it) => it.block && !it.cap);
+      const capIt = items.find((it) => it.cap);
+      let blockArea = null;
+      if (blockIt) { const b = blockIt.a.getBoundingClientRect(); blockArea = { x: b.left, y: b.top, w: b.width, h: b.height }; }
+      let caption = null;
+      if (capIt) {
+        const box = capIt.a.closest(".lie-box") || capIt.a.closest(".lie-has-caption");
+        const corner = box && box.querySelector(".image-resize-corner");
+        if (box && corner) caption = {
+          imageBottom: capIt.a.getBoundingClientRect().bottom,
+          handleBottom: corner.getBoundingClientRect().bottom,
+          boxBottom: box.getBoundingClientRect().bottom,
+        };
+      }
+      return { ok: true, accent, area: { x: r.left, y: r.top, w: r.width, h: r.height }, blockArea, caption };
     })()`);
     setupDone = true;
     if (!setup || setup.fatal || !setup.ok) throw new Error("setup: " + JSON.stringify(setup));
@@ -96,6 +117,7 @@ async function main() {
     const accent = parseColor(setup.accent);
     if (!accent) throw new Error("could not parse accent colour: " + JSON.stringify(setup.accent));
     const A = setup.area;
+    const B = setup.blockArea;  // the full-width BLOCK image (paint-contained) — the real clip case
     const cornerPt = { x: A.x + A.w - 3, y: A.y + A.h - 3 }; // image bottom-right corner (viewport CSS px)
     const center = { x: A.x + A.w / 2, y: A.y + A.h / 2 };
 
@@ -111,18 +133,64 @@ async function main() {
     const handleHittable = await cdp.evaluate(
       `!!document.elementFromPoint(${cornerPt.x}, ${cornerPt.y})?.closest(".image-resize-corner")`,
     );
-    // The handle MARKER is centred on the corner tip — half of it sits OUTSIDE the image. A 24px box
-    // straddling the corner should carry MORE accent in the 3 outside-corner quadrants than in the
-    // single image-side quadrant; if the host's containment clips it, the outside half is missing.
-    const cornerShot = await cdp.screenshot({ x: A.x + A.w - 12, y: A.y + A.h - 12, width: 24, height: 24 });
-    let mInner = 0, mOuter = 0;
-    {
-      const sx = cornerShot.width / 24, sy = cornerShot.height / 24;
-      for (let yy = 0; yy < 24; yy++) for (let xx = 0; xx < 24; xx++) {
-        if (near(pixel(cornerShot, xx * sx, yy * sy), accent, 80)) (xx >= 12 || yy >= 12) ? mOuter++ : mInner++;
+    // 1b — the NATIVE marker on a BLOCK image (paint-contained) must be fully painted, NOT clipped
+    // (D4). It mirrors Obsidian's handle: the dot sits flush in the corner (its accent ring mostly
+    // INSIDE the image) with only its 2px outline bleeding ~2px OUTSIDE — the block widget's
+    // contain:paint would eat that bleed without the .lie-wrapper-block reserve. Hover the block
+    // image, screenshot its bottom-right corner: require accent BOTH inside (mInner, the ring body)
+    // AND in the outside band (mOuter, the bleed). A containment clip → mOuter == 0 → FAIL.
+    let markerFullyVisible = false, mInner = 0, rightBleed = 0, bottomBleed = 0;
+    if (B) {
+      // the block image sits below the fold — scroll it into view, then re-read its on-screen rect
+      const br = await cdp.evaluate(`(() => {
+        const it = Array.from(document.querySelectorAll(".lie-image-area")).find(a => a.closest(".lie-wrapper-block") && !a.closest(".lie-has-caption"));
+        if (!it) return null;
+        it.scrollIntoView({ block: "center" });
+        const b = it.getBoundingClientRect();
+        return { x: b.left, y: b.top, w: b.width, h: b.height };
+      })()`);
+      if (br) {
+        await cdp.hover(br.x + br.w / 2, br.y + br.h / 2);
+        await sleep(200);
+        const cornerShot = await cdp.screenshot({ x: br.x + br.w - 12, y: br.y + br.h - 12, width: 24, height: 24 });
+        const sx = cornerShot.width / 24, sy = cornerShot.height / 24;
+        for (let yy = 0; yy < 24; yy++) for (let xx = 0; xx < 24; xx++) {
+          if (!near(pixel(cornerShot, xx * sx, yy * sy), accent, 80)) continue;
+          if (xx < 12 && yy < 12) mInner++;             // ring body, INSIDE the image corner
+          else if (xx >= 12 && yy < 12) rightBleed++;   // 2px RIGHT outline bleed (clipped w/o the inline-end reserve)
+          else if (xx < 12 && yy >= 12) bottomBleed++;  // 2px BOTTOM outline bleed (clipped w/o the bottom reserve)
+        }
+        // full-width caption-less block: BOTH bleeds must survive the contain:paint clip, so require
+        // each side independently — a single-side clip (e.g. inline-end reserve gone) then FAILS.
+        markerFullyVisible = mInner > 0 && rightBleed > 0 && bottomBleed > 0;
       }
     }
-    const markerFullyVisible = mOuter > 0 && mOuter >= mInner;
+
+    // 1c — with a CAPTION the handle anchors to the IMAGE corner, not the caption's bottom (Bug
+    // 99/107): the caption host extends the box well below the image, but the handle must hug the
+    // image's bottom edge (the .lie-image-host shrink-wraps the image only).
+    // captions render ASYNC (MarkdownRenderer), so poll for the caption host before measuring.
+    let captionAnchorOk = false, capGeo = null;
+    capGeo = await cdp.evaluate(`(async () => {
+      let a = null;
+      for (let i = 0; i < 20; i++) {
+        a = Array.from(document.querySelectorAll(".lie-image-area")).find(x => x.closest(".lie-has-caption"));
+        if (a) break;
+        await new Promise(r => setTimeout(r, 150));
+      }
+      if (!a) return null;
+      a.scrollIntoView({ block: "center" });
+      await new Promise(r => setTimeout(r, 100));
+      const box = a.closest(".lie-box") || a.closest(".lie-has-caption");
+      const corner = box && box.querySelector(".image-resize-corner");
+      if (!box || !corner) return null;
+      return { imageBottom: a.getBoundingClientRect().bottom, handleBottom: corner.getBoundingClientRect().bottom, boxBottom: box.getBoundingClientRect().bottom };
+    })()`);
+    if (capGeo) {
+      const boxBelowImage = capGeo.boxBottom - capGeo.imageBottom;             // host extends past the image
+      const handleAtImage = Math.abs(capGeo.handleBottom - capGeo.imageBottom); // handle ~ image bottom
+      captionAnchorOk = boxBelowImage > 5 && handleAtImage <= 8;
+    }
 
     // selection frame appears on hover: accent along the LEFT inner edge (clear of the top-left
     // toolbar and the bottom-right handle), present on-hover but not off-hover.
@@ -135,6 +203,8 @@ async function main() {
       const plugin = app.plugins.plugins["live-image-editor"];
       const img = document.querySelector(".lie-image-area img");
       if (!img) return { fatal: "image vanished before crop" };
+      img.scrollIntoView({ block: "center" });           // the 1b/1c checks scrolled down; bring it back
+      await new Promise(r => setTimeout(r, 200));
       plugin.activeImage = img;
       plugin.crop();
       await new Promise(r => setTimeout(r, 350));
@@ -201,7 +271,8 @@ async function main() {
     // ---- report ----
     const checks = [
       ["1. hover: native resize handle is GRABBABLE at the image corner (D4)", handleHittable === true],
-      ["1b. hover: resize handle marker FULLY visible at the corner, not contain-clipped (D4)  [optical]", markerFullyVisible],
+      ["1b. block image: NATIVE marker fully painted at the corner, not contain-clipped (D4)  [optical]", markerFullyVisible],
+      ["1c. caption: resize handle anchors to the IMAGE corner, not the caption's bottom (Bug 99/107)", captionAnchorOk],
       ["2. hover: a selection FRAME is painted around the image (D15)  [optical]", fracFrameHover > 0.5],
       ["3. crop: the resize handle is ABSENT / inert (D4)", crop.handleInert === true],
       ["4. crop: an accent FRAME outlines the cut/resulting image (D15)  [optical]", fracFrameCrop > 0.2],
@@ -226,6 +297,7 @@ async function main() {
   } finally {
     if (setupDone) {
       await cdp.evaluate(`(async () => {
+        try { const p = app.plugins.plugins["live-image-editor"]; if (p) p.settings.showCaptions = false; } catch (e) {}
         try { const f = app.vault.getAbstractFileByPath(${JSON.stringify(FIXTURE)}); if (f) await app.vault.delete(f); } catch (e) {}
       })()`).catch(() => {});
     }

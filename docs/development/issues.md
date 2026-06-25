@@ -238,11 +238,6 @@ _**105 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       (handle DRAG geometry). _Hypothesis:_ the `handleBox` rides the placement transform
       ([crop-editor.ts:490](src/crop-editor.ts#L490)) / sizes in relative units, so the image scale
       propagates into the handle size. Fix in the crop chrome sizing.
-- [ ] **Bug 99 — Resize handle sits OUTSIDE the image and its box ENCLOSES the caption.** The resize
-      marker is mispositioned (outside the image bounds) and spans the caption area instead of hugging the
-      image's bottom-right corner. _Hypothesis:_ the chrome anchor shifted with the rework — the caption
-      host (`.lie-has-caption` inline-flex column) changes the box the marker anchors to. Chrome/caption
-      CSS interaction. (Same area as the CLOSED Bug 25 / Bug 43 / Feature 21 — a new bug per policy.)
 - [ ] **Bug 101 — CSS-snippet install BOOTSTRAP DEADLOCK on a fresh vault.** Settings State A
       ([settings.ts:217](src/settings.ts#L217)): with no Obsidian snippet enabled, the master toggle is
       greyed (`setDisabled(true)`) and the install field (State C only) never renders → the bundled

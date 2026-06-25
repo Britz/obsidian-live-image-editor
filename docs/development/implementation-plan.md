@@ -655,7 +655,17 @@ caused. These are the low-level half of the decisions in `architecture.md` §2.
 
 - **AD3 (uniform element).** No `display:contents` "normal" case, no `width: max-content` on the
   wrapper, no padding on the wrapper box — each reintroduces a divergent path → rotated/normal
-  size drift, overflow, or a resize frame offset. Float via `:has()` on the embed, never the
+  size drift, overflow, or a resize frame offset. The **one sanctioned exception** is the
+  block-fallback `.lie-wrapper-block`: a **2px padding reserve** on the resize marker's overhang
+  sides keeps the **native** marker — whose `2px` accent outline bleeds past the image corner
+  exactly like Obsidian's own (D4) — out of the block widget's `contain:paint` clip. **Padding
+  only** — the block widget is over-constrained, so a compensating negative margin is *dropped* by
+  the engine (verified: even `!important` resolves to `0`); the padding is absorbed by shrinking the
+  content, so a full-width block image gives up 2px (0.3%, **D3-safe, no overflow**; standalone
+  images carry no containment, untouched). The reserve only bites where the image edge meets the
+  containment edge (full-width block on `inline-end`; caption-less block on `bottom` — a caption
+  already extends the box past the marker). If that 2px ever matters, the alternative is a **body
+  portal** for the marker (cf. AB12) — deferred for KISS. Float via `:has()` on the embed, never the
   `img` or `.lie-image-area` → otherwise text never wraps.
 - **AD5 (one path per mode).** The live-preview widget draws the plugin's own image and does **not**
   replace the line — block-replacing it was the old model; instead the native embed is kept (it loads
