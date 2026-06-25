@@ -3,7 +3,8 @@
 // (test-plan §4 "Resize affordance", D4 + D15). It OBSERVES the visible painted result — pixels and
 // pointer hit-tests — NOT CSS properties, so it survives CSS refactors and Obsidian updates (the
 // exact failure that motivated this layer: an Obsidian 1.12.7 specificity bump silently broke the
-// crop containment-lift and no property-reading test caught it).
+// crop overflow — the old containment-lift hack — and no property-reading test caught it; the body
+// portal (Variante B) replaced that hack).
 //
 // What it checks (each by observation, never by reading `contain`/`display`/`box-shadow`):
 //   1. selected/hover  → the native resize handle is GRABBABLE at the image's bottom-right corner
@@ -13,12 +14,11 @@
 //   3. crop            → the same corner point is NO LONGER the resize handle: it is absent and
 //                        inert while cropping.                                                  [D4]
 //   4. crop            → an accent FRAME still outlines the cut / resulting image.              [D15]
-//   5. crop            → the croppable image is PAINTED & HIT-TESTABLE OUTSIDE the cut window
-//                        (the dim ghost overflows it). elementFromPoint just outside the cut
-//                        returns the ghost image — this is the CONTAINMENT-LIFT canary: if
-//                        Obsidian's `contain:paint` is not beaten, the overflow is clipped and
-//                        this point hits the editor instead → FAIL. EXPECTED RED until the
-//                        contain regression is fixed.                                           [D8/D15]
+//   5. crop            → the dim surround is PAINTED & HIT-TESTABLE OUTSIDE the result window (the
+//                        ghost overflows it via the BODY PORTAL, escaping the host's contain:paint).
+//                        elementFromPoint just outside the result returns the portal ghost image —
+//                        this is the VEIL-PORTAL canary: if the portal fails to escape containment or
+//                        carry the pan hit-surface, this point hits the editor instead → FAIL.  [D8/D15]
 //
 // Prereqs (CLAUDE.md → "Live debugging"): a DEV build installed in example-vault/ and Obsidian
 // launched with the CDP relay, the fixture note open-able in Live Preview. Run from the repo root:
@@ -111,6 +111,18 @@ async function main() {
     const handleHittable = await cdp.evaluate(
       `!!document.elementFromPoint(${cornerPt.x}, ${cornerPt.y})?.closest(".image-resize-corner")`,
     );
+    // The handle MARKER is centred on the corner tip — half of it sits OUTSIDE the image. A 24px box
+    // straddling the corner should carry MORE accent in the 3 outside-corner quadrants than in the
+    // single image-side quadrant; if the host's containment clips it, the outside half is missing.
+    const cornerShot = await cdp.screenshot({ x: A.x + A.w - 12, y: A.y + A.h - 12, width: 24, height: 24 });
+    let mInner = 0, mOuter = 0;
+    {
+      const sx = cornerShot.width / 24, sy = cornerShot.height / 24;
+      for (let yy = 0; yy < 24; yy++) for (let xx = 0; xx < 24; xx++) {
+        if (near(pixel(cornerShot, xx * sx, yy * sy), accent, 80)) (xx >= 12 || yy >= 12) ? mOuter++ : mInner++;
+      }
+    }
+    const markerFullyVisible = mOuter > 0 && mOuter >= mInner;
 
     // selection frame appears on hover: accent along the LEFT inner edge (clear of the top-left
     // toolbar and the bottom-right handle), present on-hover but not off-hover.
@@ -130,21 +142,28 @@ async function main() {
       // zoom in so the image clearly overflows the cut window (fresh crop fills the cut 1:1)
       for (let i = 0; i < 3; i++) area.dispatchEvent(new WheelEvent("wheel", { deltaY: -120, bubbles: true, cancelable: true }));
       await new Promise(r => setTimeout(r, 150));
-      const handleBox = area.querySelector(".lie-crop-handles");
+      // The handle chrome now lives in the BODY PORTAL (Variante B); query it there, not in the area.
+      const handleBox = document.querySelector(".lie-crop-portal .lie-crop-handles");
       if (!handleBox) return { fatal: "no .lie-crop-handles (crop did not start)" };
       const cb = handleBox.getBoundingClientRect();
-      const isGhost = (el) => !!(el && el.closest(".lie-image-area.lie-cropping") &&
+      const rf = img.closest(".lie-frame").getBoundingClientRect();  // the in-host RESULT (cut) window
+      // The dim surround is the GHOST img in the body portal (Variante B: it escaped the host's
+      // honoured contain:paint). elementFromPoint returns it only if it actually PAINTS there AND is
+      // hit-testable (pointer-events:auto = the pan surface) — exactly the veil-portal canary.
+      const isVeil = (el) => !!(el && el.closest(".lie-crop-portal") &&
         (el.classList.contains("lie-crop-ghost-img") || el.tagName === "IMG"));
-      // probe OUTSIDE the cut window, off the handle positions (corners + edge midpoints)
-      const pL = document.elementFromPoint(cb.left - 15, cb.top + cb.height * 0.25);
-      const pR = document.elementFromPoint(cb.right + 15, cb.top + cb.height * 0.75);
+      // probe IN the dim ghost band — midway between the RESULT (cut) edge and the image edge (the
+      // ghost fills exactly that band when zoomed), off the handle positions.
+      const pL = document.elementFromPoint((cb.left + rf.left) / 2, rf.top + rf.height * 0.3);
+      const pR = document.elementFromPoint((cb.right + rf.right) / 2, rf.top + rf.height * 0.7);
       return {
         ok: true,
         cut: { x: cb.left, y: cb.top, w: cb.width, h: cb.height },
+        result: { x: rf.left, y: rf.top, w: rf.width, h: rf.height },  // the in-host bright result (hole)
         // the native resize handle is gone/inert: the pre-crop corner point is no longer it
         handleInert: !document.elementFromPoint(${cornerPt.x}, ${cornerPt.y})?.closest(".image-resize-corner"),
-        overflowLeft: isGhost(pL),
-        overflowRight: isGhost(pR),
+        overflowLeft: isVeil(pL),
+        overflowRight: isVeil(pR),
       };
     })()`);
     if (!crop || crop.fatal) throw new Error("crop: " + (crop?.fatal || "no result"));
@@ -155,6 +174,24 @@ async function main() {
     const cropFrame = await cdp.screenshot(cutClip);
     const fracFrameCrop = edgeAccentFraction(cropFrame, cutClip, accent, { dxs: [2, 3, 4, 5], y0: 0.1, y1: 0.9 });
 
+    // 5b (optical) — the dim ghost surround is SOLID: NO editor-background holes (the clip-path
+    // triangle artifact — a single polygon()'s connecting edges sliced two wedges into the LEFT
+    // surround). Sample the LEFT ghost band over the image's dark lower content (where the dim ghost
+    // reads clearly darker than the editor bg) and count background-coloured pixels; a hole shows pure
+    // bg. This is the PIXEL scan that the 2-point hit-test (5) structurally cannot do — it catches a
+    // wedge BETWEEN the probes. (First-cut threshold; assumes a light theme over dark image content.)
+    const bg = parseColor(await cdp.evaluate(`(() => { const p = document.createElement("div"); p.style.background = "var(--background-primary)"; document.body.appendChild(p); const c = getComputedStyle(p).backgroundColor; p.remove(); return c; })()`));
+    const bandW = Math.round(crop.result.x - crop.cut.x);   // left ghost band: image-left → result-left
+    let ghostSolid = true, bandBgFrac = 0;
+    if (bandW >= 12 && bg) {
+      const band = { x: crop.cut.x + 2, y: Math.round(crop.result.y + crop.result.h * 0.45), width: bandW - 4, height: Math.round(crop.result.h * 0.5) };
+      const shot = await cdp.screenshot(band);
+      let tot = 0, bgHit = 0;
+      for (let y = 0; y < shot.height; y += 2) for (let x = 0; x < shot.width; x += 2) { tot++; if (near(pixel(shot, x, y), bg, 26)) bgHit++; }
+      bandBgFrac = tot ? bgHit / tot : 0;
+      ghostSolid = bandBgFrac < 0.2;
+    }
+
     await cdp.evaluate(`(async () => {
       const plugin = app.plugins.plugins["live-image-editor"];
       if (plugin.closeCrop) plugin.closeCrop();
@@ -164,11 +201,13 @@ async function main() {
     // ---- report ----
     const checks = [
       ["1. hover: native resize handle is GRABBABLE at the image corner (D4)", handleHittable === true],
+      ["1b. hover: resize handle marker FULLY visible at the corner, not contain-clipped (D4)  [optical]", markerFullyVisible],
       ["2. hover: a selection FRAME is painted around the image (D15)  [optical]", fracFrameHover > 0.5],
       ["3. crop: the resize handle is ABSENT / inert (D4)", crop.handleInert === true],
       ["4. crop: an accent FRAME outlines the cut/resulting image (D15)  [optical]", fracFrameCrop > 0.2],
-      ["5. crop: croppable image OVERFLOWS the cut window — left edge (contain canary, D8/D15)", crop.overflowLeft === true],
-      ["5. crop: croppable image OVERFLOWS the cut window — right edge (contain canary, D8/D15)", crop.overflowRight === true],
+      ["5b. crop: dim ghost surround SOLID — no background holes/triangles (left band, optical)", ghostSolid],
+      ["5. crop: dim surround PAINTED + hit-testable outside the result window — left edge (veil-portal canary, D8/D15)", crop.overflowLeft === true],
+      ["5. crop: dim surround PAINTED + hit-testable outside the result window — right edge (veil-portal canary, D8/D15)", crop.overflowRight === true],
     ];
     let failed = 0;
     for (const [name, ok] of checks) {
@@ -176,10 +215,10 @@ async function main() {
       if (!ok) failed++;
     }
     console.log(`\n${checks.length - failed}/${checks.length} passed`);
-    console.log(`  (frame-hover accent fraction ${fracFrameHover.toFixed(2)}, frame-crop ${fracFrameCrop.toFixed(2)})`);
+    console.log(`  (frame-hover accent fraction ${fracFrameHover.toFixed(2)}, frame-crop ${fracFrameCrop.toFixed(2)}, ghost-band bg-fraction ${bandBgFrac.toFixed(2)})`);
     if (failed) {
-      console.error("\nResize affordance FAILED — note: check 5 is the contain-regression canary and is");
-      console.error("expected RED until the crop containment-lift is fixed for the running Obsidian version.");
+      console.error("\nResize affordance FAILED — note: check 5 is the veil-portal canary: the dim surround");
+      console.error("must paint + hit-test through the body portal (escaping the host's honoured contain:paint).");
       process.exitCode = 1;
     } else {
       console.log("resize affordance OK");

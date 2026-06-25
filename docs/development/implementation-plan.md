@@ -534,10 +534,35 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   toolbar; clamped into the viewport, never flipped past the explorer).
 - **`crop-editor.ts` (+ `-logic`)** — `CropEditor` edits the LIVE 3-layer DOM **in place** (no
   clone), driving the SAME `toCropResult` placement the render core commits (centre origin →
-  preview == committed); handles on the inner `<img>` (corner aspect-locked + edge single-axis +
-  rotate), the cut window + box fixed, the overflow un-clipped + dimmed for the crop duration.
+  preview == committed); handles act on the inner `<img>` (corner aspect-locked + edge single-axis +
+  rotate), the cut window + box fixed, the **result image staying clipped in-host** (no
+  `contain:paint` lift) while a **body portal** carries the whole crop overlay for the crop duration.
   `snapTranslate` / `snapAngle` / `snapScale` quantize live (F12); `parsePlacement` is the pure
   round-trip inverse; auto-persist on leave.
+  *Crop overlay portal:* with the host's `contain:paint` honoured, **anything** that must extend past
+  the cut window is clipped in-host — so the portal carries BOTH the dimmed surround AND the handle
+  chrome (handles + rotate knob); in-host keeps only the `.lie-frame` cut clip + the result `<img>`
+  (the edit target, AB12). The portal is a body-level element (escaping the editor's `contain:paint`)
+  carrying a **`clip-path` hole** over the cut window. The clip keeps the SURROUND and drops the result
+  rect — a **frame**, which needs **two separate contours** (a huge outer rectangle + the result-box
+  hole). `clip-path`'s single-contour shapes (`rect()` / `inset()` / a lone `polygon()`) only keep the
+  *inside* of one region — exactly like `overflow:hidden` — so none of them can punch a hole; a single
+  `polygon()` listing both rectangles joins them with diagonal edges that slice **triangular artifacts**
+  into the surround. Only **`clip-path: path(evenodd, "<outer rect> <hole rect>")`** — two sub-contours
+  with even-odd — keeps the OUTSIDE (a true hole). The hole's px size (the result box) is dynamic, so
+  the `path()` is set **inline** on the veil (lint-OK: computed geometry), refreshed whenever the cut
+  shape changes; the static parts stay in CSS. The hole sits on a **non-rotating wrapper**; the
+  dimmed image rotates as its child (the cut window stays axis-aligned, `orientDeg` 0/90/180/270 only —
+  free rotation rides the `<img>` `placementString`). **Seam guarantee:** the portal anchors to the
+  **exact `getBoundingClientRect`** of the in-host `.lie-frame` (no rounding) and the **same transform
+  string** drives the in-host `<img>`, the portal dim-img AND the handle box → no relative offset at
+  fractional layout positions; re-anchored on scroll/resize via the `toolbar.ts`
+  `positionAbove`/`reposition` pattern. The pan `pointerdown` binds to BOTH the in-host area
+  (gestures started in the reserved space, falling through the hole) and the portal (the dim surround
+  + the handles outside it); `pointermove`/`pointerup` already live on `activeDocument`. The dim
+  surround **is the ghost image's own fade** — there is no overlay/scrim; the `clip-path` hole simply
+  clips the ghost away over the result, so the in-host result shows through un-dimmed. The portal is
+  removed on every `exitCropMode` path (the same teardown as the rotate-gesture listener).
   *macOS trackpad two-finger rotate:* on open the editor also subscribes Electron's native
   `rotate-gesture` window event (electron/electron#19294 — a continuous per-emission delta in
   degrees, CCW-positive), reached via the SAME `@electron/remote`.`getCurrentWindow()` path the

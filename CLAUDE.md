@@ -17,6 +17,8 @@
 > - If a candidate fix would violate any F/D/T requirement, any AD/AB/R0 decision, the test plan, or the methodology, **it is NOT a valid fix. Discard it and find one that honours all four.** A fix that breaks a higher rule is worse than no fix.
 > - Verify a behaviour is a real defect and not a deliberate design before "fixing" it (e.g. decoration classes ride the img on purpose — Bug 10/27).
 >
+> **ORDER IS TOP-DOWN — never code before plan.** Code that says something different from the plan — or any higher altitude — is **by definition a defect**, not a shortcut. So always work top-down: when a change needs the plan (or a higher artifact) to change too, change that **document FIRST** — with the required ask for anything above `implementation-plan.md` — and only **THEN** write or adjust the code to match it. This binds **every** change, including a small correction made mid-implementation: never change the code first and back-fill the document afterwards.
+>
 > **STOP CONDITION — the user decides, never you:** If, and only if, *no* valid fix exists without changing one of the four inviolable artifacts, **do not change it and do not proceed.** Stop, explain why every compliant fix fails, and ask the user to make the call. Changing a higher artifact yourself — or shipping a fix that quietly breaks one — is a hard failure.
 
 ## Project

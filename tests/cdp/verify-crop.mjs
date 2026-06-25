@@ -69,21 +69,28 @@ const EVAL_RUN = `(async () => {
     const host = img.closest(".lie-wrapper, .image-embed");
 
     // --- Structural DOM facts ---
+    // In-place (AB12): the EDIT TARGET is the live in-host img; the body portal carries only the
+    // ghost + chrome — NOT a structure clone (no second .lie-frame / .lie-image-area re-rooted).
     ok("noBodyClone", !document.querySelector(".lie-crop-overlay") &&
-       !Array.from(document.body.children).some((c) => c.className && String(c.className).includes("lie-crop")));
+       !document.querySelector(".lie-crop-portal .lie-frame") &&
+       !document.querySelector(".lie-crop-portal .lie-image-area"));
     ok("areaCropping", !!area && area.classList.contains("lie-cropping"));
-    ok("areaOverflowVisible", !!area && getComputedStyle(area).overflow === "visible");
-    ok("hostContainLifted", !!host && getComputedStyle(host).contain === "none");
-    const handles = area ? area.querySelectorAll(".lie-crop-handle") : [];
-    const edges = area ? area.querySelectorAll(".lie-crop-handle-n,.lie-crop-handle-s,.lie-crop-handle-e,.lie-crop-handle-w") : [];
-    const rot = area ? area.querySelectorAll(".lie-crop-rotation-handle") : [];
+    // Variante B: the body portal carries the overflow; the host's contain:paint is HONOURED (kept).
+    ok("portalPresent", !!document.querySelector(".lie-crop-portal"));
+    ok("hostContainHonoured", !!host && getComputedStyle(host).contain === "paint");
+    const handles = document.querySelectorAll(".lie-crop-portal .lie-crop-handle");
+    const edges = document.querySelectorAll(".lie-crop-portal .lie-crop-handle-n,.lie-crop-portal .lie-crop-handle-s,.lie-crop-portal .lie-crop-handle-e,.lie-crop-portal .lie-crop-handle-w");
+    const rot = document.querySelectorAll(".lie-crop-portal .lie-crop-rotation-handle");
     ok("handleCount8", handles.length === 8);
     ok("edgeHandles4", edges.length === 4);
     ok("rotateHandle1", rot.length === 1);
-    const hb = area && area.querySelector(".lie-crop-handles");
+    const hb = document.querySelector(".lie-crop-portal .lie-crop-handles");
     ok("handlesOnImgNotFrame", !!hb && hb.closest(".lie-crop-chrome") != null && hb.closest(".lie-frame") == null);
-    ok("ghostPresent", !!(area && area.querySelector(".lie-crop-ghost-img")));
-    ok("imgCentreOrigin", ["center", "center center"].includes(img.style.transformOrigin));
+    ok("ghostPresent", !!document.querySelector(".lie-crop-portal .lie-crop-ghost-img"));
+    // (the centre pivot is NOT checked here: it lives in CSS (the .lie-frame img / .lie-crop-img
+    //  transform-origin:center), so the INLINE img.style.transformOrigin is empty by design — a read
+    //  of it is always false regardless of behaviour. The pivot is covered behaviourally by
+    //  previewEqualsCommitted below.)
     const corner = host && host.querySelector(".image-resize-corner");
     ok("nativeHandleHidden", !corner || getComputedStyle(corner).display === "none");
     ok("noJumpOnEnter", Math.abs(Math.round(img.getBoundingClientRect().top) - beforeTop) <= 1);
@@ -100,9 +107,9 @@ const EVAL_RUN = `(async () => {
     ok("boxFixedDuringGesture", boxBefore === boxAfter && boxBefore > 0);
     const previewTf = img.style.transform;
     ok("gestureMovedImage", /translate\\(/.test(previewTf) && !/translate\\(0%, 0%\\) rotate\\(0deg\\) scale\\(1\\)/.test(previewTf));
-    ok("ghostTracksImg", !!(area && area.querySelector(".lie-crop-ghost-img") &&
-       area.querySelector(".lie-crop-ghost-img").style.transform === previewTf &&
-       area.querySelector(".lie-crop-handles").style.transform === previewTf));
+    ok("ghostTracksImg", !!(document.querySelector(".lie-crop-portal .lie-crop-ghost-img") &&
+       document.querySelector(".lie-crop-portal .lie-crop-ghost-img").style.transform === previewTf &&
+       document.querySelector(".lie-crop-portal .lie-crop-handles").style.transform === previewTf));
     ok("noWriteWhileOpen", block(SINGLE) === beforeBlock);
 
     // --- Leaving persists once; preview == committed; one undo step ---
@@ -169,16 +176,15 @@ const res = runEval();
 if (res.fatal) { console.error("FATAL:", res.fatal); process.exit(2); }
 const c = res.checks ?? {};
 const order = [
-  ["in-place: no document.body clone overlay", "noBodyClone"],
+  ["in-place: no document.body structure clone (portal carries ghost+chrome only)", "noBodyClone"],
   ["area carries .lie-cropping", "areaCropping"],
-  ["area overflow lifted to visible", "areaOverflowVisible"],
-  ["host contain:paint lifted", "hostContainLifted"],
+  ["body portal present (carries the overflow)", "portalPresent"],
+  ["host contain:paint HONOURED (not lifted)", "hostContainHonoured"],
   ["8 handles (4 corner + 4 edge)", "handleCount8"],
   ["4 edge handles (D8 single-axis)", "edgeHandles4"],
   ["1 rotate knob", "rotateHandle1"],
   ["handles on the inner img box, NOT the .lie-frame (D)", "handlesOnImgNotFrame"],
   ["dim ghost present (outside dimmed)", "ghostPresent"],
-  ["live img transform-origin: center (A)", "imgCentreOrigin"],
   ["native resize handle hidden in crop (F)", "nativeHandleHidden"],
   ["no jump on enter (image stays put)", "noJumpOnEnter"],
   ["a gesture leaves the box size fixed (D)", "boxFixedDuringGesture"],

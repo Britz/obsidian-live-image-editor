@@ -1,17 +1,18 @@
 #!/usr/bin/env node
-// Bug-43 CROP TEARDOWN CHECK — structural proof that the in-place crop editor fully restores EVERY
-// transient override on EVERY exit path (test-plan §3). The load-bearing one is the host `contain`:
-// crop lifts the LP block-widget `contain:paint` (app.css `!important`, beaten with `!important`)
-// for the crop duration; if any exit failed to restore it, `contain:none` would stick and the
-// widget's paint-containment would be permanently broken. There is ONE teardown (`exitCropMode`)
-// run from the single `onClose` that `AnchoredSubmenu.close()` calls on EVERY exit — this check
-// proves it empirically per path by reading the live computed style back (never assuming).
+// Bug-43 CROP TEARDOWN CHECK — structural proof that the in-place crop editor fully tears down EVERY
+// transient override on EVERY exit path (test-plan §3). The load-bearing one is the BODY PORTAL
+// (Variante B): crop appends a `.lie-crop-portal` to `document.body` carrying the dim ghost + handle
+// chrome that escape the host's HONOURED `contain:paint`, plus scroll/resize reposition listeners; if
+// any exit failed to remove it, the portal (and its listeners) would leak onto the page. The host
+// `contain:paint` is NOT lifted any more — it stays "paint" throughout (asserted). There is ONE
+// teardown (`exitCropMode`) run from the single `onClose` that `AnchoredSubmenu.close()` calls on
+// EVERY exit — this check proves it empirically per path by reading the live DOM/style back.
 //
-// For each exit path it asserts: (active) `.lie-cropping` on area+host, `getComputedStyle(host)
-// .contain === "none"`, area overflow visible, ghost+8 handles present; (restored) `.lie-cropping`
-// gone everywhere, host `contain` back to its PRE-CROP baseline (and != "none"), inline `contain`
-// removed, area overflow back, NO orphan `.lie-crop-*` nodes, the img back in a clean 3-layer box,
-// and no console exception. Run from the repo root:  node tests/cdp/verify-crop-teardown.mjs
+// For each exit path it asserts: (active) `.lie-cropping` on area+host, host `contain` STAYS "paint",
+// the `.lie-crop-portal` present with ghost+8 handles inside it; (restored) `.lie-cropping` gone
+// everywhere, the portal removed, host `contain` still its PRE-CROP baseline, NO orphan `.lie-crop-*`
+// nodes, the img back in a clean 3-layer box, and no console exception.
+// Run from the repo root:  node tests/cdp/verify-crop-teardown.mjs
 import { execFileSync } from "node:child_process";
 
 const env = {
@@ -33,8 +34,8 @@ const EVAL_RUN = `(async () => {
     const vault = app.vault;
     const PATH = "_td-fixture.md";
     // A BARE embed (no brace block) renders as a .lie-wrapper-block widget — the one host that
-    // carries app.css contain:paint (!important). The load-bearing case: crop lifts it to none, and
-    // every exit MUST restore it to paint or the widget's paint-containment stays broken.
+    // carries app.css contain:paint (!important). Variante B HONOURS that containment (no lift); the
+    // load-bearing case is that the body portal — which escapes it — is fully removed on every exit.
     const BARE = "![](images/sample-landscape.png)";
     const content = ["# Crop teardown fixture", "", "crop", BARE, ""].join("\\n");
     let f = vault.getAbstractFileByPath(PATH);
@@ -53,8 +54,9 @@ const EVAL_RUN = `(async () => {
     };
     const block = () => (ed.getLine(LINE - 1).match(/\\{([^}]*)\\}/) || [, ""])[1];
 
-    const orphans = () => document.querySelectorAll(".lie-crop-ghost,.lie-crop-chrome,.lie-crop-handles,.lie-crop-ghost-img").length;
+    const orphans = () => document.querySelectorAll(".lie-crop-portal,.lie-crop-veil,.lie-crop-chrome,.lie-crop-handles,.lie-crop-ghost-img").length;
     const anyCropping = () => document.querySelectorAll(".lie-cropping").length;
+    const portal = () => document.querySelector(".lie-crop-portal");
     // macOS trackpad rotate-gesture leak check: the editor subscribes one rotate-gesture listener
     // on the Electron window per open and MUST remove it on every exit. Count it directly (n/a off
     // macOS, where nothing is subscribed -> no leak by construction).
@@ -85,10 +87,13 @@ const EVAL_RUN = `(async () => {
       const active = {
         areaCropping: !!area && area.classList.contains("lie-cropping"),
         hostCropping: !!host && host.classList.contains("lie-cropping"),
-        hostContainNone: !!host && getComputedStyle(host).contain === "none",
-        overflowVisible: !!area && getComputedStyle(area).overflow === "visible",
-        ghost: !!(area && area.querySelector(".lie-crop-ghost-img")),
-        handles8: area ? area.querySelectorAll(".lie-crop-handle").length === 8 : false,
+        // Variante B: the host's containment is HONOURED, never lifted — it stays whatever it was
+        // pre-crop (a block widget keeps "paint"; a standalone keeps "none"). The old bug lifted it.
+        hostContainUnchanged: !!host && getComputedStyle(host).contain === preContain,
+        // The overflow lives in the BODY PORTAL now (escaping containment), not in the area.
+        portalPresent: !!portal(),
+        ghost: !!document.querySelector(".lie-crop-portal .lie-crop-ghost-img"),
+        handles8: document.querySelectorAll(".lie-crop-portal .lie-crop-handle").length === 8,
         // On macOS the open subscribed exactly one rotate-gesture listener; elsewhere n/a (passes).
         rotateGestureSubscribed: rgAvailable ? rgCount() === rgPre + 1 : true,
       };
@@ -109,6 +114,9 @@ const EVAL_RUN = `(async () => {
       const blockHosts = Array.from(cm.dom.querySelectorAll(".lie-wrapper-block"));
       const restored = {
         noCroppingAnywhere: anyCropping() === 0,
+        // The load-bearing teardown (Variante B): the body portal — with its ghost/chrome AND its
+        // scroll/resize reposition listeners — is gone after every exit path.
+        portalRemoved: !portal(),
         // app.css default re-applies on every live block widget → nothing stuck at "none" (an empty
         // set passes: a committed crop legitimately turns the bare image into a standalone widget).
         noStuckContainment: blockHosts.every((h) => getComputedStyle(h).contain === "paint"),
@@ -184,9 +192,9 @@ const res = runEval();
 if (res.fatal) { console.error("FATAL:", res.fatal); process.exit(2); }
 
 let failed = 0;
-const ACTIVE = ["areaCropping", "hostCropping", "hostContainNone", "overflowVisible", "ghost", "handles8",
+const ACTIVE = ["areaCropping", "hostCropping", "hostContainUnchanged", "portalPresent", "ghost", "handles8",
   "rotateGestureSubscribed"];
-const RESTORED = ["noCroppingAnywhere", "noStuckContainment", "sameHostRestored", "inlineContainRemoved",
+const RESTORED = ["noCroppingAnywhere", "portalRemoved", "noStuckContainment", "sameHostRestored", "inlineContainRemoved",
   "overflowRestored", "noOrphanChrome", "cleanThreeLayer", "imageRenders", "noNewConsoleError", "persisted",
   "noRotateGestureLeak"];
 for (const [name, p] of Object.entries(res.paths)) {

@@ -3,12 +3,12 @@
 // WHOLE visible image, inside AND outside the cut frame" (an extension of the Bug-43 in-place crop).
 //
 // ROOT CAUSE it pins: in-place crop overflows the full image past the cut window; that overflow is
-// the dim ghost (`.lie-crop-ghost-img`). The ghost frame box is `pointer-events:none`, so before the
-// fix the img inherited it and the OUTSIDE-the-frame region was a non-target — the pan listener (on
-// `.lie-image-area`) only fired from INSIDE the cut. The fix makes the ghost IMG the pan hit-surface
-// (`pointer-events:auto`); the frame box stays click-through and the chrome/handles (z:6) still catch
-// their own events. This check proves, via real hit-testing (`elementFromPoint`), that:
-//   • the pan layer (ghost img) is hit-testable, the frame box + chrome overlay are `none`;
+// the dim ghost (`.lie-crop-ghost-img`), which lives in the BODY PORTAL (Variante B). The veil box is
+// `pointer-events:none`, so before the fix the img inherited it and the OUTSIDE-the-frame region was a
+// non-target — the pan listener only fired from INSIDE the cut. The fix makes the ghost IMG the pan
+// hit-surface (`pointer-events:auto`); the veil box stays click-through and the chrome/handles still
+// catch their own events. This check proves, via real hit-testing (`elementFromPoint`), that:
+//   • the pan layer (ghost img) is hit-testable, the veil box + chrome overlay are `none`;
 //   • a pan STARTED OUTSIDE the cut frame (on the overflow img) translates the live img;
 //   • a pan started INSIDE the cut frame also translates it;
 //   • a handle/rotate knob still wins its own hit (elementFromPoint on a handle = the handle);
@@ -68,7 +68,7 @@ const EVAL_RUN = `(async () => {
     const frameEl = img.closest(".lie-frame");
     if (!area || !frameEl) { await vault.delete(f); window.__CROPPAN = JSON.stringify({ fatal: "crop did not enter (no area/frame)" }); return; }
 
-    const se = area.querySelector(".lie-crop-handle-se");
+    const se = document.querySelector(".lie-crop-portal .lie-crop-handle-se");  // chrome is in the body portal (Variante B)
 
     // --- A handle still wins its own hit (no collision with the pan layer). Checked at scale 1, with
     // the handle ON-SCREEN at the cut corner — a large scale-up would push the corner handle off the
@@ -93,9 +93,11 @@ const EVAL_RUN = `(async () => {
     // with a clear diagnostic instead of dereferencing null if a render churn dropped the ghost).
     const liveArea = document.querySelector(".lie-image-area.lie-cropping") || area;
     const liveFrame = liveArea.querySelector(".lie-frame") || frameEl;
-    const ghostImg = liveArea.querySelector(".lie-crop-ghost-img");
-    const ghostBox = liveArea.querySelector(".lie-crop-ghost");
-    const chrome = liveArea.querySelector(".lie-crop-chrome");
+    // Variante B: the ghost + chrome live in the BODY PORTAL (escaping the host's honoured
+    // contain:paint), not under the in-host area — query them there.
+    const ghostImg = document.querySelector(".lie-crop-portal .lie-crop-ghost-img");
+    const ghostBox = document.querySelector(".lie-crop-portal .lie-crop-veil");
+    const chrome = document.querySelector(".lie-crop-portal .lie-crop-chrome");
     if (!ghostImg) { await vault.delete(f); window.__CROPPAN = JSON.stringify({ fatal: "no ghost img after scale-up (render churn — re-run)", checks: R }); return; }
 
     // --- Layer pointer-events: the pan layer catches, the frame box + the chrome overlay do not ---

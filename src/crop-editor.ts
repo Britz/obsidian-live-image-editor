@@ -79,14 +79,20 @@ export class CropEditor {
   // even when dirty (the same restore the no-op leave already does, forced regardless of `dirty`).
   private cancelled = false;
 
-  // The live layers + the transient chrome the editor injects for the crop duration.
+  // The live layers + the transient chrome the editor injects for the crop duration. The RESULT
+  // image stays in-host (frameEl + the live img); the dim surround AND the handle chrome live in a
+  // BODY PORTAL anchored to the in-host frame's on-screen rect — so they escape the host's honoured
+  // `contain:paint` (the result image itself is never clipped, it IS the footprint = reserved space).
   private frameEl: HTMLElement | null = null;
   private areaEl: HTMLElement | null = null;
   private hostEl: HTMLElement | null = null;
-  private ghostFrame: HTMLElement | null = null;
-  private ghostImg: HTMLImageElement | null = null;
+  private portalEl: HTMLElement | null = null;
+  private veilFrame: HTMLElement | null = null;
+  private veilImg: HTMLImageElement | null = null;
   private chromeFrame: HTMLElement | null = null;
   private handleBox: HTMLElement | null = null;
+  // Re-anchor the portal to the in-host frame on scroll/resize (toolbar.ts `reposition` pattern).
+  private reposition: (() => void) | null = null;
 
   // macOS trackpad two-finger rotate (Electron `rotate-gesture`, electron/electron#19294).
   // Subscribed on open, removed on EVERY teardown path — both null off macOS / when `@electron/
@@ -160,42 +166,49 @@ export class CropEditor {
     const { areaEl: area, frameEl: frame, hostEl: host } = this;
     if (!area || !frame || !host) return;
 
-    // Un-clip so the whole image overflows the cut window (the footprint box still reserves its
-    // space → no reflow). The cut `.lie-frame` KEEPS its own overflow:hidden (it is the bright cut);
-    // only the OUTER area is opened so the dim ghost can extend beyond the footprint.
+    // `.lie-cropping` on the area + host drives the class-keyed crop rules that stay IN-HOST: hide
+    // the native resize handle (D4), suppress the hover selection `::after`, raise the frame, set the
+    // grab cursor. The host's `contain:paint` is NOT lifted any more — the dim surround + chrome that
+    // must extend past the reserved space live in a body portal instead (Variante B). The reserved
+    // space (the footprint = the result image, minus caption) is never clipped; it IS the box.
     area.classList.add("lie-cropping");
-    // Un-clip overflow + raise z-index now live in the `.lie-image-area.lie-cropping` rule
-    // (styles.css). The host (LP block widget) paint-contains its content — app.css `.cm-content >
-    // [contenteditable="false"] { contain: paint }` is `!important` — so it must be beaten with
-    // `!important`; that override is likewise a styles.css rule keyed on the `.lie-cropping` host
-    // class (a doubled-class selector out-specifies app.css), lifted for the crop duration only.
-    // No inline style needed here (Obsidian-review compliance: `no-static-styles-assignment`).
     host.classList.add("lie-cropping");
 
-    // Pin the cut frame at its current px box so the aspect presets reshape ONLY the cut (the
+    // Pin the frame at its current px box so the aspect presets reshape ONLY the cut shape (the
     // footprint derives from --lie-auto-aspect and is untouched until commit → box stays fixed).
     frame.style.width = `${this.frameW}px`;
     frame.style.height = `${this.frameH}px`;
-    // Crop layout for the live (bright) img: centred, width:100% of the frame, height:auto, centre
-    // pivot — identical to render-core's crop branch, so the live img reads back == it renders.
+    // Crop layout for the live (in-host, result) img: centred, width:100% of the frame, height:auto,
+    // centre pivot — identical to render-core's crop branch, so the live img reads back == it renders.
     this.styleAsCropImg(this.img);
 
     const orient = this.orientationTransform();
 
-    // DIM ghost (behind): a clone of the image, un-clipped, dimmed — shows the croppable surround.
-    const ghostFrame = this.makeFrameBox(orient);
-    ghostFrame.classList.add("lie-crop-ghost");
-    const ghostImg = activeDocument.createElement("img");
-    ghostImg.className = "lie-crop-ghost-img";
-    ghostImg.src = this.img.src;
-    ghostImg.draggable = false;
-    this.styleAsCropImg(ghostImg);
-    ghostFrame.appendChild(ghostImg);
-    area.insertBefore(ghostFrame, area.firstChild);
-    this.ghostFrame = ghostFrame; this.ghostImg = ghostImg;
+    // The body PORTAL: a 0×0 fixed anchor pinned (reposition) to the in-host frame's rect centre. Its
+    // frame-box children resolve top/left:50% against the 0×0 box → they centre on the same point as
+    // the in-host frame, with the same orientation + placement → the portal overlays it seamlessly.
+    const portal = activeDocument.createElement("div");
+    portal.className = "lie-crop-portal";
+    activeDocument.body.appendChild(portal);
+    this.portalEl = portal;
 
-    // CHROME (on top): the white handle frame on the ORIGINAL image + the rotate knob. The frame
-    // box is pointer-transparent (so a drag on the image background pans); only the handles catch.
+    // VEIL (the dim surround): a frame box sized to the reserved space, carrying a `clip-path` hole
+    // over it (so the in-host result shows through), with the dim ghost image overflowing it. The
+    // dimming IS the ghost image's own fade — no overlay; the hole clips it away over the result.
+    const veilFrame = this.makeFrameBox(orient);
+    veilFrame.classList.add("lie-crop-veil");
+    const veilImg = activeDocument.createElement("img");
+    veilImg.className = "lie-crop-ghost-img";
+    veilImg.src = this.img.src;
+    veilImg.draggable = false;
+    this.styleAsCropImg(veilImg);
+    veilFrame.appendChild(veilImg);
+    portal.appendChild(veilFrame);
+    this.veilFrame = veilFrame; this.veilImg = veilImg;
+    this.applyVeilClip();
+
+    // CHROME (on top): the handle frame on the ORIGINAL image + the rotate knob. The frame box is
+    // pointer-transparent (so a drag on the image background pans); only the handles catch.
     const chromeFrame = this.makeFrameBox(orient);
     chromeFrame.classList.add("lie-crop-chrome");
     const handleBox = activeDocument.createElement("div");
@@ -213,22 +226,57 @@ export class CropEditor {
     rotateKnob.dataset["handle"] = "rotate";
     handleBox.appendChild(rotateKnob);
     chromeFrame.appendChild(handleBox);
-    area.appendChild(chromeFrame);
+    portal.appendChild(chromeFrame);
     this.chromeFrame = chromeFrame; this.handleBox = handleBox;
+
+    // Anchor the portal to the in-host frame NOW and on every scroll/resize while cropping.
+    this.reposition = () => this.anchorPortal();
+    this.reposition();
+    window.addEventListener("scroll", this.reposition, true);
+    window.addEventListener("resize", this.reposition);
+  }
+
+  // Pin the 0×0 portal to the in-host frame's on-screen rect CENTRE (rotation about the centre keeps
+  // the centre == the rect-AABB centre). Exact px (no rounding) so the hole/result seam stays tight.
+  private anchorPortal(): void {
+    if (!this.portalEl || !this.frameEl) return;
+    const r = this.frameEl.getBoundingClientRect();
+    this.portalEl.style.left = `${r.left + r.width / 2}px`;
+    this.portalEl.style.top = `${r.top + r.height / 2}px`;
+  }
+
+  // The veil's FRAME-shaped hole: keep the dim surround, drop the result rect so the in-host result
+  // shows through. A frame needs TWO contours — a huge outer rectangle + the result-box hole — and
+  // `path(evenodd, …)` is the ONLY clip-path form that keeps the OUTSIDE (a true hole): `rect()` /
+  // `inset()` / a lone `polygon()` keep only the inside (like `overflow:hidden`), and one polygon
+  // listing both rects diagonal-joins them and slices triangles. Inline because the hole's px size is
+  // the result box (frameW×frameH) and changes with the aspect presets. Local coords (pre-transform),
+  // so the hole rides the box's orientation. Refreshed by `applyFrameSize` on a preset reshape.
+  private applyVeilClip(): void {
+    if (!this.veilFrame) return;
+    const w = this.frameW, h = this.frameH;
+    this.veilFrame.style.clipPath =
+      `path(evenodd, "M-50000 -50000H50000V50000H-50000Z M0 0H${w}V${h}H0Z")`;
   }
 
   private exitCropMode(): void {
-    this.ghostFrame?.remove();
-    this.chromeFrame?.remove();
-    this.ghostFrame = this.ghostImg = this.chromeFrame = this.handleBox = null;
+    if (this.reposition) {
+      window.removeEventListener("scroll", this.reposition, true);
+      window.removeEventListener("resize", this.reposition);
+      this.reposition = null;
+    }
+    this.portalEl?.remove();
+    this.portalEl = this.veilFrame = this.veilImg = this.chromeFrame = this.handleBox = null;
     // Clear only what buildLayers does NOT own: the crop-active classes. Removing `.lie-cropping`
-    // off the area + host also reverts the class-driven crop styling (overflow / z-index / the
-    // host `contain` lift — all styles.css rules now), and dropping `.lie-crop-img` off the live
-    // img reverts its crop layout. The px frame box is transient DOM that buildLayers re-renders:
-    // a committed leave already re-rendered it; a NO-OP leave re-renders here. No stale style lingers.
+    // off the area + host also reverts the class-driven crop styling (z-index / cursor / handle
+    // suppression — all styles.css rules), and dropping `.lie-crop-img` off the live img reverts its
+    // crop layout. The px frame box is transient DOM that buildLayers re-renders: a committed leave
+    // already re-rendered it; a NO-OP leave re-renders here. No stale style lingers.
     this.areaEl?.classList.remove("lie-cropping");
     this.hostEl?.classList.remove("lie-cropping");
     this.img.classList.remove("lie-crop-img");
+    // The portal's own listeners (pointerdown/wheel) are discarded with the element on `.remove()`
+    // above — no explicit detach needed.
     this.areaEl?.removeEventListener("pointerdown", this.onPointerDown);
     this.areaEl?.removeEventListener("wheel", this.onWheel);
     activeDocument.removeEventListener("pointermove", this.onPointerMove);
@@ -333,8 +381,9 @@ export class CropEditor {
 
   private applyFrameSize(): void {
     if (this.frameEl) this.frameEl.style.height = `${this.frameH}px`;
-    if (this.ghostFrame) this.ghostFrame.style.height = `${this.frameH}px`;
+    if (this.veilFrame) this.veilFrame.style.height = `${this.frameH}px`;
     if (this.chromeFrame) this.chromeFrame.style.height = `${this.frameH}px`;
+    this.applyVeilClip(); // the hole follows the reshaped cut
   }
 
   // ---- Gestures --------------------------------------------------------------------------------
@@ -342,8 +391,13 @@ export class CropEditor {
   private bindEvents(): void {
     const area = this.areaEl;
     if (!area) return;
+    // Pan/zoom originate on BOTH surfaces: the in-host area catches gestures started INSIDE the
+    // reserved space (through the portal's clip-path hole), the portal catches them on the dim
+    // surround + the handles outside it. The same handlers serve both.
     area.addEventListener("pointerdown", this.onPointerDown);
     area.addEventListener("wheel", this.onWheel, { passive: false });
+    this.portalEl?.addEventListener("pointerdown", this.onPointerDown);
+    this.portalEl?.addEventListener("wheel", this.onWheel, { passive: false });
     activeDocument.addEventListener("pointermove", this.onPointerMove);
     activeDocument.addEventListener("pointerup", this.onPointerUp);
     this.bindRotateGesture();
@@ -470,8 +524,8 @@ export class CropEditor {
   // ---- Preview == commit -----------------------------------------------------------------------
 
   // The verbatim placement transform — the SAME string toCropResult will commit — applied to the
-  // live (bright) img, the dim ghost, and the handle box, so all three track together and the
-  // preview equals the committed render exactly (one geometry source).
+  // live (in-host result) img, the dim portal ghost img, and the handle box, so all track together
+  // and the preview equals the committed render exactly (one geometry source).
   private placementString(): string {
     return toCropResult(
       { x: this.tx, y: this.ty },
@@ -486,7 +540,7 @@ export class CropEditor {
   private applyPlacement(): void {
     const tf = this.placementString();
     this.img.style.transform = tf;
-    if (this.ghostImg) this.ghostImg.style.transform = tf;
+    if (this.veilImg) this.veilImg.style.transform = tf;
     if (this.handleBox) this.handleBox.style.transform = tf;
   }
 

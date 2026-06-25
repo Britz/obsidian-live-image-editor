@@ -465,7 +465,8 @@ body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall.lie-float-rig
   vertical-align: bottom;
 }
 
-/* Selection frame on hover (D4), hidden while cropping. */
+/* Selection frame on hover (D15) — outlines the image. While CROPPING this hover `::after` is
+   suppressed; the dashed crop frame (`.lie-crop-handles`) outlines the result image instead (D15). */
 .lie-box:hover .lie-image-area::after {
   content: "";
   position: absolute;
@@ -570,28 +571,26 @@ body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall.lie-float-rig
 
 /* ---- In-place crop (D8/AD3) -------------------------------------------
    The editor edits the LIVE 3-layer DOM in place — NO clone. For the crop duration the editor adds
-   `.lie-cropping` to the outer `.lie-image-area` (and the host) and lifts the host `contain:paint`
-   inline, so the image overflows the cut window: the OUTSIDE is dimmed (a dim ghost copy of the
-   image, un-clipped, behind) and the INSIDE is full (the real `.lie-frame`, still `overflow:hidden`,
-   the bright cut). The footprint box keeps its reserved size → no reflow. The white handle frame +
-   rotate knob sit on the ORIGINAL image (the `.lie-crop-handles` box tracks it via the SAME
-   placement transform); the cut window and the box stay fixed (presets reshape the cut, gestures
-   move/scale/rotate the image). */
-.lie-image-area.lie-cropping { overflow: visible; z-index: 5; cursor: grab; }
+   `.lie-cropping` to the outer `.lie-image-area` (and the host) for the class-keyed IN-HOST rules
+   (hide the native handle, suppress the hover selection `::after`, grab cursor). The host's
+   `contain:paint` is HONOURED — NOT lifted: the reserved space (the result image, = the footprint
+   box, minus caption) stays clipped in-host as the result image and is never cut off. Everything
+   that must extend PAST it lives in a BODY PORTAL (`.lie-crop-portal`) anchored to the in-host
+   frame: the GHOST image (a dim copy showing the croppable surround) and the handle CHROME. The
+   veil carries a `clip-path` hole over the reserved space so the in-host result shows through — no
+   overlay; the dimming IS the ghost's own fade, the hole clips it away over the result (Variante B).
+   The box stays fixed (presets reshape the cut shape, gestures move/scale/rotate the image). */
+.lie-image-area.lie-cropping { z-index: 5; cursor: grab; }
 .lie-image-area.lie-cropping:active { cursor: grabbing; }
-/* Lift the LP block-widget host's paint-containment for the crop duration so the dim ghost can
-   overflow the cut window. Obsidian's app.css `.cm-content > [contenteditable="false"] { contain:
-   paint }` is `!important`; the DOUBLED class raises specificity above it so this wins (the same
-   beat-app.css device used for `.lie-toolbar-btn.lie-toolbar-btn`). Class-driven (added/removed
-   with `.lie-cropping` by the editor) — replaces the former inline setProperty (Bug 32). */
-.cm-content > .lie-cropping.lie-cropping { contain: none !important; }
-/* Crop chrome positioning box (ghost/handle frame) — centred+oriented like the live `.lie-frame`;
+/* Crop positioning box (veil / handle frame) — centred+oriented like the live `.lie-frame`;
    width/height/transform set inline (dynamic px + orientation). */
 .lie-crop-frame-box { position: absolute; top: 50%; left: 50%; transform-origin: center; }
-/* The crop img layout (live img + dim ghost) — matches render-core's crop branch so the chrome
-   tracks the live image. Scoped under `.lie-cropping` so it out-specifies `.lie-frame > img`
-   (RENDER_CSS) for the live img too; the per-image placement transform stays inline. */
-.lie-image-area.lie-cropping .lie-crop-img {
+/* The crop img layout (in-host result img + the portal ghost img + its scrim) — matches render-
+   core's crop branch so the chrome tracks the image. The in-host variant is scoped under
+   `.lie-cropping` so it out-specifies `.lie-frame > img` (RENDER_CSS); the portal variant under
+   `.lie-crop-portal`. The per-image placement transform stays inline. */
+.lie-image-area.lie-cropping .lie-crop-img,
+.lie-crop-portal .lie-crop-ghost-img {
   position: absolute;
   inset: 0;
   margin: auto;
@@ -601,18 +600,31 @@ body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall.lie-float-rig
   max-width: none;
 }
 
-/* The dim ghost: the full image, un-clipped, behind the bright cut — AND the OUTSIDE pan hit-surface.
-   The pan grip must be the WHOLE visible image, inside AND outside the cut. `pointer-events:auto` on
-   the IMG (the frame BOX stays click-through, `none`) makes the dim overflow catch a pan drag:
-   INSIDE the cut the bright `.lie-frame` (z:2) catches, OUTSIDE the dim ghost img (z:1) catches —
-   both bubble to the area's pan listener. The dimming is the img's own opacity (no separate blocking
-   overlay), and the chrome/handles sit above (z:6, box `pointer-events:none`; only the handle/rotate
-   children catch), so pan never collides with resize/rotate. */
-.lie-crop-ghost { z-index: 1; pointer-events: none; }
+/* The BODY PORTAL: a 0×0 fixed anchor pinned to the in-host frame centre (left/top inline, dynamic).
+   Below the floating toolbar / sub-menu (z:1000+) so the controls stay clickable; a click-through
+   root — only the ghost img + handles inside catch. */
+.lie-crop-portal { position: fixed; width: 0; height: 0; z-index: 900; pointer-events: none; }
+/* VEIL: the dim surround. Its clip-path is a FRAME-shaped hole — keep the surround, drop the result
+   rect — and a frame needs TWO contours (a huge outer rect + the result-box hole). A single
+   `polygon()`/`rect()`/`inset()` keeps only the INSIDE of one region (like `overflow:hidden`), so it
+   can't punch a hole; one `polygon()` listing both rects diagonal-joins them and slices triangles.
+   Only `path(evenodd, "<outer> <hole>")` keeps the OUTSIDE — set INLINE on the veil (the hole's px
+   size is per-image / changes with the cut shape). The hole clips hit-testing too, so a pan started in
+   the result falls through to the in-host area. */
+.lie-crop-veil { pointer-events: none; }
+/* The ghost image: the full image showing the croppable surround — AND the OUTSIDE pan hit-surface
+   (`pointer-events:auto`; the scrim above stays click-through). A pan started outside the reserved
+   space catches here; inside, the hole falls through to the in-host result. */
 .lie-crop-ghost-img { opacity: 0.4; user-select: none; pointer-events: auto; }
+/* The SCRIM: a neutral, theme-following dim laid OVER the ghost image (same crop-img layout +
+   placement transform), so the surround reads as dimmed on any theme without hiding it.
+   `--color-base-100` inverts with the theme (dark on light, light on dark) — NOT the accent (that
+   marks the frame). Clipped by the veil hole, so the result stays un-scrimmed. Level verified on
+   the running theme. */
+.lie-crop-veil-scrim { background: var(--color-base-100); opacity: 0.45; pointer-events: none; }
 
-/* The bright cut window sits ABOVE the dim ghost (z:1) and below the chrome (z:6); a subtle
-   outline so the cut edge reads against the dim surround. */
+/* The in-host result image is the reserved space; a subtle outline so its edge reads against the
+   dim surround showing through the portal hole. */
 .lie-image-area.lie-cropping > .lie-frame {
   z-index: 2;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);

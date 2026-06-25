@@ -399,10 +399,11 @@ display state — each produces an edit that round-trips through the model layer
 - **AB12 — Crop editor** — edits the **LIVE 3-layer DOM in place** (no clone): the user
   moves/scales/rotates the original under a fixed cut window, the editor driving the SAME
   `toCropResult` placement the render core commits (centre origin) so **preview == committed**.
-  Handles (corner aspect-locked + edge single-axis + rotate) sit on the inner `<img>`; the cut
-  window + footprint box stay fixed (presets reshape the cut). For the crop duration it **suspends
-  the box's clipping** and dims the overflow (a ghost copy) — no
-  reflow. Quantization to whole pixels / fixed angle steps **during** the interaction is pure and
+  Handles (corner aspect-locked + edge single-axis + rotate) act on the inner `<img>` — and on its
+  dimmed portal copy (the ghost) in lockstep, both driven by the same placement; the cut
+  window + footprint box stay fixed (presets reshape the cut). For the crop duration it renders the
+  dimmed surround in a **body portal whose clip-path hole exposes the in-host cut window** — the
+  result image stays clipped in place (no clone, no reflow). Quantization to whole pixels / fixed angle steps **during** the interaction is pure and
   tested; the structural facts are CDP-verified, the drag feel manual
   (F12, D8). On **macOS** the editor additionally subscribes Electron's native `rotate-gesture`
   window event so a two-finger trackpad turn rotates the

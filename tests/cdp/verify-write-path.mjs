@@ -63,9 +63,9 @@ const EVAL_RUN = `(async () => {
     op("flipH", () => plugin.flipH());
     op("flipV", () => plugin.flipV());
     op("filter", () => plugin.modifyTransform((t) => { t.filter = "brightness(1.2)"; }));
-    op("alignLeft", () => plugin.applyAlignment("left"));
+    op("alignLeft", () => plugin.applyLayout("float-left"));   // Decision 30: float-left ⇒ align=left
     op("presetMedium", () => plugin.applyPreset("medium"));
-    op("inline", () => plugin.toggleInline());
+    op("inline", () => plugin.applyLayout("inline"));           // Decision 30: inline layout ⇒ .lie-inline
     op("addClass", () => plugin.applyClass("rounded"));
     op("crop", () => plugin.modifyTransform((t) => { t.transform = "translate(-10%, -5%) scale(1.5)"; t.aspectRatio = "4/3"; t.width = "240px"; }));
     op("reset", () => plugin.reset());

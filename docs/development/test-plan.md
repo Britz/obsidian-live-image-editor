@@ -40,7 +40,10 @@ above it:
   mode widget with the native image uniformly CSS-suppressed, declarative sizing with no measure
   loop, the shared sub-menu host, and the platform-reuse seams. Verified by CDP eval in a running vault.
 - **Behaviour / acceptance tests (High)** confirm the **requirements** (`Fn`/`Dn`) as observed by
-  a user. Verified by CDP eval in a running vault on the example pages.
+  a user. Verified by CDP eval in a running vault on the example pages. These include **functional
+  (interaction-driven)** checks that DRIVE the UI as a user would — entering a value in a panel,
+  clicking a control — and then verify **both** the visible result **and** the persisted source
+  `{…}` (never assuming the write, per the Bug 56 load-bearing rule).
 - **Regression tests** pin every solved bug (the `Bug N` entries in `CHANGELOG.md`) and every `T-Ln`
   lesson (in `issues.md`), at whichever level catches it (a pure-logic regression becomes a unit test per the
   *write-tests-for-behaviour-changes* working rule; an integration-only one stays CDP).
@@ -54,19 +57,27 @@ The pure units live under `tests/unit/*.test.ts`; the CDP checks run via the dev
 (`AB23` / CLAUDE.md *Live debugging*) against the example vault pages (`example-vault/`), which are
 fixtures exercising each requirement area. The read-back CDP checks are
 `tests/cdp/verify-write-path.mjs` (the §3 AD1 write-path matrix, the Bug 56 guard) and
-`tests/cdp/verify-crop.mjs` (the Bug 51 crop editor — 20 structural facts read back from the live
-DOM/source in Live Preview **and** reading view: no `document.body` clone, centre origin, handles
+`tests/cdp/verify-crop.mjs` (the Bug 51 crop editor — structural facts read back from the live
+DOM/source in Live Preview **and** reading view: no `document.body` clone, handles
 on the inner image, 4 corner + 4 edge + rotate, native handle hidden, no reflow, one undo step per
-session, a width edit preserves the crop) plus `tests/cdp/verify-crop-teardown.mjs` (the crop editor
-fully restores every transient override — esp. the lifted host `contain:paint` — on EVERY exit path,
+session, a width edit preserves the crop; the **centre pivot** is covered behaviourally by
+*preview == committed*, not by reading the inline `transform-origin` — which is empty by design, the
+pivot lives in CSS) plus `tests/cdp/verify-crop-teardown.mjs` (the crop editor
+fully tears down every transient override — esp. the body veil portal — on EVERY exit path,
 read back from the live computed style). Further CDP scripts cover the reveal
 (`tests/cdp/verify-reveal.mjs`), the sub-menu icons/region (`verify-submodal-icons.mjs`,
 `verify-submodal-region.mjs`), click-away / popup coupling (`verify-region-clickaway.mjs`,
 `verify-popup-region.mjs`), crop pan hit-testing (`verify-crop-pan.mjs`) and render gaps
-(`verify-render-gaps.mjs`). The **optical / black-box** slice is `verify-resize-affordance.mjs`,
-which OBSERVES painted pixels + pointer hit-tests (never CSS properties) via a reusable `_optical.mjs`
-CDP client — region screenshots decoded to RGBA, a real `:hover` (CDP `Input`, since synthetic events
-don't trigger `:hover`), and `elementFromPoint`. The crop scripts **self-create** their `_crop-fixture.md`
+(`verify-render-gaps.mjs`). The **optical / black-box** layer OBSERVES the painted result + pointer
+hit-tests (never CSS properties) via a reusable `_optical.mjs` CDP client — region screenshots decoded
+to RGBA, a real `:hover` (CDP `Input`, since synthetic events don't trigger `:hover`), and
+`elementFromPoint`: `verify-optical-render.mjs` (geometry — rotate/flip footprint, column cap, caption,
+block/float/inline, both views), `verify-optical-pixels.mjs` (rotate/flip content + filter, sampled),
+`verify-optical-chrome.mjs` (toolbar/sub-menu/crop-handle chrome) and `verify-resize-affordance.mjs`
+(D4/D15 + the containment-lift canary). The **functional (interaction-driven)** check is
+`verify-functional.mjs` — it types into the size modal and reads back the rendered width AND the
+persisted source (the §4 *Resize via the size modal* item). `verify-all.mjs` runs every `verify-*.mjs`
+and sums pass/fail — "test a new Obsidian version" in one command. The crop scripts **self-create** their `_crop-fixture.md`
 (and delete it); the manual crop demo is `example-vault/02 — Crop.md`.
 
 > **The load-bearing rule (the Bug 56 lesson).** A green suite must mean an **edit actually
@@ -326,9 +337,12 @@ run via CDP eval against the example vault (`Lesson 6`, `AD7`).
   is open (shown=opacity 0.4, hidden=0, never un-greyed); (3) the folded-group popup / class dropdown
   keep the bar visible while hovered (NOT greyed) and close together with the bar on region-leave.
   *Pure: `clickDismissesToolbar` (`tests/unit/toolbar-region-logic.test.ts`). CDP:
-  `tests/cdp/verify-region-clickaway.mjs` (Bug 62), the extended `tests/cdp/verify-submodal-region.mjs`
-  (Bug 63), `tests/cdp/verify-popup-region.mjs` (Bug 64). The real-pointer `:hover` travel + the floating
-  bar are a manual focused-window pass (synthetic events can't drive `:hover` / `pointer-events`).*
+  `tests/cdp/verify-region-clickaway.mjs` (Bug 62), `tests/cdp/verify-submodal-region.mjs`
+  (Bug 63), `tests/cdp/verify-popup-region.mjs` (Bug 64). The region hover travel is driven by a **real
+  CDP pointer** (`Input.dispatchMouseEvent` via `_optical.mjs`) — synthetic `MouseEvent`s can't drive
+  the binder's real `:hover`/`pointer-events` path, so they would both **false-red** the leave checks
+  AND **false-green** the "still active" ones (the region never actually moved); the real pointer makes
+  both honest. Only the floating-bar-outside-the-image travel may still want a manual confirm.*
 - **AD9 — Platform reuse.** Confirm captions render via Obsidian's `MarkdownRenderer`, resize
   uses the native handle/frame, the column cap reads `--file-line-width`, link conversion calls
   `fileManager.generateMarkdownLink`, and i18n follows Obsidian's locale. *Verifies the platform
@@ -387,13 +401,21 @@ Grouped by area; each line states what is checked.
 - **Resize affordance (`D4`, `D15`).** On hover or when the image is selected, the **selection
   frame and the native resize handle are both visible** (the handle resizes). **While cropping the
   selection frame stays visible** — outlining the resulting cropped image so its location is always
-  shown — **while the resize handle is absent and inert**, and the croppable area outside the cut
-  window is **visible** (the image extends beyond the cut). Verified black-box: the running app is
+  shown — **while the resize handle is absent and inert**, and the **dimmed surround outside the cut
+  window is visible** (the surrounding context shows through, dimmed). Verified black-box: the running app is
   observed for the frame / handle / overflow actually being visible or absent, independent of any
   specific CSS. Pinned by `tests/cdp/verify-resize-affordance.mjs` — hover → the handle is grabbable
   (`elementFromPoint`) and the selection frame is painted (a hover/no-hover pixel diff); crop → the
-  handle is inert, an accent frame still outlines the cut, and the image is hit-testable **outside**
-  the cut window (the **containment-lift canary**: clipped overflow = the Obsidian 1.12.7 regression).
+  handle is inert, an accent frame still outlines the cut, and the **dimmed surround is painted AND
+  hit-testable outside** the cut window (a drag there still pans the image) — the **veil-portal canary**:
+  a missing/inert surround = the body portal failed to escape containment or carry the pan hit-surface.
+- **Affordances are observed VISIBLE, not merely present (`D4`, `D8`, `D15`).** Every editing
+  affordance — the **resize handle and its marker**, the **selection frame**, and the **crop
+  corner / edge / rotate handles** — is checked by **pixels** for being actually *painted*, not only by
+  `elementFromPoint` for being *hit-testable*. A handle that is present and grabbable but visually
+  **clipped / not fully painted** (e.g. a containment clip eating the half that sits outside the image
+  or cut window) is a **FAIL** — hittability alone is insufficient. This is the load-bearing rule for
+  the affordance checks, the resize-handle analogue of the Bug 56 "never assume the write" rule.
 - **Filters (`F11`, `D7`).** Each slider (brightness, contrast, saturate, hue, blur, grayscale,
   sepia) changes the image live; named presets apply; double-click resets a slider; the panel docks
   on the roomier side and hides when the image scrolls out of view.
@@ -418,6 +440,11 @@ Grouped by area; each line states what is checked.
   width mechanism; vault-snippet classes are discovered, offered, individually de-selectable, and
   refresh on change; bundled example snippets install opt-in and reset to shipped (`F16.1`). (The
   built-in layout states are the **Layout** item above, not classes.)
+- **Resize via the size modal — functional (`F24`, `D6.1`, `AD1`).** Driving the modal as a user:
+  typing a **width** re-renders the image to it (live) and **persists `width=N`** to the source; typing
+  **width AND height** persists both (the explicit custom-size path, `T2.3`); **clearing** the fields
+  removes the size and the image widens back to its responsive default (Bug 42). The interaction is
+  driven (field input + commit) and both the rendered width and the written `{…}` are read back.
 - **Link form (`F5`, `F6`).** Toggling Obsidian's *Use [[Wikilinks]]* converts the link while the
   trailing block stays intact; a Markdown native size folds into the block; a wikilink native
   size is left as written. A native pipe / Markdown size is folded into the rendered width in **both**

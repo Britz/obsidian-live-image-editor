@@ -7,9 +7,11 @@
 //      the 1st's transform. This forces a reconcile and reads the live `.lie-frame` orientation of
 //      each occurrence back — with the bug, occurrence 1 would carry occurrence 0's rotate.
 //
-//  F24 (icon → inline): the size sub-menu's "icon" preset must couple to the INLINE rendering
-//      (F17), not merely set a height. Drives the real customSize panel, clicks the icon preset,
-//      leaves to persist, and reads the source `{…}` back — it must carry `.lie-inline`.
+//  F24 (icon = a line-height size, decoupled from layout): the size sub-menu's "icon" preset sets
+//      ONLY a line-height height — it must NOT add `.lie-inline` (Change 38 decoupled size from
+//      layout; inline is the separate `inline` LAYOUT state). Drives the real customSize panel, clicks
+//      the icon preset, leaves to persist, reads the source `{…}` back — it must carry a `height=` and
+//      NOT `.lie-inline`.
 //
 // Prereqs (CLAUDE.md → Live debugging): a DEV build in example-vault/ + Obsidian with the CDP relay.
 //   node tests/cdp/verify-render-gaps.mjs
@@ -55,7 +57,7 @@ const EVAL_RUN = `(async () => {
     R.f2_after = frameTransforms();
     await vault.delete(f2);
 
-    // ---- F24: icon preset → the source carries .lie-inline ----
+    // ---- F24: icon preset → the source carries a line-height HEIGHT, NOT .lie-inline (Change 38) ----
     const P24 = "_rg-f24.md";
     const c24 = ["# F24 icon", "", "![](images/sample-square.png)", ""].join("\\n");
     let f24 = vault.getAbstractFileByPath(P24);
@@ -135,8 +137,10 @@ if (!res.f2_rendered) {
   checks.push(["F2: occurrence 1 is NOT clobbered with occurrence 0's rotate", !has(after[1], "rotate(90deg)")]);
 }
 
-// F24 — the persisted block must carry the inline class.
-checks.push(["F24: icon preset persists .lie-inline", has(res.f24_line, ".lie-inline")]);
+// F24 — the persisted block carries a line-height HEIGHT and NOT the inline class (Change 38:
+// size is decoupled from layout; the icon preset sets a height only, never the inline state).
+checks.push(["F24: icon preset persists a height, NOT .lie-inline (Change 38)",
+  has(res.f24_line, "height=") && !has(res.f24_line, ".lie-inline")]);
 
 let failed = 0;
 for (const [name, ok] of checks) { console.log(`${ok ? "PASS" : "FAIL"}  ${name}`); if (!ok) failed++; }
