@@ -26,3 +26,4 @@ docs/examples/*
 !docs/examples/README.md
 # copied from the build artifact in CI / local preview
 docs/assets/lie-runtime.js
+example-vault/_dev-tools/dev-diagnostics/diagnostics-log.md
