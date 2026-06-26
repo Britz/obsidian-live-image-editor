@@ -42,6 +42,17 @@
     },
     "command-inspector": {
       "enabled": true
+    },
+    "diagnostics": {
+      "enabled": true,
+      "logSubfolder": "dev-diagnostics",
+      "logSessionStart": true
+    },
+    "event-spy": {
+      "enabled": true,
+      "workspaceEvents": true,
+      "editorChanges": false,
+      "vaultEvents": true
     }
   }
 }
