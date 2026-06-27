@@ -919,3 +919,22 @@ body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall.lie-float-rig
 .lie-class-collision { color: var(--text-warning); }
 
 .lie-class-hidden { display: none; }
+
+/* Syntax & info card: the stored `{…}` form as an offset monospace example + a per-attribute list,
+   mirroring the documentation idiom other plugins use in their settings. */
+.lie-syntax-example {
+  margin: var(--size-4-2) 0;
+  padding: var(--size-4-3);
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  overflow-x: auto;
+}
+.lie-syntax-example code {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  white-space: pre;
+}
+.lie-syntax-attrs { margin: var(--size-4-2) 0 0; padding-left: var(--size-4-5); }
+.lie-syntax-attrs li { margin-bottom: var(--size-2-3); color: var(--text-muted); }
+.lie-syntax-attrs code { color: var(--text-normal); }

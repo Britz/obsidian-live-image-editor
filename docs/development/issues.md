@@ -272,6 +272,20 @@ _**105 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       renamed **F26 "Change image source"**; the single-image flatten is **Feature 41**. Root cause: F26's
       note-wide clause was an UNREVIEWED spec change — the very trigger for the CLAUDE.md non-negotiable
       gate. (2026-06-12, user.)
+- [ ] **Bug 113 — A click on the Crop toolbar button doesn't open crop mode on the first try —
+      ONLY when the cursor is not on the embed's line; a second click is needed.** A button must
+      perform its action regardless of (invisible) background state — pressing it and getting nothing
+      is a definitive defect; background machinery is no excuse. _Confirmed (CDP click-level,
+      2026-06-27, user):_ a capture-phase `click` recorder logged each toolbar button plus the
+      `cropEditor` state before/after each click. With the cursor on a DIFFERENT line than the embed,
+      the reproduced sequence was: hide-link-source (`<>`) → dismiss ON; Edit → submenu;
+      **Crop → `cropAfter=false` — crop did NOT open** (by then the dismiss had already cleared); then
+      Edit → Crop again → `cropAfter=true`. So one crop-button click produced no crop; the retry did.
+      With the cursor ON the embed line it opens on the first click. _Cause UNCONFIRMED (hypothesis):_
+      the click coincides with a reveal/dismiss state change (the `<>` auto-clear / engagement defect,
+      Bug 86) that consumes the interaction, or a guard in `crop()` (`locateActiveImage` / panel
+      teardown) aborts the open on that click. DISTINCT from the reveal/dismiss engagement bug — even
+      if co-triggered, the definitive defect is the dead button. (2026-06-27, user+CDP.)
 
 ---
 

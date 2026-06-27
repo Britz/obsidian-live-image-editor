@@ -126,4 +126,11 @@ export default {
   settingsOpenPluginSettings: "Open plugin settings",
   settingsAddButtons: "Add buttons",
   settingsRemoveButtons: "Remove buttons",
+  settingsSyntax: "Syntax & info",
+  settingsSyntaxIntro: "Every edit is saved directly in the image link — the original file stays untouched. The toolbar writes a portable attribute block in curly braces:",
+  settingsSyntaxExample: "![Caption 300x200](image.png){align=left .bordered}\n![[image.png|Caption]]{height=200 align=block-center}",
+  settingsSyntaxSizeDesc: "Size in pixels.",
+  settingsSyntaxAlignDesc: "left, right, block-left, block-center, block-right.",
+  settingsSyntaxClassDesc: "A decoration class from a CSS snippet.",
+  settingsStoreLink: "This plugin in Obsidian",
 };

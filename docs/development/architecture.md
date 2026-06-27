@@ -257,6 +257,9 @@ current code and are restated here as architecture, not invented anew.
     platform capability (there is none to reuse here) and stays **runtime-only** — the plugin's
     caption path keeps using `MarkdownRenderer`. Full fidelity is still bounded by the **lossy alt
     attribute** (e.g. python-markdown strips code-span backticks before the runtime sees the alt).
+- **AD10 — Embed detection in Live Preview.** *(F4)* In Live Preview the plugin derives whether a
+  line is an image embed from Obsidian's own detection, not from a parallel one of its own.
+  Exception: when the "render images in code blocks" setting is on, code-block embeds are rendered too.
 
 ---
 

@@ -117,6 +117,7 @@ export class LieSettingTab extends PluginSettingTab {
     this.renderSizePresets(containerEl);
     this.renderCssSection(containerEl);
     this.renderEditingToolbar(containerEl);
+    this.renderSyntaxInfo(containerEl);
   }
 
   // A native Obsidian setting "card": `div.setting-group` (with the heading inside) → `div.setting-
@@ -476,5 +477,32 @@ export class LieSettingTab extends PluginSettingTab {
     } else {
       setting.descEl.createDiv({ cls: "lie-version-warning", text: t("settingsEditingToolbarVersionWarning") });
     }
+  }
+
+  // ── Syntax & info (F20) — a read-only help card describing the stored `{…}` attribute form, then a
+  //   button that opens THIS plugin's own page in Obsidian's community-plugin browser. The same
+  //   documentation idiom other plugins use in their settings: intro → code example → per-attribute
+  //   list. The attribute tokens (`width=`, `align=`, `.classname`) are literal code, not localized;
+  //   only the prose around them follows the locale.
+  private renderSyntaxInfo(c: HTMLElement): void {
+    const items = this.cardGroup(c, t("settingsSyntax"));
+
+    items.createEl("p", { cls: "setting-item-description", text: t("settingsSyntaxIntro") });
+    items.createEl("pre", { cls: "lie-syntax-example" }).createEl("code", { text: t("settingsSyntaxExample") });
+
+    const list = items.createEl("ul", { cls: "lie-syntax-attrs" });
+    const attr = (token: string, desc: string): void => {
+      const li = list.createEl("li");
+      li.createEl("code", { text: token });
+      li.appendText(` — ${desc}`);
+    };
+    attr("width= / height=", t("settingsSyntaxSizeDesc"));
+    attr("align=", t("settingsSyntaxAlignDesc"));
+    attr(".classname", t("settingsSyntaxClassDesc"));
+
+    new Setting(items)
+      .setName(t("settingsStoreLink"))
+      .addButton((b) => b.setButtonText(t("settingsOpenPluginStore")).setCta()
+        .onClick(() => this.openPluginStore(this.plugin.manifest.id)));
   }
 }

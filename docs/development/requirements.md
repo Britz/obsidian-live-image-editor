@@ -127,7 +127,7 @@ no language or link-format setting of its own.
   page"** (the still-backlogged flatten/export-page commands belong here too).
 - **F20 — Settings.** A **General** group — hover toolbar, captions, the **default raw-link
   reveal state** (auto / always, F8; default **auto**), the **button-outlines** A11y mode
-  (auto / always / never, D14), the tall-float cap — kept compact; the
+  (auto / always / never, D14), the tall-float cap, **render images in code blocks** (Live Preview only; default off) — kept compact; the
   **preset widths** for small / medium / large (F24); a **CSS-classes** section
   (the F16 master toggle, a link to Obsidian's snippet management, install/reset of the bundled
   example snippets (F16.1), and the grouped, searchable class overview (F16.2/F16.3)); and the

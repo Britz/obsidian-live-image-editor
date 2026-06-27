@@ -126,4 +126,11 @@ export default {
   settingsOpenPluginSettings: "Plugin-Einstellungen öffnen",
   settingsAddButtons: "Buttons anlegen",
   settingsRemoveButtons: "Buttons entfernen",
+  settingsSyntax: "Syntax & Info",
+  settingsSyntaxIntro: "Jede Bearbeitung wird direkt im Bild-Link gespeichert — die Originaldatei bleibt unberührt. Die Toolbar schreibt einen portablen Attribut-Block in geschweiften Klammern:",
+  settingsSyntaxExample: "![Bildtext 300x200](bild.png){align=left .bordered}\n![[bild.png|Bildtext]]{height=200 align=block-center}",
+  settingsSyntaxSizeDesc: "Größe in Pixeln.",
+  settingsSyntaxAlignDesc: "left, right, block-left, block-center, block-right.",
+  settingsSyntaxClassDesc: "Eine Dekorations-Klasse aus einem CSS-Snippet.",
+  settingsStoreLink: "Dieses Plugin in Obsidian",
 };

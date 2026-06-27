@@ -45,7 +45,7 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/ui.ts` | shared DOM helpers | `textButton` *(labelled button — filter/size/crop presets)* |
 | `src/export.ts` | AB15 Export | `renderTransformedImage`<br>`suggestExportPath`<br>`saveExport` |
 | `src/commands.ts` | AB18 Commands | `registerCommands` |
-| `src/settings.ts` | AB19 Settings | `LieSettingTab`<br>`LieSettings` *(alwaysShowLink, presetWidths, tallFloatSafe)*<br>`DEFAULT_SETTINGS` |
+| `src/settings.ts` | AB19 Settings | `LieSettingTab` *(General · size presets · CSS classes · editing-toolbar · **Syntax & info** — read-only `{…}`-attribute help card (intro + code example + per-attribute list) + an `openPluginStore("live-image-editor")` self-store-link button; F20/Change 43)*<br>`LieSettings` *(alwaysShowLink, presetWidths, tallFloatSafe)*<br>`DEFAULT_SETTINGS` |
 | `src/styles-injector.ts` | AB20 Style injection | `StylesInjector`<br>`PresetWidths`<br>`DEFAULT_PRESET_WIDTHS` |
 | `src/editing-toolbar-integration.ts` | AB22 Editing-toolbar integration | `getEditingToolbarStatus`<br>`addEditingToolbarButtons`<br>`removeEditingToolbarButtons` |
 | `src/i18n/` | AB21 Localization | `index.ts`<br>`en.ts`<br>`de.ts` |
@@ -497,6 +497,13 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   `live-preview.ts` as the two-valued `"auto"|"always"` derived from the setting — no per-line mode
   cycle. The `<>` control is the **eye dismiss**: a `.lie-dismissed` LINE decoration that auto-clears
   in auto mode, F8.)
+- **Embed detection deferred to the parse (AD10).** The build treats a line as an embed only where
+  Obsidian's parse does. A line matched by `EMBED_LINE` whose start sits inside a code node — checked
+  via `syntaxTree(state)` (`@codemirror/language`; already an esbuild external, add the dev-dep for
+  types) — is **skipped** entirely (no fake link, no `{…}` mark, no image widget), so an `![](…)`
+  inside a fenced/inline code block stays literal code. Reading view needs no change (its parse-built
+  DOM has no `<img>` there already). The **"render images in code blocks"** setting (F20) is the lone
+  override: when on, the code-node check is bypassed and the embed renders in LP.
 
 ### 3.4 Editing UI
 
