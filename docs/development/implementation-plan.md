@@ -421,7 +421,7 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   upgrades a reused legacy 2-layer DOM; `unwrapBox` tears the layers down. It also exports `RENDER_CSS`
   (the structural layer rules, injected by the plugin AND the runtime — one source, R0) and the
   identification (`CLAIM_SELECTOR` + `readTransform`). The plugin renderer and the runtime are **two
-  callers of this one builder** (DRY); the reading-view adapter (the post-processor wiring) lives in
+  callers of this one builder** (R0); the reading-view adapter (the post-processor wiring) lives in
   `main.ts`.
 - **`caption.ts` / `caption-logic.ts`** — `createCaption` renders the alt text via Obsidian's
   `MarkdownRenderer` (AD9) below the box, as a child of the **embed** (never inside the box, §2.3).
@@ -630,7 +630,7 @@ The standalone bundle that delivers T3 portability. **Built.**
   **3-layer** structure (outer / inner-frame / `<img>`) around a claimed `<img>` and routes each
   datum to its layer (the same routing table as §2.3): `align`/`width`/`aspect-ratio`/`style`/`.class`
   → outer; `rotate`+`flip` → inner-frame; `transform`+`filter` → `<img>`. The plugin renderer and
-  this runtime are **two callers of the same builder** (DRY); the plugin wraps it in Obsidian's embed,
+  this runtime are **two callers of the same builder** (R0); the plugin wraps it in Obsidian's embed,
   the runtime hydrates a bare page.
 - **Runtime entry + build target.** A **second esbuild entry** (`src/runtime.ts`) produces a
   framework-free **`lie-runtime.js`** (named for the plugin id — *not* `live-image-runtime.js`), a
@@ -672,7 +672,7 @@ caused. These are the low-level half of the decisions in `architecture.md` §2.
   images carry no containment, untouched). The reserve only bites where the image edge meets the
   containment edge (full-width block on `inline-end`; caption-less block on `bottom` — a caption
   already extends the box past the marker). If that 2px ever matters, the alternative is a **body
-  portal** for the marker (cf. AB12) — deferred for KISS. Float via `:has()` on the embed, never the
+  portal** for the marker (cf. AB12) — deferred for R0. Float via `:has()` on the embed, never the
   `img` or `.lie-image-area` → otherwise text never wraps.
 - **AD5 (one path per mode).** The live-preview widget draws the plugin's own image and does **not**
   replace the line — block-replacing it was the old model; instead the native embed is kept (it loads

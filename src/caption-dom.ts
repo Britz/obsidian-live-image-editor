@@ -1,5 +1,5 @@
 // The Obsidian-free DOM shell for a caption element, SHARED by both consumers so the `.lie-caption`
-// class + structure live in ONE place (DRY / R0):
+// class + structure live in ONE place (R0):
 //   - the plugin (`caption.ts`) builds a `<div>` shell and renders the caption Markdown INTO it via
 //     the platform renderer (`MarkdownRenderer`, AD9);
 //   - the standalone runtime builds a `<span>` shell (valid phrasing content inside the foreign

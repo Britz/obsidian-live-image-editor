@@ -1,4 +1,4 @@
-// The DEFAULT image-decoration class stack — the SINGLE source for two consumers (DRY, like
+// The DEFAULT image-decoration class stack — the SINGLE source for two consumers (R0, like
 // render-core's RENDER_CSS): the plugin ships it as an installable Obsidian snippet (F16.1), and
 // the standalone runtime injects it so a foreign (no-Obsidian) page renders class-styled images
 // the SAME way Obsidian does. This module is Obsidian-FREE (no imports) so the portable runtime

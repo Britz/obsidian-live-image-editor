@@ -1,7 +1,7 @@
 // The standalone PORTABLE RUNTIME (AB7a / T3) — a framework-free JS bundle that hydrates a
 // foreign (no-Obsidian) page: it CLAIMS images carrying the bare-key transform attributes and
 // builds the SAME uniform 3-layer structure the plugin builds, via the SAME core (`buildLayers`
-// + `RENDER_CSS`) — two callers, one builder (DRY/R0). Built as a SECOND esbuild entry →
+// + `RENDER_CSS`) — two callers, one builder (R0). Built as a SECOND esbuild entry →
 // `lie-runtime.js`, with the render CSS inlined (CSS-in-JS), so a single `<script>` include is
 // all a static site needs. It imports ONLY the Obsidian-free core — no obsidian / CodeMirror —
 // so the bundle never pulls the plugin framework (enforced: the runtime esbuild entry has no

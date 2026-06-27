@@ -85,7 +85,7 @@ current code and are restated here as architecture, not invented anew.
   still reads the legacy forms — `style="transform:…"`, the `.lie-left/right/center` classes,
   `style="width:…"` — for back-compat. Presets are baked to a literal `width=N`.)*
 
-- **AD3 — One uniform 3-layer image element, one sizing direction (R0).** *(T5, T6, D3, D4)*
+- **AD3 — One uniform 3-layer image element, one sizing direction (realizes R0).** *(T5, T6, D3, D4)*
   Normal, rotated, flipped, cropped, filtered and sized images share the **same** nested structure
   and the **same** sizing routine; "normal" is the degenerate transform, never a special case. The
   uniform structure is **three layers**, each owning one concern (this is the realization of the
@@ -111,7 +111,7 @@ current code and are restated here as architecture, not invented anew.
   layers outer → inner-frame → `<img>`, upgrading a reused legacy
   2-layer DOM.)*
 
-  - **The R0 box invariant (Decision 19).** The 3-layer DOM is **invariant** — the box is **never
+  - **The box invariant (Decision 19).** The 3-layer DOM is **invariant** — the box is **never
     empty** and the `<img>` is **never naked**. Whatever the parameters, the outer always carries at
     least the **native defaults** (column-capped to the rotation-correct intrinsic
     dimension — the height or width axis chosen by the box angle — with the aspect-ratio derived
@@ -244,7 +244,7 @@ current code and are restated here as architecture, not invented anew.
     and closes the palette when the region is left — bar + palette fade together — **without** greying
     the bar (palettes are not modal).
 
-- **AD9 — Reuse the platform (DRY).** *(F5, F6, F21, F22, D4, F13)* Where Obsidian already
+- **AD9 — Reuse the platform (R0).** *(F5, F6, F21, F22, D4, F13)* Where Obsidian already
   provides the capability, the platform's own code is the building block: `MarkdownRenderer`
   for captions, the native resize handle and frame, the native save dialog, the file
   manager's link generation for link-form conversion (used defensively), and Obsidian's locale
@@ -257,9 +257,24 @@ current code and are restated here as architecture, not invented anew.
     platform capability (there is none to reuse here) and stays **runtime-only** — the plugin's
     caption path keeps using `MarkdownRenderer`. Full fidelity is still bounded by the **lossy alt
     attribute** (e.g. python-markdown strips code-span backticks before the runtime sees the alt).
-- **AD10 — Embed detection in Live Preview.** *(F4)* In Live Preview the plugin derives whether a
-  line is an image embed from Obsidian's own detection, not from a parallel one of its own.
-  Exception: when the "render images in code blocks" setting is on, code-block embeds are rendered too.
+- **AD10 — Embed detection in Live Preview.** *(F4)* In Live Preview the plugin derives whether and
+  where a line holds an image embed from Obsidian's own parse, not from a parallel detection of its
+  own — so every embed variant is covered and none is invented (a code-block embed is not an embed).
+  Exception: the "render images in code blocks" setting (F20) overrides this to render code-block
+  embeds too.
+- **AD11 — The plugin owns source-link visibility per embed span.** *(F8)* For each embed span
+  Obsidian's parse reports, the plugin is the single authority over whether the source link is shown:
+  by default it mirrors Obsidian's native reveal (the editable source shows while the cursor sits
+  within the span, the plugin's overlay otherwise), and where the plugin's own state requires — a
+  dismiss, or while engaged with the image (pinned, AD12) — it actively suppresses the native reveal
+  as well, without disabling native editing of the source.
+- **AD12 — One engagement predicate.** *(F7, F8)* Whether the plugin is **engaged with an image** is
+  a **single predicate** — the union of the cursor on the image's line, pointer hover, the image
+  selected/active (editor focused on it), and any plugin surface open for it (a **crop**, or a
+  **filter / class / sub-menu** panel). Every cross-cutting "is this image active?" decision — the
+  reveal **pin** (AB16b), the `<>` dismiss **auto-clear** (which fires only on full
+  **dis**engagement), and the toolbar's greyed/active state — reads this **one** predicate, never a
+  per-surface ad-hoc check.
 
 ---
 
@@ -436,18 +451,46 @@ display state — each produces an edit that round-trips through the model layer
   clip-path, border-radius, box-shadow and non-standard filters are **not** exportable. Decoupled
   from the save, which offers the native dialog with a free name pre-filled and never overwrites
   silently (F13, AD9).
-- **AB16 — Raw-link reveal & edit** *(F8, F9, D5)* — **reveal** is a display-only fake raw link the
-  plugin paints before the `{…}`. Its **natural state** has two modes from the **global default-state
-  setting** (AB19/F20): *auto* — revealed on cursor (the active line) or hover of the image's line — or
-  *always* — revealed everywhere; both are pure CSS. The **`<>` (eye) reveal control** is a
-  **transient per-image dismiss** (**not persisted**, F8): it hides this one image's source to inspect
-  the layout, then **auto-clears in auto mode** (the source returns on the next hover/edit) and
-  **persists in always mode** until toggled again. There is **no** third "hidden" mode and **no**
-  per-line mode cycle.
-  Only the in-widget **edit field** is designed out: **edit** is **not**
-  a plugin field — it is Obsidian's native cursor-reveal of the source text (AD5, AD9), independent of
-  the reveal mode, so caret, selection and copy are native. No separate editing root, so the old
-  in-widget-textarea seam is designed out.
+- **AB16 — Link reveal** *(F8, F3, D16, D17)* — the reveal logic over the **whole link**, treated as
+  **one unit**: the link body (the native raw link *or* its stand-in) together with any trailing `{…}`
+  attribute block. Its **natural state** comes from the **global default-state setting** (AB19/F20):
+  *native* — revealed on the **active (cursor) line**, *auto* — revealed on the **active (cursor) line** or on **hover** of the image's line, or *always* —
+  revealed everywhere; over it sits a **transient per-image `<>` dismiss** (**not persisted**, F8;
+  auto-clears in native and auto mode on full disengagement (AD12), persists in always until toggled). There is
+  **no** per-line mode cycle. The plugin is the **single authority** over
+  the link's visibility (AD11) — for the *enforced outcome*; **which side drives it, and when, is
+  AB16b**.
+  The **invariants hold in every case**: the body's two renderings (native raw link vs
+  stand-in) are **mutually exclusive** (D16) and the body and its `{…}` show or hide **as one whole,
+  atomically** — never doubled, partial, out of sync, or flickering (D16/D17).
+- **AB16a — Raw-link stand-in & edit** *(F8, F9, D5)* — the realization of the link body's two faces
+  under AB16. **Reveal-for-looking** (F8) is a display-only **stand-in** for the native raw source link — a "fake"
+  raw ink the plugin paints before the `{…}`, styled to read like the native raw link (D5). **Editing**
+  (F9) is **not** a plugin field — it is Obsidian's own native cursor-reveal of the raw link (AD5,
+  AD9), so caret, selection and copy stay native. There is no separate editing root.
+- **AB16b — Who drives the reveal, when** *(AD11, AD12, D16, D17)* — the link is **one unit**: its body
+  (the native raw link *or* its stand-in: `![](…)` or `![[…]]` ) and the attribute list `{…}` (if present) are **always shown or hidden together** — a shown link whose `{…}` is hidden, or the reverse, is a **bug** (D17). The driver of the **visibility state** is
+  **not fixed**:
+  - By default **Obsidian** drives the **native raw link** — a cursor-driven reveal: shown while the
+    cursor is **within the body** (`![](…)` or `![[…]]`), hidden otherwise.
+  - The plugin drives the **stand-in**: shown *for looking* (per the reveal state, AB16) whenever the
+    native raw link is **not** revealed, hidden when it **is** — so the two body faces are **never
+    shown together** (D16). It is required since we have no possibility to force reveal the **native raw link**.
+  - The attribute list (`{…}`) is **native editable text** (cursor on it → native edit) not a block widget like the **stand-in** fake link;
+    its visibility is driven by the plugin and it partly drives the **stand-in**.
+    So whenever the cursor sits **anywhere on the link** — raw link  **or** attribute list — the **whole** link stays
+    visible. When the cursor is on the attribute list, Obsidian hides the native raw link (the cursor is past the
+    native raw link), so the **stand-in** fake link carries the body while the attribute list is edited natively. The body's
+    *native raw link* ↔ *stand-in fake link* swap at the native raw link / attribute list boundary is **seamless** — the user never sees the fake link differ from the real native raw link.
+  - On the `<>` **dismiss** the plugin **actively hides** the link, **suppressing the native raw link**
+    too, so it stays hidden even when Obsidian's native image widget triggers a reveal (Bug 65).
+  - While the plugin is **engaged with the image** (AD12 — a **crop**, or an open **filter / class /
+    sub-menu** panel) the reveal state is **pinned**: it does not flip mid-interaction, whatever the
+    cursor does (Bug 86; crop is one case).
+
+  Across all of these the plugin's decision is the **final authority over the outcome** (AB16):
+  Obsidian drives only the default body trigger, and the plugin can always override it — by suppressing
+  the native raw link, or by pinning the state.
 
 ### 4.5 Plugin shell & cross-cutting
 
@@ -511,12 +554,12 @@ Confirms every requirement is realized by a building block or decision (and surf
 | F1 Non-destructive | AD1, AD2 · Transform model |
 | F2 Source is truth | AD1, AD5 · view adapters re-render from source |
 | F3 Block never shown as text | AD5 · `{…}` CSS-hidden when rendered (keyed on the active line), shown when editing |
-| F4 Both views | AD4 · Render core + two adapters |
+| F4 Both views | AD4 · Render core + two adapters · AD10 (LP embed detection from Obsidian's parse) |
 | F5 Link form follows Obsidian | AD9 · Link form normalization |
 | F6 Native size folded in | Link form normalization |
 | F7 Toolbar activation | Toolbar (selection + hover) |
-| F8 Raw-link reveal | AB16 · display-only fake link, CSS-toggled (hover/focus/active line) · Settings (default state) |
-| F9 Raw-link edit | AB16 · Obsidian's native cursor-reveal of source (AD5) |
+| F8 Raw-link reveal | AB16 (link reveal) · AB16a (stand-in) · AB16b (drivers) · AD11 · AD12 · Settings (default state) |
+| F9 Raw-link edit | AB16a · Obsidian's native cursor-reveal of the raw link (AD5) |
 | F10 Transform set | Render core · Toolbar · Size sub-menu |
 | F11 Filters | Filter panel · AD2 contract |
 | F12 Crop (live quantization) | Crop editor (+pure logic) |
@@ -548,6 +591,10 @@ Confirms every requirement is realized by a building block or decision (and surf
 | D9.1 Too-small → caption on hover | Caption block |
 | D10 Native spacing | Style injection (on the embed) |
 | D11 No disruption | Source↔DOM map (write without scroll jump; cursor → image line, undo anchor) |
+| D12 Icon set & brand | Toolbar · Editing-toolbar integration (brand icon, AB22) |
+| D13 Hover micro-animations | Style injection (AB20, reduced-motion gated) |
+| D14 Button outlines (A11y) | Settings (AB19) · Style injection (AB20, button-outline rules) |
+| D15 Selection frame | Style injection (AB20) · Crop editor (frame persists while cropping) |
 | T1 No runtime deps | Crop/histogram/export all in-house (canvas) |
 | T2 Portable storage | AD2 · Transform model (bare-key block, T2.3) |
 | T3 Portable rendering | AD2 · AB7a Portable runtime (own JS+CSS bundle) |

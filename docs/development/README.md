@@ -9,9 +9,9 @@ is the build & debug guide only; the [user guide](../user-guide.md) covers usage
 
 | Artifact | Altitude | What it answers |
 | --- | --- | --- |
-| [methodology.md](methodology.md) | Process | The core principles (DRY, KISS, elegance, think-first, ground-up), the abstraction-level model, and how the levels derive from one another. The foundation everything else aligns to. |
+| [methodology.md](methodology.md) | Process | The core principles / R0 (think-first, ground-up, elegance — served by DRY & KISS), the abstraction-level model, and how the levels derive from one another. The foundation everything else aligns to. |
 | [requirements.md](requirements.md) | What | The **F/D/T** requirements (functional / design / technical): what it does, how it looks, how it must be built. Coding conventions live in the T-items. |
-| [architecture.md](architecture.md) | How (concept) | Mid-level decisions (`AD1–AD9`) and building blocks (`AB…`); data flow; the **R0** uniform-rendering model. |
+| [architecture.md](architecture.md) | How (concept) | Mid-level decisions (`AD1–AD9`) and building blocks (`AB…`); data flow; the **uniform-rendering model** (AD3). |
 | [implementation-plan.md](implementation-plan.md) | How (code) | Low-level module map (file → block → exports), per-layer realization, and pitfalls. |
 | [test-plan.md](test-plan.md) | Verification | The test strategy (currently a draft). |
 | [release-compliance.md](release-compliance.md) | Shippability | The **community-directory submission gate**, parallel to the test plan (test plan = behaviour, this = shippability): the `R1–R30` audit against Obsidian's Developer policies / Plugin guidelines / Submission requirements, plus the manual submission checklist. |

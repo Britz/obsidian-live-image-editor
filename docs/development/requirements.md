@@ -47,10 +47,9 @@ no language or link-format setting of its own.
 - **F8 — Raw-link reveal.** A control **shows / hides** the raw link of the image. The reveal
   is triggered **either from the toolbar** (its `<>` reveal control) **or by the editor cursor**
   moving onto the image's line. The reveal is **not persisted** per image; the general
-  *default reveal state* setting picks the natural mode, defaulting to **auto** — the source is
-  revealed only on **hover or the active (cursor) line**, not always shown. (The alternative,
-  *always*, reveals it everywhere.) The per-image `<>` toggle is a transient **dismiss** on top of
-  the natural mode (auto-clears in auto mode).
+  *default reveal state* setting picks the natural mode, defaulting to **native** — the source is
+  revealed only on **the active (cursor) line**, not always shown. The alternatives, *auto* reveals it additionally on **hover** and *always*, reveals it everywhere. The per-image `<>` toggle is a transient **dismiss** on top of
+  the natural mode (auto-clears in native and auto mode).
 - **F9 — Raw-link edit.** While revealed, the raw link is **editable text that writes edits
   back to the document** (the image updates live). It behaves like inline document text: the
   editor cursor can move **into** the field and edit it as if it were normal text.
@@ -126,7 +125,7 @@ no language or link-format setting of its own.
   that act on the whole note regardless of image context — currently **"Reset all images on this
   page"** (the still-backlogged flatten/export-page commands belong here too).
 - **F20 — Settings.** A **General** group — hover toolbar, captions, the **default raw-link
-  reveal state** (auto / always, F8; default **auto**), the **button-outlines** A11y mode
+  reveal state** (native / auto / always, F8; default: **native**), the **button-outlines** A11y mode
   (auto / always / never, D14), the tall-float cap, **render images in code blocks** (Live Preview only; default off) — kept compact; the
   **preset widths** for small / medium / large (F24); a **CSS-classes** section
   (the F16 master toggle, a link to Obsidian's snippet management, install/reset of the bundled
@@ -267,6 +266,13 @@ no language or link-format setting of its own.
 - **D15 — Selection frame.** A **selection frame** is shown on hover, outlining the image.
   **While cropping the frame stays visible**, outlining the bounds of the resulting (cropped)
   image, so the user always sees where the target image sits.
+- **D16 — One link, never doubled.** *(F8)* The image's link source is never rendered more than
+  once on screen at the same time — at any moment the user sees exactly one rendering of it, never
+  two. Showing or hiding it is atomic: no in-between state, no flicker.
+- **D17 — The link reveals as one whole.** *(F8)* When the link source is shown it appears complete
+  and in one piece: the link together with any trailing `{…}` attribute block shows and hides as a
+  single unit — never split, partial, out of sync, or flickering — no matter where on the link (link
+  body or attribute block) the cursor sits.
 
 ---
 

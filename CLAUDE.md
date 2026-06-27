@@ -8,13 +8,13 @@
 >
 > 1. `docs/development/methodology.md`
 > 2. `docs/development/requirements.md` (F/D/T)
-> 3. `docs/development/architecture.md` (AD/AB/R0)
+> 3. `docs/development/architecture.md` (AD/AB)
 > 4. `docs/development/test-plan.md`
 >
 > **MANDATORY before you write or edit a single line of code — every time:**
 >
 > - State which of the four artifacts your change touches. The required answer is **none.**
-> - If a candidate fix would violate any F/D/T requirement, any AD/AB/R0 decision, the test plan, or the methodology, **it is NOT a valid fix. Discard it and find one that honours all four.** A fix that breaks a higher rule is worse than no fix.
+> - If a candidate fix would violate any F/D/T requirement, any AD/AB decision, the test plan, or the methodology, **it is NOT a valid fix. Discard it and find one that honours all four.** A fix that breaks a higher rule is worse than no fix.
 > - Verify a behaviour is a real defect and not a deliberate design before "fixing" it (e.g. decoration classes ride the img on purpose — Bug 10/27).
 >
 > **ORDER IS TOP-DOWN — never code before plan.** Code that says something different from the plan — or any higher altitude — is **by definition a defect**, not a shortcut. So always work top-down: when a change needs the plan (or a higher artifact) to change too, change that **document FIRST** — with the required ask for anything above `implementation-plan.md` — and only **THEN** write or adjust the code to match it. This binds **every** change, including a small correction made mid-implementation: never change the code first and back-fill the document afterwards.
@@ -29,6 +29,8 @@ Non-destructive image editing via CSS transforms and filters — the original im
 ## Interaction style
 
 Work conversationally — short, back-and-forth replies in the user's language (German). Don't charge ahead or make changes on a whim, and don't dump walls of text or big tables: surface the decision in a sentence or two and wait for direction. (Recurring user preference.)
+
+**Write natural, idiomatic German — never a calque (word-for-word translation) of an English idiom.** A literal rendering that means nothing in German is wrong (e.g. "einfalten" for *fold in* → use "mit reinnehmen"/"mitberücksichtigen"). IT/programming jargon and anglicisms that are clearly understood in context are fine ("revealt nicht" — the English term, meaning clear). But an anglicism does NOT work for every word — especially not when that word already exists in German with a different meaning (e.g. don't drop English "calque" into a German sentence: in German it reads as an art term, not "Lehnübersetzung"). Using "calque" here in this English instruction is fine; the rule is only about German sentences.
 
 > ### 🛑 STOP before acting — think first, then act
 >
@@ -50,11 +52,11 @@ Work conversationally — short, back-and-forth replies in the user's language (
 This file is the **build & debug guide** only. The design — requirements, architecture, plan, tests, bugs — lives in `docs/development/`, one source of truth per altitude (see its `README.md` for the index). Ground any research or change on the artifact at the right altitude, not on this file's prose.
 
 - **`docs/development/requirements.md`** — the F/D/T requirements (functional / design / technical): *what it does, how it looks, how it must be built*. Coding conventions live in the T-items (naming/prefix, no runtime deps, pure `*-logic.ts` units, linter kept as-shipped).
-- **`docs/development/architecture.md`** — mid-level decisions (`AD1–AD9`) and building blocks (`AB…`); data flow; the **R0** uniform-rendering model.
+- **`docs/development/architecture.md`** — mid-level decisions (`AD1–AD9`) and building blocks (`AB…`); data flow; the **uniform-rendering model** (AD3).
 - **`docs/development/implementation-plan.md`** — low-level: the module map (file → block → exports), per-layer realization, pitfalls.
 - **`docs/development/test-plan.md`** — the test strategy (currently a draft).
-- **`docs/development/issues.md`** — the **backlog + lessons**. **OPEN** at the top: numbered registry items in the changelog's own per-category sequences — **open decisions** (`Decision N`), **planned features** (`Feature N`), **known open bugs** (`Bug N`) — each assigned its number when opened and **keeping it** when it ships (→ moves to the changelog); plus a **Meta level** of process/quality work (**verifications**, **refactoring**, **housekeeping**, and the hard-won **`Lesson 1–17`**) that stays here and is **unnumbered**. The **solved** Bug / Feature / Change / Decision entries (with cause + fix) live in **`CHANGELOG.md`** — see *Versioning, changelog & commits* below.
-- **`docs/development/methodology.md`** — the core principles (DRY, KISS, elegance, think-first, ground-up), the abstraction-level model, and how we work.
+- **`docs/development/issues.md`** — the **backlog + lessons**. **OPEN** at the top: numbered registry items in the changelog's own per-category sequences — **open decisions** (`Decision N`), **planned features** (`Feature N`), **known open bugs** (`Bug N`) — each assigned its number when opened and **keeping it** when it ships (→ moves to the changelog); plus a **Meta level** of process/quality work (**verifications**, **refactoring**, **housekeeping**, and the hard-won **`Lesson 1–17`**) that stays here and is **unnumbered**. The **solved** Bug / Feature / Change / Decision entries (with cause + fix) live in **`CHANGELOG.md`** — see *Versioning, changelog & commits* below. **Keep the per-category counters in sync:** whenever you add a registry item, update the matching total in its section header (e.g. the "**N bugs total**" line) — counters must always match reality, never go stale.
+- **`docs/development/methodology.md`** — the core principles / R0 (think-first, ground-up, elegance — served by DRY & KISS), the abstraction-level model, and how we work.
 
 **Altitude discipline is governed by the [⛔ NON-NEGOTIABLE GATE](#-non-negotiable-gate--applies-to-every-code-change-no-exceptions) at the top of this file:** code may change at most `implementation-plan.md`; `methodology.md`, `requirements.md`, `architecture.md` and `test-plan.md` are inviolable, and only the user may decide to change one. Re-read that gate before every code change.
 
@@ -123,3 +125,4 @@ CDP gotchas — the quick actionable form here; the **full rationale is the sing
 - **Relay (9222) flaps after a plugin reload** (old socket in TIME_WAIT) — connect directly with `CDP_PORT=9223`; it survives `location.reload()`, and the relay reliably hits the main window once back (~20–30 s) (→ **Lesson 15**).
 - **Stale-build trap** — two quick `dev:vault` saves can load an *intermediate* build (a `ReferenceError` that looks like "rendering broke"); force a clean `location.reload()` and verify via the console exception, not assumptions (→ **Lesson 15**).
 - `--eval` returns an un-invoked arrow function as `{}` (wrap returns in `JSON.stringify(...)`); an **async** `--eval` likewise resolves to `{}` over the bridge — stash to `window.__X` and poll a sync read (→ **Lesson 16**).
+- **No real window focus → no focus-gated behaviour** (LP source-reveal on the cursor line, `.cm-active`, `:focus-within`): a programmatic `cm.focus()` does NOT take while the OS window is unfocused. Bridge it with the CDP **`Emulation.setFocusEmulationEnabled {enabled:true}`** — it makes the page behave as permanently focused, so `cm.focus()` + a `cm.dispatch({selection})` reveals the editable source. The `--eval` one-shot can't send that domain; use a small script over the WebSocket (like `tests/cdp/_optical.mjs`) that calls `send("Emulation.setFocusEmulationEnabled", {enabled:true})` first.

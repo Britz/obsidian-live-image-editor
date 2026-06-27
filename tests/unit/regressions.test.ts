@@ -67,7 +67,7 @@ describe("Bug 51 G — a width edit preserves the crop (both write paths keep tr
   });
 });
 
-// Bug 78/79 — the R0/AD3 box-sizing invariant (the box is NEVER emptied to a naked img; the
+// Bug 78/79 — the AD3 box-sizing invariant (the box is NEVER emptied to a naked img; the
 // no-explicit-width case is ALWAYS routed through the native box-sizing cap, cropped or not).
 //   • Bug 79 (clearStaleTransform): a reused embed whose source dropped its {…} re-renders the
 //     3-layer box with the EMPTY transform (== reset()) instead of unwrapping to a naked img.

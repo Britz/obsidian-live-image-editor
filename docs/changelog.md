@@ -353,7 +353,7 @@ usual patch-only policy.
 - **Decision 20 — Shared sub-menu host (`AnchoredSubmenu`) API documented as shipped.** No behaviour
   change: the placement modes (under-toolbar / beside-image / centered), `allowFlip` + the pane-bound,
   the body-builder contract and the ✓/✗/Esc + auto-persist lifecycle are now spelled out in D6/F14.
-- **Decision 19 — `reset()` vs. `clearStaleTransform` both broke the R0 invariant.** Verdict: both
+- **Decision 19 — `reset()` vs. `clearStaleTransform` both broke the box invariant.** Verdict: both
   were wrong. The 3-layer DOM — wrapper (size/ratio/layout) → inner frame (rotate/flip) → img
   (filter/crop) — is **always** present and at least parametrized with native defaults; the box is
   never empty (or the image vanishes) and the img is never bare (never without a box), only the
@@ -434,7 +434,7 @@ usual patch-only policy.
   `autox200`), and a quoted (`"…"`) caption may sit alongside it. md→wiki folds the native size into the
   `{…}` block 1-to-1 (never the pipe) and preserves the caption; captions, Replace and the conversion all
   share the one parser. (The caption delimiter `"` is hardcoded for now — a candidate future setting.)
-- **Bug 79 — `clearStaleTransform` stripped the 3-layer box.** It called `unwrapBox`, violating the R0
+- **Bug 79 — `clearStaleTransform` stripped the 3-layer box.** It called `unwrapBox`, violating the box
   invariant "the DOM structure is always present, only the parameters change" (Decision 19). It now
   falls back to native default parameters — the box and the img wrapper stay — instead of unwrapping to
   a bare img; likely shares a root cause with Bug 78.
@@ -595,7 +595,7 @@ interaction, a real test suite and refreshed documentation.
 - **Change 12 — Cleaner stored format.** Short bare keys (`{rotate=90 flip=horizontal width=300}`);
   align / width / filter are real HTML attributes so they survive in other renderers (old blocks still
   parse).
-- **Change 11 — Uniform rendering model (R0) + 3-layer DOM.** Every image renders through one
+- **Change 11 — Uniform rendering model (AD3) + 3-layer DOM.** Every image renders through one
   outer / frame / image structure, identical in both views.
 - **Change 10 — Ground-up rework landed.** Native CSS storage (`transform`/`filter` verbatim),
   declarative box→image sizing (no JS measure-retry loop), pure-CSS caption, LP overlay + native edit.

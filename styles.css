@@ -351,7 +351,7 @@ body {
    negative margin (verified — even `!important` resolves to 0) and absorbs the padding by shrinking
    the content, so a full-width block image gives up 2px (0.3%, D3-safe, no overflow; standalone
    images carry no containment and are untouched). If that 2px ever matters, the alternative is a
-   body portal for the marker (cf. the AB12 crop portal) — deliberately deferred for KISS. */
+   body portal for the marker (cf. the AB12 crop portal) — deliberately deferred for R0. */
 .lie-wrapper-block {
   display: block;
   padding-inline-end: 2px;

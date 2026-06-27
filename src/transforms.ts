@@ -1,6 +1,6 @@
 // The transform model (AB1) — the single place that knows the trailing attr_list
 // `{…}` block's syntax, identical for the Markdown and wikilink form (T2). The model is
-// ROUTED PER LAYER (AD2/AD3, the 3-layer R0 structure): ORIENTATION (`rotate`/`flip`) acts
+// ROUTED PER LAYER (AD2/AD3, the 3-layer uniform structure): ORIENTATION (`rotate`/`flip`) acts
 // on the inner-frame (composed about its centre), the crop PLACEMENT (`transform`) + the
 // `filter` act on the <img> verbatim, and the footprint (`width`/`height`/`aspect-ratio`)
 // acts on the outer. Separating orientation from the crop placement is what makes
@@ -156,7 +156,7 @@ function applyKey(key: string, val: string, result: ImageTransform): void {
 
 // `align=` on-disk value → Layout. Float uses the HTML-faithful bare left/right; block uses the
 // block- prefix; legacy `align=center` reads as block-center (back-compat). Exported so the
-// foreign-page attribute reader (render-core `readTransform`) maps identically (DRY).
+// foreign-page attribute reader (render-core `readTransform`) maps identically (R0).
 export const ALIGN_TO_LAYOUT: Record<string, Layout> = {
   left: "float-left", right: "float-right",
   "block-left": "block-left", "block-center": "block-center", "block-right": "block-right",
@@ -337,7 +337,7 @@ export function parseFilterCss(s?: string): FilterData {
 }
 
 // The filter reduced to its non-default keys — the single source of the "≠ default" predicate,
-// shared by filterToCss, isDefaultFilter and the filter panel's commit (DRY).
+// shared by filterToCss, isDefaultFilter and the filter panel's commit (R0).
 export function nonDefaultFilter(f: FilterData): FilterData {
   const out: FilterData = {};
   for (const key of FILTER_KEYS) {

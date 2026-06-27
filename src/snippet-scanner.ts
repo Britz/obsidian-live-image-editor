@@ -1,6 +1,6 @@
 import { Vault, normalizePath } from "obsidian";
 // The shipped default snippet now lives in the Obsidian-free `bundled-snippet` module so the
-// standalone runtime can inject the SAME CSS (DRY); re-exported here for existing call sites.
+// standalone runtime can inject the SAME CSS (R0); re-exported here for existing call sites.
 import { BUNDLED_SNIPPET_FILE, BUNDLED_SNIPPET_CSS } from "./bundled-snippet";
 import { ClassEntry, classifyBundledFile, restoreClassInCss, isBundledFileModified } from "./snippet-classify";
 

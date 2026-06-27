@@ -32,7 +32,7 @@ import { clickDismissesToolbar } from "./toolbar-region-logic";
 import { ensureEditingToolbarButtons } from "./editing-toolbar-integration";
 
 // Shared transform modifiers — used by BOTH the single-image toolbar/command path and the
-// multi-image (selection) command path, so the two never drift (DRY). Rotate/flip/inline are
+// multi-image (selection) command path, so the two never drift (R0). Rotate/flip/inline are
 // RELATIVE (each image steps from its own current value); `clearTransform` empties everything
 // (the reset modifier, drives both the single reset and the page-/selection-scope reset).
 const ROTATE_CW = (t: ImageTransform): void => setRotation(t, (getRotation(t) + 90) % 360);
@@ -389,14 +389,14 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   // A reused (Obsidian-cached) embed whose source no longer carries a {…} block must return to
-  // its NATIVE-default state. Per the R0/AD3 invariant the box is NEVER emptied to a naked img:
+  // its NATIVE-default state. Per the AD3 box invariant the box is NEVER emptied to a naked img:
   // we re-render the 3-layer box with an EMPTY transform — exactly what reset() does — so the
   // image keeps its uniform wrapper and shows at its native (column-capped) size (Bug 79). The
   // old `unwrapBox` here stripped the box, leaving a naked img (invariant violation) and was
   // unique to this path; nothing else unwraps, so dropping it is safe.
   private clearStaleTransform(img: HTMLImageElement | null): void {
     if (!img) return;
-    // Ours iff it's inside our 3-layer box (always wrapped per the R0 invariant). The `lie-inline`
+    // Ours iff it's inside our 3-layer box (always wrapped per the AD3 box invariant). The `lie-inline`
     // marker now rides the outer, not the img (Decision 28), so the box check is the sole signal.
     const ours = !!img.closest(`.${BOX_CLASS}`);
     if (ours) applyTransformToImage(img, { classes: [] });
@@ -905,7 +905,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     return findImageInSource(editor, img);
   }
 
-  // The single image-location lookup every toolbar/menu action shares (DRY). Prefers the LIVE
+  // The single image-location lookup every toolbar/menu action shares (R0). Prefers the LIVE
   // image's DOM position (line-accurate even after the doc shifts — Bug 56); when the image is
   // DETACHED (a panel whose anchor scrolled out of the CM6 viewport mid-edit), it falls back to
   // the location captured at panel-open — NOT a basename scan, which would hit the wrong

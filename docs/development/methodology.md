@@ -11,39 +11,8 @@ everything else is aligned to it.
 
 ## Core principles
 
-These principles sit **above** the level model and apply in every phase. DRY and KISS are
-the project's **supreme directive**; the other two govern how any work is approached.
+These principles sit **above** the level model and apply in every phase; therefore, they are also called "Requirement Zero" (R0). All core principles form the project's **supreme directive** and govern how any work is approached.
 
-- **DRY (Don't Repeat Yourself).** The same logic must not appear twice — it is factored
-  into shared helpers / inheritance / wrappers, or the platform's own code is reused (e.g.
-  Obsidian's `MarkdownRenderer`). DRY targets *logic duplication*; it is never an argument
-  against a feature. The same result reached **two different ways** violates it as much as
-  copied code does.
-- **KISS & "Less is more" — as simple as possible, but *not simpler*.** When the same result
-  is achievable, simpler, cleaner code — **without complex, branched special cases** — is
-  always preferable: fewer moving parts, one path. A case that appears "better handled
-  specially" is almost always an argument **for** the uniform path — the handling the special
-  case needs must exist for the general case anyway, so it is implemented once, for all.
-  - **Simplest is not naive.** The quickest, most obvious solution (*quick-and-dirty*) is
-    rarely the best one: it tends to miss edge cases, resist extension, and break at scale.
-    KISS means reducing a problem to its **essential** simplicity — not below it. Removing a
-    necessary distinction is not simplification, it is a defect waiting to surface.
-  - **The genuinely simplest solution sometimes looks more involved at first** — an
-    abstraction, an established pattern — yet is simpler to read, reason about, extend and keep
-    correct, and pays that cost back many times over in fewer bugs and easier change.
-  - **Readability outranks cleverness.** Code is read far more often than written; a slightly
-    longer, clearly named, well-structured solution beats a cryptic one-liner every time.
-    Structure for maintainability — cohesion and clear, single responsibilities — is part of
-    keeping it simple, not opposed to it.
-- **Elegance.** Code should be **elegant**: the solution that, once in place, is the simplest
-  *coherent whole* — fewest moving parts, no special cases, reads clearly. Elegance is the end
-  that DRY and KISS serve. **On effort:** the elegant path is sometimes *more* work up front —
-  e.g. replacing a platform's built-in behaviour with an owned implementation (here: an own
-  widget instead of Obsidian's native image rendering). That cost is worth paying when it
-  **removes whole classes of special cases** and unlocks simpler, more native solutions
-  afterward. Judge a design by its **end state** — total complexity and special cases eliminated
-  — **not** by the upfront effort; never reject the elegant path *merely* because it is initially
-  more work.
 - **Think first, then act.** Understanding, reasoning, and — at the right level — planning
   precede doing. The entire top-down model is the expression of this principle: code is
   written only after the implementation plan; unfamiliar platform / API internals are
@@ -53,6 +22,36 @@ the project's **supreme directive**; the other two govern how any work is approa
   level** (the requirements — the foundation) and reasoning down, **never** patching at the
   code. A quick patch (band-aid) is only ever a *temporary* correction; the moment one
   appears necessary, that is the signal to return to the top (see the feedback loop).
+- **Elegance.** Code should be **elegant**: the solution that, once in place, is the simplest
+  *coherent whole* — fewest moving parts, no special cases, reads clearly. Elegance is the end
+  that DRY and KISS serve. **On effort:** the elegant path is sometimes *more* work up front —
+  e.g. replacing a platform's built-in behaviour with an owned implementation (here: an own
+  widget instead of Obsidian's native image rendering). That cost is worth paying when it
+  **removes whole classes of special cases** and unlocks simpler, more native solutions
+  afterward. Judge a design by its **end state** — total complexity and special cases eliminated
+  — **not** by the upfront effort; never reject the elegant path *merely* because it is initially
+  more work.
+  - **DRY (Don't Repeat Yourself).** The same logic must not appear twice — it is factored
+    into shared helpers / inheritance / wrappers, or the platform's own code is reused (e.g.
+    Obsidian's `MarkdownRenderer`). DRY targets *logic duplication*; it is never an argument
+    against a feature. The same result reached **two different ways** violates it as much as
+    copied code does.
+  - **KISS & "Less is more" — as simple as possible, but *not simpler*.** When the same result
+    is achievable, simpler, cleaner code — **without complex, branched special cases** — is
+    always preferable: fewer moving parts, one path. A case that appears "better handled
+    specially" is almost always an argument **for** the uniform path — the handling the special
+    case needs must exist for the general case anyway, so it is implemented once, for all.
+    - **Simplest is not naive.** The quickest, most obvious solution (*quick-and-dirty*) is
+      rarely the best one: it tends to miss edge cases, resist extension, and break at scale.
+      KISS means reducing a problem to its **essential** simplicity — not below it. Removing a
+      necessary distinction is not simplification, it is a defect waiting to surface.
+    - **The genuinely simplest solution sometimes looks more involved at first** — an
+      abstraction, an established pattern — yet is simpler to read, reason about, extend and keep
+      correct, and pays that cost back many times over in fewer bugs and easier change.
+    - **Readability outranks cleverness.** Code is read far more often than written; a slightly
+      longer, clearly named, well-structured solution beats a cryptic one-liner every time.
+      Structure for maintainability — cohesion and clear, single responsibilities — is part of
+      keeping it simple, not opposed to it.
 
 ---
 
@@ -302,6 +301,7 @@ A bug is **never fixed where it shows**. The path:
   do not bump the version.**
 
 > [!note] Conventions & conduct
+>
 > - Project documents are written in an **impersonal, professional register** (no
 >   "we" / "you").
 > - Confirm before **irreversible or outward-facing** actions; the **user makes the git

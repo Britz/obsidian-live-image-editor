@@ -151,7 +151,16 @@ requirement + the storage/permission implications) before any code.
 
 ### Known open bugs (Bug)
 
-_**105 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
+_**114 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
+
+> **Bugs 95–104 — a regression batch from the layout rework (`ba2dfa4`, "decouple size from layout"),
+> found in a CLEAN store install (v0.6.6).** The dev vault MASKED most of them: its `styles.css` was a
+> stale cached copy (the watch re-copied it only once at startup) and a snippet was already enabled, so
+> the broken current CSS + the State-A snippet path never showed in dev. A tooling fence was added to
+> stop the CSS drift (`esbuild.config.mjs` now re-syncs `styles.css`/`manifest.json` into the vault on
+> every build and force-reloads Obsidian via CDP on a `styles.css` change). The float vertical
+> one-line offset the user also hit is the SAME phenomenon as **Bug 67** ("extra leading line above
+> floating images") — tracked there, not duplicated. All reported 2026-06-11 (user).
 
 - [ ] **Bug 65 — `<>` dismiss doesn't hide the FRONT of the link on the cursor line (fights the
       native widget).** When the editor cursor is on the image's line, the `<>` dismiss fails to hide the
@@ -198,25 +207,15 @@ _**105 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       filter in the export render. (Decision 23; 2026-06-06.)
 - [ ] **Bug 84 — Filter histogram should also reflect the CROP, not just the filter.** Bug 83 made the
       histogram track the live `filter=`; but a crop changes the visible tonal distribution too (it cuts
-      parts of the image away). The histogram should sample the **rendered R0 result** (cropped + filtered
+      parts of the image away). The histogram should sample the **rendered result** (cropped + filtered
       visible region) — e.g. reuse the export's `renderContent` ([export.ts](src/export.ts)) to produce the
-      rendered canvas, then histogram THAT, which also fits the R0 uniform-render model. DEFERRED — track
+      rendered canvas, then histogram THAT, which also fits the uniform-render model (AD3). DEFERRED — track
       only. (Decision 23 follow-up; 2026-06-06.)
 - [ ] **Bug 86 — Link-reveal visibility changes during crop, making the image jump.** While crop is
       active, the raw-link reveal (the `.lie-fake-link` / `<>` reveal line) can toggle (cursor moves on/off
       the line, or the reveal state flips), which reflows the line and **shifts the image inside the crop
       editor** — confusing mid-crop. Fix: freeze the reveal visibility for the crop duration (no
       reveal/dismiss changes while `.lie-cropping` is active). DEFERRED — track only. (2026-06-06.)
-
-> **Bugs 95–104 — a regression batch from the layout rework (`ba2dfa4`, "decouple size from layout"),
-> found in a CLEAN store install (v0.6.6).** The dev vault MASKED most of them: its `styles.css` was a
-> stale cached copy (the watch re-copied it only once at startup) and a snippet was already enabled, so
-> the broken current CSS + the State-A snippet path never showed in dev. A tooling fence was added to
-> stop the CSS drift (`esbuild.config.mjs` now re-syncs `styles.css`/`manifest.json` into the vault on
-> every build and force-reloads Obsidian via CDP on a `styles.css` change). The float vertical
-> one-line offset the user also hit is the SAME phenomenon as **Bug 67** ("extra leading line above
-> floating images") — tracked there, not duplicated. All reported 2026-06-11 (user).
-
 - [ ] **Bug 95 — Tall-float cap stacks normal/small floated images → "float doesn't work, image sits
       inline, no text wrap" (intermittent).** A floated image with NO explicit px width/height hits
       `estimatedBlockHeight`'s blind no-size fallback of **480px** ([renderer-logic.ts:106-115](src/renderer-logic.ts#L106-L115)),
@@ -286,6 +285,23 @@ _**105 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       Bug 86) that consumes the interaction, or a guard in `crop()` (`locateActiveImage` / panel
       teardown) aborts the open on that click. DISTINCT from the reveal/dismiss engagement bug — even
       if co-triggered, the definitive defect is the dead button. (2026-06-27, user+CDP.)
+- [ ] **Bug 114 — A bare embed's markdown LINK never reveals on hover in Live Preview (block widget
+      carries no fake-link).** For a **bare** embed `![](…)` (no `{…}` attribute list) the source link
+      (`![](…)`) never reveals on hover — only the in-image toolbar does. _Confirmed (CDP, TR-1…TR-7,
+      2026-06-27, user):_ a bare embed is **block-promoted** — the plugin renders its own
+      `div.lie-wrapper.lie-wrapper-block` as a **direct child of `.cm-content`** with **no enclosing
+      `.cm-line`** and, crucially, **no `.lie-fake-link`** element at all. With no fake-link there is
+      nothing for the link reveal (F8: reveal on `<>` or cursor) to show, so it can never fire. A `{…}`
+      **standalone** embed, by contrast, keeps a `.cm-line` + a `.lie-fake-link` and reveals correctly;
+      the in-image toolbar reveal works for the bare embed too (real CSS `:hover`, confirmed with a real
+      `Input.dispatchMouseEvent` — TR-7). Obsidian also renders a native `.internal-embed` sibling but it
+      collapses to ~3×6px and does **not** steal the hover. _Root:_ the same cluster root as **AD10** —
+      the plugin's own block widget drops the reveal machinery Obsidian's native source line would have.
+      _Fix (top-down):_ fold into the Round-2 reveal/dismiss engagement rethink — defer to Obsidian's
+      native detection (AD10) and render the toolbar **alongside** the native embed/source rather than
+      substituting a block widget that drops the reveal. Repro: `example-vault/02 — Crop.md`, first image,
+      line 22 `![](images/sample-landscape.png)`. NOT yet covered by any automated/CDP test
+      (`tests/cdp/verify-reveal.mjs` only exercises a `{…}` standalone fixture). (2026-06-27, user+CDP.)
 
 ---
 
@@ -349,52 +365,62 @@ when one is actually carried out it ships as a **Change** in the changelog._
       this pair — both have zero callers in `src/` and `tests/`
       ([styles-injector.ts:86](src/styles-injector.ts#L86)). Clean removal (no behaviour change).
       (Clean-room analysis reconcile, 2026-06-05.)
-- [ ] **Reduce the `:has` selector count in `styles.css` (community-review warning).** The 0.6.9 scan
-      flags **31 `:has` warnings** (generic perf advice; all currently marked "reviewed & justified",
-      Decision 26). _Do first (read-only audit, not yet done):_ categorise all 31 into **needed**
-      (parent-from-descendant in the Reading view, where we hold no JS handle on the element),
-      **replaceable** (where `:has` only reads a parent _state_ we could instead mark with a JS-set
-      class), and **removable**. Only the replaceable/removable ones are worth touching; each group
-      ships as a **Change**. Pairs with the **12 `!important`** warnings (same scan, same Decision 26
-      justification, lower priority). _Effort M; deferred (review-warning reduction, 2026-06-16)._
+- [ ] **Reduce the `:has` / `!important` count in `styles.css` (community-review warning).** _Audit
+      DONE 2026-06-27 — see the R0 analysis under Housekeeping._ The reduction is **fully
+      achievable** — **every** `:has` is replaceable by a JS-set marker; even the last one (the
+      `.cm-line:has(> .cm-formatting-*)` reveal-slave) reduces, only by accepting **reactive JS** (a CM
+      listener re-deriving Obsidian's reveal state), which the methodology disfavors ("no reactive JS
+      where CSS suffices") — so even that last one is a **user-decision / trade**, not a hard no. The
+      earlier "needed because we hold no JS handle on the host"
+      reasoning was WRONG: the plugin DOES set its own markers (it already classes `.lie-embed`; it
+      owns `.lie-wrapper`), so the align/tall marker can ride the flow participant directly, set at
+      build by its owner (Decision 28 pattern), and the crop `:has(.lie-cropping)` becomes a class
+      stamped on the cm-line at crop start. The **`!important`** reduces in parallel: the reveal/crop
+      overrides via source-order/specificity, tall-float decided at the marker (emit the block marker
+      → no float to override), the resize-corner by out-specifying Obsidian's native rule, and
+      `RENDER_CSS max-width:none !important` moved runtime-only (off the plugin's `styles.css`, so
+      stylelint never sees it). **Blocker:** moving the marker flow touches **Decision 28 / R0
+      data-flow** (architecture.md) → Gate-level, needs the user's decision + docs-first. _Effort M;
+      gate-level (review-warning reduction; audit 2026-06-27)._
 
 ### Housekeeping
 
-- [ ] **Harden the CDP guard suite for reliable BATCH runs (Lesson 16).** Each `tests/cdp/verify-*.mjs` passes
-      individually on a fresh build, but running the whole set back-to-back degrades the live window
-      (render churn over many fixture create/modify/delete cycles + reloads) → spurious flakes: transient
-      single-image fixtures fail to render their overlay (crop/size steps then `cropOpened:false`), and
-      the 9222 relay buffers the RUN-eval-then-poll → "RUN eval did not finish". _Add:_ re-find live
-      elements right before each action (never a stale captured ref), a retry-on-churn wrapper, and a
-      `run-all` harness that reloads to a clean state between guards and prefers `CDP_PORT=9223` direct.
-      The symptom is recorded in Lesson 16; this is the fix.
-- [ ] **Reduce the community-review warnings — get the runtime out of the scan (+ trim CSS).** The
-      0.6.9 release scans as **"Caution": 62 findings, 0 errors** (v0.6.8 was FAILED on the now-fixed
-      `innerHTML`, Bug 110; the `document`→`activeDocument` sweep, Change 40, cut the `activeDocument`
-      hits from ~95 to 6). The 62 break down as: **43 CSS** (`:has` 31 + `!important` 12 — Decision 26;
-      see the `:has` item under Refactoring) · **11 off-Obsidian false positives** in
-      `runtime.ts`/`dev-bridge.ts` (`activeDocument` 6 + `instanceof` 4 + `net` 1 — these bundles
-      import no `obsidian`, so the Obsidian helpers/globals do not exist there; NOT fixable in place) ·
-      **6 deprecations** (`display` 4 + `setWarning` 2 — only clearable by raising `minAppVersion` to
-      1.13.0, which drops <1.13.0 users) · **2 recommendations** (`lie-runtime.js` as an "extra
-      unsupported file" + vault enumeration). **The 11 runtime false positives + the `lie-runtime.js`
-      "extra file" (≈12 of 62) only disappear if the scanned tree no longer contains
-      `runtime.ts`/`dev-bridge.ts` AND the release no longer attaches `lie-runtime.js`** — i.e. a
-      **repo split** (own lib + release; cost: a second release process + version sync) or a
-      **dedicated release branch/tag** whose tree omits those two source files and whose release omits
-      the runtime asset (cheaper, but ongoing merge discipline). Both are real architecture/packaging
-      decisions, not a quick edit. _Open prerequisite — which tree the bot scans (researched 2026-06-16,
-      not fully resolved):_ Obsidian's docs say the **directory reads `manifest.json` at the HEAD of the
-      DEFAULT branch** (end-users download assets from the matching release TAG); the new automated
-      review (Community hub, 2026-05) scans every version and the **developer dashboard can preview-scan
-      any branch/tag/commit**. The source scan reads the **source tree** (findings cite `src/…:line`,
-      not the minified `main.js`). **Unconfirmed whether the latest-release badge scan reads
-      default-branch HEAD or the release-tag commit** — and that decides everything: if it's
-      default-branch HEAD, a **release branch does NOT help** (the two files would have to leave `main`
-      entirely) and only a **repo split** works. _Cheapest way to settle it before any rebuild: use the
-      developer dashboard to preview-scan a throwaway commit that drops `runtime.ts`/`dev-bridge.ts` and
-      ships no `lie-runtime.js`, and see whether the ≈12 findings vanish._ (review-warning reduction,
-      2026-06-16.)
+#### Harden the CDP guard suite for reliable BATCH runs (Lesson 16)
+
+Each `tests/cdp/verify-*.mjs` passes individually on a fresh build, but running the whole set back-to-back degrades the live window
+(render churn over many fixture create/modify/delete cycles + reloads) → spurious flakes: transient
+single-image fixtures fail to render their overlay (crop/size steps then `cropOpened:false`), and
+the 9222 relay buffers the RUN-eval-then-poll → "RUN eval did not finish". _Add:_ re-find live
+elements right before each action (never a stale captured ref), a retry-on-churn wrapper, and a
+`run-all` harness that reloads to a clean state between guards and prefers `CDP_PORT=9223` direct.
+The symptom is recorded in Lesson 16; this is the fix.
+
+#### R0 + Obsidian-lint analysis (weighed equally, 2026-06-27)
+
+_A full pass under the **R0** lens (think-first / ground-up / elegance, served by DRY & KISS) with Obsidian-lint weighed equally — it **supersedes the former "Reduce the community-review warnings" item** (its unique repo-split strategy is preserved in the detail note below). **No AD3/R0 structural violations** — the yield is small DRY/elegance wins. Kept as a table, not a checklist: Housekeeping entries are not individually tickable work; a row becomes a `- [ ]` Change once it leaves Housekeeping into real work. `act` = recommend doing · `leave` = **forced** (Obsidian forbids it, or it is simply impossible) · `user-decision` = your call — possible but a trade; my recommendation is noted. The `:has`/`!important` triage keeps its own item under Refactoring above._
+
+| # | Finding | Location | Dim. | Effort | Recommendation |
+|---|---------|----------|------|--------|----------------|
+| 1 | Share field-level parse primitives (`parseFlip`/`coerceLength`/`applyClassToken`); do **not** merge the two readers | transforms.ts:135-148 ↔ render-core.ts:430-457 | DRY | S–M | **act** — highest R0 weight (guards "identical (R0)") |
+| 2 | Shared `openAnchoredPanel(...)` + `editorPaneBound` | class-panel.ts:54-88 ↔ filter-panel.ts:90-144 | DRY / elegance | M | **act** |
+| 3 | `listEnabledSnippetFiles()` for both scanners | snippet-scanner.ts:43-54 ↔ 79-90 | DRY | S | **act** |
+| 4 | `stripCssComments` / class-rule-regex helpers (each appears 2×) | snippet-classify.ts:23/83, 67/78 | DRY | S | **act** |
+| 5 | Thread the path into `resolveFile` instead of re-parsing | live-preview.ts:237 | DRY | S | **act** |
+| 6 | `wireButtonKeepingEditorFocus()` helper for the focus-preserving buttons | toolbar.ts:72 · anchored-submenu.ts:273 · class-panel.ts:130 | DRY | S | **act** |
+| 7 | One `el(...)` DOM-builder (design B: plugin injects Obsidian `createEl`; **never** the core) | ~64–90 sites; settings.ts already idiomatic (26×) | Obsidian-idiom / elegance | M+S | **act** — bot-invisible (no rating gain) |
+| 8 | Inline `EmbedWidget` mode forks the chrome build | live-preview.ts:129-198 | KISS | — | **user-decision** — recommend leave: a necessary special case (no mid-text toolbar/caption); merging forces empty chrome into the flow |
+| 9 | `resetLieState` fixed `i<2` parent walk | render-core.ts:253-277 | KISS | — | **user-decision** — recommend leave: bounded by the fixed 3-layer AD3 invariant; generalising adds abstraction (anti-KISS) |
+| 10 | Link-path extraction | main.ts:304,1256 · live-preview.ts:237 | DRY | — | **user-decision** — recommend leave: already funnels through `link-format`; the residual regexes differ in purpose |
+| 11 | Layout-name lists in three shapes | layout-icons.ts:13 · styles-injector.ts:25 · caption-dom.ts:22 | DRY | — | **user-decision** — recommend leave: one SSOT reads worse than the locality (DRY-but-uglier) |
+| 12 | Embed-grammar regexes across ~6 modules | image-resolver.ts:24 · live-preview-logic.ts:5,15 · link-format.ts:34 | DRY | L | **user-decision** — recommend leave: "do not force one regex" (byte-for-byte risk, low reward) |
+| 13 | `:has` warnings | styles.css:200-437 (13×) | lint ↔ R0 | M | **user-decision (gate)** — **not leave**: fully reducible — every `:has` → a JS-set marker; even the `.cm-line:has(> .cm-formatting-*)` reveal-slave, only by accepting **reactive JS** (which the methodology disfavors — so that too is your call, not a hard no). The rest → the align/tall marker rides the flow participant, set at build by its owner (as `.lie-embed` already is); the crop `:has(.lie-cropping)` → a class on the cm-line at crop start. Moves the marker flow → touches Decision 28 / R0 → docs-first. Full how: the `:has` item under Refactoring. |
+| 14 | `!important` warnings | styles.css:373-521 (10×) | lint ↔ R0 | M | **user-decision (gate)** — **not leave**: the reveal/crop overrides resolve via source-order/specificity (pure CSS); tall-float decided at the marker (emit the block marker → no float to override); `RENDER_CSS max-width:none` moves runtime-only (off the plugin's styles.css). Goes with the `:has` reduction. |
+| 15 | 11 off-Obsidian lint false positives | runtime.ts:47,53-56,98-107 · dev-bridge.ts:2 | lint | L | **user-decision** — only the repo-split (detail below) removes them |
+| 16 | 6 `setWarning`/`display` deprecations | settings.ts:55,241,270,284,308,368 | lint | S | **user-decision** — only clears by raising minAppVersion to 1.13.0 (drops older users) |
+
+_Lint posture (local, verified 2026-06-27): `eslint` (shipped gate) 0 problems · `lint:obsidian` 17 warnings / 0 errors · `lint:css` 23 warnings / 0 errors (all Decision 26). No new regressions._
+
+_Detail behind rows 13–16 — community-review reduction (researched 2026-06-16; this is the former Housekeeping item, now folded in):_ The 0.6.9 release scans as **"Caution": 62 findings / 0 errors** (v0.6.8 FAILED on the now-fixed `innerHTML`, Bug 110; the `document`→`activeDocument` sweep, Change 40, cut `activeDocument` hits ~95→6). Breakdown: **43 CSS** (`:has` 31 + `!important` 12, Decision 26 — the community bot counts grouped selectors individually, so its 31 is far above the ~12 local `lint:css` flags) · **11 off-Obsidian false positives** (`runtime.ts`/`dev-bridge.ts` import no `obsidian`) · **6 deprecations** · **2 recommendations** (`lie-runtime.js` "extra unsupported file" + vault enumeration). The 11 false positives + the `lie-runtime.js` extra file (≈12 of 62) only vanish if the scanned tree no longer contains `runtime.ts`/`dev-bridge.ts` **and** the release omits `lie-runtime.js` — a **repo split** (own lib + release; cost: a second release process + version sync) or a **dedicated release branch/tag** (cheaper, but ongoing merge discipline). **Open prerequisite (unresolved):** whether the latest-release badge scan reads default-branch HEAD or the release-tag commit — if HEAD, a release branch does **not** help and only a repo split works. Cheapest test before any rebuild: use the developer dashboard to preview-scan a throwaway commit that drops those two files and ships no `lie-runtime.js`, and see whether the ≈12 findings vanish.
 
 _(The release-requirement housekeeping items RC1/R20, RC8/R27, RC9/R28 and RC10/R29 are DONE in
 v0.4.2 — see Change 25 in the changelog.)_
@@ -408,7 +434,7 @@ architecture encodes most in its decisions (`AD…`).
   (still true):_ an un-replaced line makes Obsidian render its own native embed and leave the trailing
   `{…}` as visible text (CDP-verified). _Superseded conclusion:_ the old "always replace the whole
   line" fix is gone. The native embed is now **embraced** (it loads the image and gives Obsidian's own
-  cursor-reveal of the source); the plugin draws its OWN transformed image as the R0 widget
+  cursor-reveal of the source); the plugin draws its OWN transformed image as the uniform widget (AD3)
   and **suppresses** the native image with **uniform** static CSS (hides Obsidian's `> img` and
   `> .image-wrapper` in _every_ embed, never the plugin's `.lie-wrapper`); the `{…}` is real document
   text hidden by CSS while rendered, shown when the line is active. (→ AD5.)
@@ -429,7 +455,7 @@ architecture encodes most in its decisions (`AD…`).
 - **Lesson 6 — Test behaviour via pure logic, not CDP.** _Cause:_ CM6/Obsidian don't resolve in vitest.
   _Fix:_ extract every decision into a pure `*-logic.ts` unit and unit-test it; CDP is only the final
   integration check. (→ AD7, T8.)
-- **Lesson 7 — One consistent DOM structure for every image** (structural half of **R0**). _Cause:_ a
+- **Lesson 7 — One consistent DOM structure for every image** (the structural half of the uniform render model). _Cause:_ a
   `display:contents` "normal" special case (no real box) caused divergence. _Fix:_ the same real
   wrapper box for every variant; only size/transform differ, never the structure. (→ AD3.)
 - **Lesson 8 — One render path per mode; no double-rendering.** _Cause:_ two competing async passes
@@ -511,7 +537,6 @@ architecture encodes most in its decisions (`AD…`).
   live window also **degrades under dense fixture churn** (many create/modify/delete + reloads):
   transient single-image fixtures can fail to render their overlay, making crop/size steps flaky — run
   guards individually with a settle gap, or reload to a clean state.
-
 - **Lesson 17 — Reproduce an EXTERNAL review's ruleset in a SEPARATE config; never inline-disable its
   rules in source** (surfaced by the 2026-06-06 Obsidian-review compliance pass). The community-plugin
   review runs `eslint-plugin-obsidianmd`, which is NOT in our shipped `eslint.config.mjs` (T9 — kept
