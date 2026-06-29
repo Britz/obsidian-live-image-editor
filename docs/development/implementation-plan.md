@@ -30,22 +30,22 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/render-core.ts` | AB6 Uniform 3-layer box + AB7a core (Obsidian-FREE) | `buildLayers` *(the 3-layer builder, shared by plugin + runtime)*<br>`applyFilterPreview`<br>`unwrapBox`<br>`BOX_CLASS` *(outer)*<br>`FRAME_CLASS` *(inner-frame)*<br>`RENDER_CSS` *(structural layer CSS, the single injected source)*<br>`CLAIM_SELECTOR`/`readTransform` *(identification + attrs→model)* |
 | `src/caption-logic.ts` | AB7 Caption (text, pure) | `captionMarkdown`<br>`captionFromAlt` |
 | `src/caption.ts` | AB7 Caption (DOM) | `createCaption`<br>`CaptionHandle` |
-| `src/live-preview-logic.ts` | AB9 LP line→decoration (pure) | `lineDecorations`<br>`inlineEmbeds`<br>`rewriteWidth`<br>`EMBED_LINE` |
-| `src/live-preview.ts` | AB9 Live-preview adapter (+ AB16 widget + CSS native-suppression) | `createLivePreviewExtension`<br>`refreshDecorations`<br>*(internal: `WidgetMode = block\|inline\|standalone`, `RevealMode = auto\|always`)* |
+| `src/live-preview-logic.ts` | AB9 LP line→decoration (pure) | `lineDecorations`<br>`inlineEmbeds`<br>`rewriteWidth`<br>`EMBED_LINE` / `INLINE_EMBED` *(span text-parsers, not the detection gate — AD10)*<br>`reduceReveal` *(pure reveal-state reducer: mode + engaged + dismiss + cursor-vs-spans → show? + auto-clear?)* |
+| `src/live-preview.ts` | AB9 Live-preview adapter (+ AB16 widget + CSS native-suppression) | `createLivePreviewExtension`<br>`refreshDecorations`<br>*(internal: `WidgetMode = block\|inline\|standalone`, `RevealMode = native\|auto\|always`)* |
 | `src/toolbar.ts` | AB10 Toolbar | `ImageToolbar`<br>`buildToolbarElement` |
 | `src/anchored-submenu-logic.ts` | AB11 Sub-menu placement (pure) | `placeSubmenu`<br>`SubmenuPlacement` |
 | `src/anchored-submenu.ts` | AB11 Shared sub-menu host | `AnchoredSubmenu` |
 | `src/region-hover.ts` | AB11a Active-region hover binder (D6.2/D6.4) | `bindRegionHover` *(N members → one grace-bridged, nesting-robust hover signal)*<br>`couplePaletteToRegion` *(body-level palette ↔ region, not greyed)* |
-| `src/toolbar-region-logic.ts` | AB11a Region decisions (pure) | `clickDismissesToolbar` *(click-away closes filter/size; crop exempt — Bug 62)* |
+| `src/toolbar-region-logic.ts` | AB11a Region decisions (pure) | `clickDismissesToolbar` *(click-away closes filter/size; crop exempt — Bug 62)*<br>`isEngaged` *(the one engagement predicate — AD12: cursor-on-line ∪ hover ∪ selected/active ∪ panel-open)* |
 | `src/crop-editor-logic.ts` | AB12 Crop quantization (pure) | `snapTranslate`<br>`snapAngle`<br>`snapScale`<br>`applyRotateGesture` *(macOS trackpad rotate-gesture delta → snapped content angle)*<br>`parsePlacement` *(round-trip inverse)*<br>`toCropResult` *(placement transform + cut width + aspect-ratio ≠ original)* |
 | `src/crop-editor.ts` | AB12 Crop editor | `CropEditor` |
 | `src/filter-panel.ts` | AB13 Filter panel | `FilterPanel` |
-| `src/size-submenu-logic.ts` | AB14 Size presets (pure) | `sizePresets` *(icon → inline, F24/F17)*<br>`SizeState`/`SizePreset` *(width/height/inline)* |
+| `src/size-submenu-logic.ts` | AB14 Size presets (pure) | `sizePresets` *(`icon` = a line-height `height`, small/med/large = widths, original = clear — SIZE only, **orthogonal to layout**; F24)*<br>`SizeState`/`SizePreset` *(width/height)* |
 | `src/size-submenu.ts` | AB14 Size sub-menu | `buildSizeBody`<br>`SizeState` *(re-export)* |
 | `src/ui.ts` | shared DOM helpers | `textButton` *(labelled button — filter/size/crop presets)* |
 | `src/export.ts` | AB15 Export | `renderTransformedImage`<br>`suggestExportPath`<br>`saveExport` |
 | `src/commands.ts` | AB18 Commands | `registerCommands` |
-| `src/settings.ts` | AB19 Settings | `LieSettingTab` *(General · size presets · CSS classes · editing-toolbar · **Syntax & info** — read-only `{…}`-attribute help card (intro + code example + per-attribute list) + an `openPluginStore("live-image-editor")` self-store-link button; F20/Change 43)*<br>`LieSettings` *(alwaysShowLink, presetWidths, tallFloatSafe)*<br>`DEFAULT_SETTINGS` |
+| `src/settings.ts` | AB19 Settings | `LieSettingTab` *(General · size presets · CSS classes · editing-toolbar · **Syntax & info** — read-only `{…}`-attribute help card (intro + code sample in an "example" callout + one native setting row per keyword) + an `openPluginStore("live-image-editor")` self-store-link button; F20/Change 43)*<br>`LieSettings` *(defaultRevealState `native\|auto\|always` — replaces the boolean `alwaysShowLink`, F8; renderImagesInCodeBlocks — F20, LP-only, default off; presetWidths, tallFloatSafe)*<br>`DEFAULT_SETTINGS` |
 | `src/styles-injector.ts` | AB20 Style injection | `StylesInjector`<br>`PresetWidths`<br>`DEFAULT_PRESET_WIDTHS` |
 | `src/editing-toolbar-integration.ts` | AB22 Editing-toolbar integration | `getEditingToolbarStatus`<br>`addEditingToolbarButtons`<br>`removeEditingToolbarButtons` |
 | `src/i18n/` | AB21 Localization | `index.ts`<br>`en.ts`<br>`de.ts` |
@@ -330,16 +330,31 @@ there is no second crop/rotate/scale implementation. (This collapses the old dup
   **every** embed: `.cm-content .internal-embed.image-embed > img` and `> .image-wrapper` (covering
   both the Markdown `> img` and the wikilink `.image-wrapper`), plus the native `> .edit-block-button`
   (so the native `<>` icon never leaks, Bug 31). The rules **never** hit the plugin's own
-  `.lie-wrapper`. The `{…}` block (real document text) is hidden when the image is rendered and shown
-  when the line is active — keyed on `.cm-active` / `.cm-line:has(> .cm-formatting)`.
-- **Reveal-for-looking** — the "fake" raw link + the `{…}` ride on a **mode class**: `lie-rev-auto`
-  (shown on cm-line **hover** or the active line) or `lie-rev-always` (shown everywhere), set from the
-  *default raw-link reveal state* setting `alwaysShowLink` (AB19/F20). The `<>` (eye) toggle stamps a
-  **`.lie-dismissed` LINE class** that overrides the mode and hides the source for that one image
-  (`!important`); it **auto-clears** in auto mode (once the line is neither hovered nor active) and
-  **persists** in always mode until toggled again. **No reactive JS** does the reveal — it is static
-  classes the CSS keys on, not a measurement loop, not an edit field, and **not** a third "hidden"
-  reveal mode (AD5, AB16).
+  `.lie-wrapper`. The `{…}` block (real document text) is hidden when the image is rendered and shown —
+  **as one whole with the body** (D17) — when the link reveals, keyed on the **parse-derived reveal
+  class** the StateField sets in-transaction (AB16b), **not** the retired `.cm-line:has(> .cm-formatting)`
+  DOM guess.
+- **Reveal-for-looking (three modes, one whole)** — the stand-in "fake" raw link + the `{…}` are shown
+  or hidden **together** (D17) by a reveal class derived from the *default raw-link reveal state* setting
+  `defaultRevealState` (AB19/F20): **native** (active/cursor line only — the default), **auto** (+ the
+  line on **hover**), **always** (everywhere). The stand-in is shown **iff Obsidian's native raw link is
+  NOT revealed** — the plugin mirrors Obsidian's *condition* (cursor within the parse-given body span),
+  so the two body faces are **mutually exclusive by construction** (D16), never both painted. **For a
+  BARE/raw-link block embed the stand-in RESERVES its source line (height), it does not collapse it:**
+  the bare source has its OWN line ABOVE the image, so an invisible placeholder line (`visibility:hidden`,
+  `reserveStandIn = !cursorInBody`) keeps the image from reflowing when the reveal toggles — *visible*
+  when revealed, the invisible placeholder when hidden — and **collapses only when `cursorInBody`** (the
+  native shows the identical source line on the cm-line above; reserving too would stack a SECOND line).
+  A three-state CSS triad expresses it: `collapse` (no class) · `reserve-invisible` (`.lie-reserve`) ·
+  `reserve-visible` (`.lie-reserve.lie-show`). *(Standalone/inline embeds DON'T reserve: there the source
+  is INLINE before the image on the same cm-line, so reserving its width would push the image sideways —
+  the no-jump fix for standalone is a separate layout rework, putting the source on its own line.)* The `<>`
+  toggle stamps a **`.lie-dismissed` LINE class** that **actively suppresses** stand-in, `{…}` **and** the
+  native raw link (`!important`) for that one image — hidden even where Obsidian would reveal it (Bug 65);
+  it **auto-clears on full disengagement** (AD12) in native & auto, **persists** in always. The decision
+  is the pure `reduceReveal`; its application is CSS in the **same transaction** as the selection change
+  (no JS style-write frame → atomic, D16) — **no reactive JS loop**, no edit field, no third "hidden"
+  mode. **The no-flicker atomicity is CDP-verified before commit** (§3.3, §2.5 / Lesson 16).
 - **Tall-float cap** — a float marked `.lie-tall` by the renderer (a declarative height estimate,
   AD6) stacks as a non-floated block under `body.lie-safe-tall-float` in **both** views
   (`.lie-wrapper:has(img.lie-tall)` in LP, `.image-embed:has(img.lie-tall)` in reading view), so a
@@ -451,7 +466,14 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   - **`block`** — a **bare** `![](…)` line (no `{…}`) is block-promoted by Obsidian into a
     cm-line-less `.cm-content` child that would swallow an inline widget, so the widget is a
     **`block:true`** decoration landing as its own `.cm-content` child next to the (image-suppressed)
-    native embed. `estimatedHeight` is supplied only for this mode (CM models it out of flow).
+    native embed. `estimatedHeight` is supplied only for this mode (CM models it out of flow). The
+    bare stand-in raw link is **hosted inside this widget** (no cm-line to carry an inline stand-in).
+    A reveal flip changes only `showStandIn`/`reserveStandIn`, so `EmbedWidget` keeps them in `eq()` but
+    implements **`updateDOM`**: it mutates only the hosted stand-in's reserve-triad class **in place**
+    (keyed off a `data-lie-struct` structural signature on the wrapper) and keeps the DOM — the image
+    **and its async caption are never destroyed/rebuilt**, so a hover/cursor reveal no longer flickers
+    the caption (the resize-affordance **1c** regression). A *structural* change (embed/params/caption/
+    dismiss) fails the struct check, so CM recreates as normal.
   - **`inline`** — a tiny mid-text icon (`lie-inline`), found by `inlineEmbeds`, rendered via
     `Decoration.replace`.
   It does **not** replace the standalone line — the text is left intact, so Obsidian's native embed
@@ -470,40 +492,92 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
     stays the portable `![[…]]{…}` (F1) and the native embed keeps loading the file. (Lesson 1 still holds —
     an *un-replaced* line re-fires the native embed and would show `{…}` as literal text — but that is
     now **wanted**: we keep the native embed and CSS-hide it, rather than block-replacing the line.)
-  - **Reveal-for-looking (F8)** is a display-only "fake" raw link the plugin paints (it knows the
-    link) plus the `{…}`, shown/hidden **purely by CSS** in one of two natural modes from the global
-    *default raw-link reveal state* setting (`alwaysShowLink`, AB19/F20): **auto** (`lie-rev-auto` —
-    shown on cm-line hover or the active line) or **always** (`lie-rev-always` — shown everywhere). The
-    `<>` (eye) toolbar control **dismisses** the source for that one image — a transient
-    **`.lie-dismissed`** LINE class (a `toggleReveal` StateEffect tracked in the field), **not
-    persisted per image** (F8); it **auto-clears** in auto mode once the line is neither hovered nor
-    active, and **persists** in always mode until toggled again. There is **no** third "hidden" reveal
-    mode and **no** `cycleRevealMode`. **No reactive JS** drives the reveal, no plugin-owned **edit**
-    field — just static classes the CSS keys on.
+  - **Reveal-for-looking (F8) — the whole link, two drivers (AB16b).** The link is **one unit**: the
+    **body** (the native raw link Obsidian reveals, *or* the plugin's display-only **stand-in** fake link,
+    AB16a) plus any trailing **`{…}`** — they **always show/hide together** (D17). The drivers, never
+    doubled (D16): **Obsidian** drives the **native raw link** (revealed while the cursor sits **within
+    the body span**, hidden otherwise — the plugin cannot force this, hence the stand-in); the **plugin**
+    drives the **stand-in** (shown *for looking* per the reveal state **iff the native raw link is NOT
+    revealed**). The plugin computes "native revealed" by **mirroring Obsidian's own condition** — the
+    cursor within the **parse-given body span** (AD10) — **not** by observing the DOM (the retired
+    `:has(> .cm-formatting)` guess), so the two body faces are mutually exclusive **by construction**
+    (D16). The **reveal state** is the global *default raw-link reveal state* setting (`defaultRevealState`,
+    AB19/F20) in **three modes**: **native** (active/cursor line only — default), **auto** (+ the line on
+    **hover**), **always** (everywhere). The `<>` toolbar control is a transient per-image **dismiss** (a
+    `.lie-dismissed` LINE class via a `toggleReveal` StateEffect, **not persisted**, F8) that **actively
+    suppresses** the link — stand-in, `{…}` **and** the native raw link (Bug 65) — auto-clearing on full
+    disengagement (AD12) in native & auto, persisting in always. There is **no** third "hidden" mode, no
+    `cycleRevealMode`.
+  - **The seamless body↔`{…}` swap (the LEIT-case).** The `{…}` is **native editable text**. When the
+    cursor moves from the body **into** the `{…}`, Obsidian hides the native raw link (cursor past the
+    body) — so the **stand-in carries the body** while the `{…}` is edited natively, and the **whole link
+    stays visible** throughout (cursor anywhere on the link ⇒ shown). The native↔stand-in swap at the
+    body/`{…}` boundary must be **seamless** (the fake never visibly differs from the real source) and
+    flicker-free.
+  - **Mechanism — deterministic, parse-derived, one transaction (§2.5).** The decision is the pure
+    `reduceReveal` over the mode, the **engaged** predicate (AD12), the dismiss, and the cursor's position
+    **relative to the parse-given body / `{…}` spans**. It is **applied as decoration classes set in the
+    SAME transaction** as the selection change, so CSS does the show/hide — one class drives body+`{…}` as
+    a whole (D17) and the native-vs-stand-in mutual exclusion is a CSS consequence of one condition (D16),
+    with **no JS style-write frame**. **Open gate (§2.5, Lesson 16): that this same-transaction flip lands
+    in the same paint frame as Obsidian's native reveal — no flicker — is CDP-verified BEFORE commit**
+    (focus-emulation for the cursor reveal, a real `Input` pointer for hover). If a frame slips, fall back
+    to coupling the stand-in/`{…}` to Obsidian's native reveal in **pure CSS** (timing-safe), keyed on the
+    **parse-derived line class**, never the retired `:has(> .cm-formatting)`.
   - **Edit (F9)** is Obsidian's **own native cursor-reveal** of the source as real document text —
-    re-verified in-app (2026-06) for **both** standalone and inline embeds (they don't materially
-    differ; a standalone embed shifts down a line when its source appears, so the overlay follows).
-    Caret / selection / copy are native, **one** editing root — there is **no** plugin-owned editable
-    field (no `<textarea>`, no `contenteditable`, no caret-seam to bridge).
-  - **`{…}` (F3)** is real document text Obsidian leaves visible; the plugin **hides it via CSS** when
-    the image is rendered (F3 holds) and lets it show when the line is active (editing) — the same
-    `.cm-active` signal.
-  - **Signal:** `.cm-active` (fallback: native widget DOM presence via `:has()`). The one thing still
-    to verify is that `.cm-active` flips in lock-step with Obsidian's native reveal (marked to-verify,
-    not asserted as proven).
-- **`live-preview-logic.ts`** (pure, tested) — `lineDecorations` (standalone line →
-  decoration; returns brace-less `params`), `inlineEmbeds` (mid-text embeds), `rewriteWidth`, and the
-  `EMBED_LINE` / `INLINE_EMBED` matchers. (`cycleRevealMode` is **gone**; `RevealMode` now lives in
-  `live-preview.ts` as the two-valued `"auto"|"always"` derived from the setting — no per-line mode
-  cycle. The `<>` control is the **eye dismiss**: a `.lie-dismissed` LINE decoration that auto-clears
-  in auto mode, F8.)
-- **Embed detection deferred to the parse (AD10).** The build treats a line as an embed only where
-  Obsidian's parse does. A line matched by `EMBED_LINE` whose start sits inside a code node — checked
-  via `syntaxTree(state)` (`@codemirror/language`; already an esbuild external, add the dev-dep for
-  types) — is **skipped** entirely (no fake link, no `{…}` mark, no image widget), so an `![](…)`
-  inside a fenced/inline code block stays literal code. Reading view needs no change (its parse-built
-  DOM has no `<img>` there already). The **"render images in code blocks"** setting (F20) is the lone
-  override: when on, the code-node check is bypassed and the embed renders in LP.
+    re-verified for **standalone** and **inline** embeds (caret / selection / copy native, **one** editing
+    root, no `<textarea>`/`contenteditable`/caret-seam). **Bare / block-promoted embeds (Bug 114) — to
+    verify in-app:** Obsidian gives that line **no `.cm-line` and no native reveal** (§4 CDP), so the
+    **stand-in restores reveal-for-looking** there (every embed gets the reveal machinery, AB16b); whether
+    the source is **natively editable** on a block-promoted line, or needs a plugin fallback, is a **CDP
+    question to settle during implementation — do not assume.** Decided alongside (the §2.7 / F20 source
+    point): a **code-block** embed's `![](…)` stays **literal code text**, so it gets **no stand-in and no
+    reveal** — there is nothing to hide.
+  - **`{…}` (F3)** is real document text Obsidian leaves visible; hidden via the same reveal class when
+    the image is rendered (F3 holds), shown as **one whole with the body** when the link reveals.
+  - **Engagement is one predicate (AD12).** "Active / engaged with the image" is the single `isEngaged`
+    union — cursor-on-line ∪ hover ∪ selected/active (editor focused) ∪ any open plugin surface (crop /
+    filter / class / sub-menu) — read by the reveal **pin** (the state does not flip while engaged,
+    **Bug 86**), the dismiss **auto-clear** (fires only on full **dis**engagement) and the toolbar
+    greyed/active state. It **replaces** the scattered `filterPanel || classPanel || submenu || cropEditor`
+    check (`main.ts` ~504). The union is **pure** (`isEngaged`, `toolbar-region-logic.ts`, unit-tested);
+    its inputs are gathered from live CM/DOM state.
+- **`live-preview-logic.ts`** (pure, tested) — `lineDecorations` (LP: a standalone line → its widget
+  descriptor; SOURCE mode: highlights EVERY embed's `{…}` on the line as link syntax — **standalone AND
+  inline**, since the whole-line `EMBED_LINE` would skip inline; returns brace-less `params`),
+  `inlineEmbeds` (mid-text embeds), `rewriteWidth`, the
+  `EMBED_LINE` / `INLINE_EMBED` matchers (now **span text-parsers, not the detection gate** — AD10
+  below), and **`reduceReveal`** — the pure reveal-state reducer. `reduceReveal` takes the **mode**
+  (`native|auto|always`), the **engaged** predicate (AD12 — `isEngaged`, *not* just the cursor line, the
+  doc-comment + impl fix the rework demands), the **dismiss** state, and the cursor's position relative
+  to the body / `{…}` spans; it returns whether the link shows and whether the dismiss **auto-clears**
+  (only on full disengagement, native & auto; persists in always). `cycleRevealMode` is **gone**;
+  `RevealMode` is the three-valued `native|auto|always` derived from `defaultRevealState` (AB19/F20) — no
+  per-line mode cycle. The `<>` control is the per-image **dismiss** (a `.lie-dismissed` LINE decoration
+  via a `toggleReveal` StateEffect).
+- **Embed detection derives from the parse (AD10).** The build no longer *gates* on `EMBED_LINE` /
+  `INLINE_EMBED` walking `for i=1..doc.lines`: the **model** (whether/where a line holds an image embed)
+  comes from **Obsidian's own parse** — the editor **`syntaxTree(state)`** live (`@codemirror/language`;
+  already an esbuild external, add the dev-dep for types), its cached equivalent
+  **`metadataCache.getFileCache(file).embeds`** for the reading-view path (position-precise, link + span,
+  §4 CDP). A fenced/inline **code-block** `![](…)` is **excluded by construction** — the parse does not
+  list it as an embed (CDP: 8 raw lines → 7 embeds, the fenced one typed `code`), so it needs **no special
+  case** and stays literal code (no stand-in, no `{…}` mark, no widget). The regexes survive only as
+  **text-parsers of an already-confirmed span** (extract alt / path / `{…}`). **Placement** —
+  block-promoted bare vs own-cm-line `{…}` vs mid-text — is read from the **real CM elements** Obsidian
+  inserts (model from the parse, placement from reality), choosing the `WidgetMode`. The **F20 "render
+  images in code blocks"** setting (`renderImagesInCodeBlocks`, LP only, default off) is the lone
+  override: when on, the plugin's **own fallback scan** re-includes code-section embeds (the inverse of
+  the code-node check) and renders them; reading view renders nothing in code blocks either way.
+- **Per-span visibility authority + one engagement predicate (AD11 / AD12).** For each parsed span the
+  plugin is the single authority over the link (AB16b above): mirror native by default, **actively
+  suppress** on dismiss (Bug 65), **pin** while engaged (Bug 86) — without disabling native editing
+  (Lesson 11/12: the line is never replaced, only the tokens suppressed). "Engaged with the image" is the
+  **one** `isEngaged` predicate (AD12) — the union cursor-on-line ∪ hover ∪ selected/active ∪
+  panel-open(crop/filter/class/submenu) — centralizing the scattered `filterPanel || classPanel ||
+  submenu || cropEditor` chain (`main.ts` ~504) that the reveal pin, the dismiss auto-clear and the
+  toolbar greyed/active state all now read. The union is pure (`isEngaged`, `toolbar-region-logic.ts`,
+  unit-tested); its inputs are gathered from live state.
 
 ### 3.4 Editing UI
 
@@ -681,11 +755,25 @@ caused. These are the low-level half of the decisions in `architecture.md` §2.
   wraps (F18) — **not** a block widget below it; a **bare** embed renders as a `block:true` widget
   (block-promotion leaves no cm-line for an inline one). Because the bare case still needs a *block*
   decoration, it must be a `StateField`, not a `ViewPlugin` (the latter cannot emit block
-  decorations). The `{…}` and the reveal are hidden/shown by **static CSS** keyed on `.cm-active` /
-  hover, never by un-covering a range (which re-fires the native embed, Lesson 1) and never by a
+  decorations). The `{…}` and the reveal are hidden/shown by **CSS** keyed on the **parse-derived reveal
+  class** (set in-transaction, AD10/AB16b — not the retired `.cm-active` / `:has(> .cm-formatting)`
+  guess), never by un-covering a range (which re-fires the native embed, Lesson 1) and never by a
   plugin-owned editable field. Inline mid-text embeds reuse the **same** widget, never a second
   widget. The reading-view reconcile must skip the plugin's own `.lie-wrapper`, or two passes
   re-measure at different widths.
+- **AD10 (parse is the gate).** Do **not** re-introduce a regex / `EMBED_LINE` *gate* that decides "is
+  this an embed" — that parallel representation is exactly what the rework removes (it re-creates the
+  code-block doubling and the bare-embed miss, Bug 114). The gate is the parse (`syntaxTree` /
+  `metadataCache.embeds`); the regex only parses a span the parse already confirmed. A code-block embed is
+  **excluded by construction** — never special-cased back in except via the explicit F20 fallback scan.
+- **AD11 / AD12 (one authority, one predicate).** The reveal pin, the `<>` dismiss auto-clear and the
+  toolbar greyed/active state must read the **single** `isEngaged` predicate — never a fresh per-surface
+  `filterPanel || classPanel || submenu || cropEditor` check (the drift the rework deletes). The dismiss
+  suppression must **also** suppress the native raw link (Bug 65) and must **not** disable native editing
+  (Lesson 11/12 — suppress the tokens, never replace the line). Decide stand-in vs native raw link by
+  **mirroring Obsidian's reveal condition** (cursor within the parse span), never by observing its
+  revealed DOM (`:has(> .cm-formatting)` — retired; it guesses, flickers and over-matches, Bug 106).
+  **Prove no-flicker via CDP before shipping** the chosen reveal mechanism (D16/D17, §2.5).
 - **AD6 (sizing direction).** Size **one way: box → image.** Never size the box by measuring the
   loaded image — that imperative measure-then-resize loop is exactly what caused the recurring
   rotated-box drift and forced the old `requestAnimationFrame` / `setTimeout` / `naturalWidth`

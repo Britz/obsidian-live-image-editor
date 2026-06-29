@@ -13,16 +13,16 @@
 //      the icon preset, leaves to persist, reads the source `{…}` back — it must carry a `height=` and
 //      NOT `.lie-inline`.
 //
-// Prereqs (CLAUDE.md → Live debugging): a DEV build in example-vault/ + Obsidian with the CDP relay.
+// Prereqs (CLAUDE.md → Live debugging): a DEV build in vault-image-toolbar/ + Obsidian with the CDP relay.
 //   node tests/cdp/verify-render-gaps.mjs
 // Override the endpoint with CDP_HOST / CDP_PORT / CDP_TARGET (defaults host.containers.internal,
-// 9223 direct to Obsidian's own CDP, target "example-vault").
+// 9223 direct to Obsidian's own CDP, target "vault-image-toolbar").
 import { execFileSync } from "node:child_process";
 
 const env = {
   ...process.env,
   CDP_PORT: process.env.CDP_PORT ?? "9223",
-  CDP_TARGET: process.env.CDP_TARGET ?? "example-vault",
+  CDP_TARGET: process.env.CDP_TARGET ?? "vault-image-toolbar",
 };
 
 const EVAL_RUN = `(async () => {

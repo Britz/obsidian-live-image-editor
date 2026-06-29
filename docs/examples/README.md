@@ -1,6 +1,6 @@
 <!--
   This is the Examples section landing page (URL /examples/). It is the ONE committed file in
-  docs/examples/ — the feature pages (01–07) and images are copied in from example-vault/ at
+  docs/examples/ — the feature pages (01–07) and images are copied in from vault-image-toolbar/ at
   build time by scripts/mkdocs_hooks.py and removed again afterwards, so they are git-ignored.
 -->
 # Examples — the standalone runtime, live
@@ -20,7 +20,7 @@ renders identically on any static site that loads the runtime — so what you se
 not a screenshot.
 
 > The hover toolbar and in-place editing are Obsidian-only. On these pages you see the **result**
-> of an edit, not the editor. To try the editing itself, open the `example-vault/` folder as a
+> of an edit, not the editor. To try the editing itself, open the `vault-image-toolbar/` folder as a
 > vault in Obsidian with the plugin enabled.
 
 ## The pages

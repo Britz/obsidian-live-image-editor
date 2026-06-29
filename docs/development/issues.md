@@ -34,11 +34,11 @@ Numbered registry items — each will move to the changelog keeping its number o
 
 ### Open decisions (Decision)
 
-_**29 decisions total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md))._
+_**34 decisions total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md))._
 
 ### Planned features (Feature)
 
-_**42 features total** — shipped (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the planned ones below._
+_**43 features total** — shipped (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the planned ones below._
 
 New capabilities, not yet F-items. Per `methodology.md` each starts at the top (a Functional/Design
 requirement + the storage/permission implications) before any code.
@@ -62,24 +62,6 @@ requirement + the storage/permission implications) before any code.
       baked images + the cleaned Markdown) and leaves the live vault **untouched**. Effectively the
       publish path: a portable, plugin-free copy of the notes. _Shares_ the export + clean machinery
       with the in-place flatten; the only difference is target (a download bundle vs. the live files).
-- [ ] **Feature 33 — Reveal-source setting — ONE combined dropdown (F8 / F20).** Merge the existing _Always show
-      the link source_ toggle (auto / always) with the new reveal-line **layout** behaviour and a
-      **hidden** option into a **single dropdown** (not scattered toggles). The four options, in order: 1. **Immer** (always shown) · 2. **Auto — Höhe sichtbar** (reveal on hover / cursor line; the line **reserves its height** when
-      hidden → **no jump** on reveal — the current default) · 3. **Auto** (reveal on hover / cursor line; the line **collapses** when hidden → the image
-      **jumps** on reveal — the original Obsidian-like behaviour) · 4. **Hidden** (never shown / always hidden).
-
-            So the two dimensions (when revealed: always / auto / never; and, in auto, reserve-height vs.
-            collapse) fold into these four labels. This **supersedes** the boolean `alwaysShowLink`. Includes
-            the layout/CSS logic (the reserved-height rule keyed on the choice) + the setting in `settings.ts`
-            (AB19). The per-image `<>` toggle (F8) is a **transient override that flips the natural state**
-            and then **auto-clears back to the default**:
-            - Options 1–3: unchanged — whenever the `<>` control is reachable (hover / the toolbar) the
-              source is already visible, so the toggle **dismisses** it (transiently; clears back to the
-              revealed default as today).
-            - Option 4 (**Hidden**): the source is hidden even while `<>` is reachable, so a click
-              **reveals** that image's source, then **auto-clears back to hidden** (the default) — the same
-              transient-override mechanism, just inverted.
-
 - [ ] **Feature 34 — Ship the user's MODIFIED in-vault snippets with the runtime (not just the default stack).**
       The standalone runtime now injects the plugin's DEFAULT decoration snippet (F16.1 —
       `rounded/shadow/bordered/circle`) so a foreign page renders class-styled images like Obsidian
@@ -151,7 +133,7 @@ requirement + the storage/permission implications) before any code.
 
 ### Known open bugs (Bug)
 
-_**114 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
+_**117 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
 
 > **Bugs 95–104 — a regression batch from the layout rework (`ba2dfa4`, "decouple size from layout"),
 > found in a CLEAN store install (v0.6.6).** The dev vault MASKED most of them: its `styles.css` was a
@@ -162,18 +144,6 @@ _**114 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
 > one-line offset the user also hit is the SAME phenomenon as **Bug 67** ("extra leading line above
 > floating images") — tracked there, not duplicated. All reported 2026-06-11 (user).
 
-- [ ] **Bug 65 — `<>` dismiss doesn't hide the FRONT of the link on the cursor line (fights the
-      native widget).** When the editor cursor is on the image's line, the `<>` dismiss fails to hide the
-      **front part** of the raw link (the `![](…)` head) — it stays visible. _Hypothesis (diagnose
-      first):_ on the active line Obsidian reveals its **own native source tokens** (the real,
-      editable `![…](…)` document text), and the dismiss only hides the plugin's overlay — the FAKE
-      link (`.lie-fake-link`) + the `{…}` (`.lie-attr`) via `.lie-dismissed`. It cannot (and must not
-      naively) hide Obsidian's native-revealed source, which is the document being edited — so the
-      dismiss "loses the fight" with the native reveal on the cursor line (related to Lesson 11/Lesson 12 and the
-      `.cm-active` lock-step note above). _Fix (top-down):_ reconcile the dismiss with the native
-      active-line reveal — e.g. on a dismissed line also suppress the native `![](…)` source tokens
-      (scoped to that line) — **without** breaking native editing/selection of the source (Lesson 11). Needs
-      a CDP diagnose of exactly what renders on the active line first.
 - [ ] **Bug 67 — toggling Obsidian's line-break mode makes FLOATED images vanish in Live Preview
       (stale in-place decoration); intermittent.** Obsidian's editor **"Strict line breaks"** setting
       switches between _hard_ breaks (a single newline renders as a break — the **default**) and
@@ -211,11 +181,6 @@ _**114 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       visible region) — e.g. reuse the export's `renderContent` ([export.ts](src/export.ts)) to produce the
       rendered canvas, then histogram THAT, which also fits the uniform-render model (AD3). DEFERRED — track
       only. (Decision 23 follow-up; 2026-06-06.)
-- [ ] **Bug 86 — Link-reveal visibility changes during crop, making the image jump.** While crop is
-      active, the raw-link reveal (the `.lie-fake-link` / `<>` reveal line) can toggle (cursor moves on/off
-      the line, or the reveal state flips), which reflows the line and **shifts the image inside the crop
-      editor** — confusing mid-crop. Fix: freeze the reveal visibility for the crop duration (no
-      reveal/dismiss changes while `.lie-cropping` is active). DEFERRED — track only. (2026-06-06.)
 - [ ] **Bug 95 — Tall-float cap stacks normal/small floated images → "float doesn't work, image sits
       inline, no text wrap" (intermittent).** A floated image with NO explicit px width/height hits
       `estimatedBlockHeight`'s blind no-size fallback of **480px** ([renderer-logic.ts:106-115](src/renderer-logic.ts#L106-L115)),
@@ -285,24 +250,6 @@ _**114 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       Bug 86) that consumes the interaction, or a guard in `crop()` (`locateActiveImage` / panel
       teardown) aborts the open on that click. DISTINCT from the reveal/dismiss engagement bug — even
       if co-triggered, the definitive defect is the dead button. (2026-06-27, user+CDP.)
-- [ ] **Bug 114 — A bare embed's markdown LINK never reveals on hover in Live Preview (block widget
-      carries no fake-link).** For a **bare** embed `![](…)` (no `{…}` attribute list) the source link
-      (`![](…)`) never reveals on hover — only the in-image toolbar does. _Confirmed (CDP, TR-1…TR-7,
-      2026-06-27, user):_ a bare embed is **block-promoted** — the plugin renders its own
-      `div.lie-wrapper.lie-wrapper-block` as a **direct child of `.cm-content`** with **no enclosing
-      `.cm-line`** and, crucially, **no `.lie-fake-link`** element at all. With no fake-link there is
-      nothing for the link reveal (F8: reveal on `<>` or cursor) to show, so it can never fire. A `{…}`
-      **standalone** embed, by contrast, keeps a `.cm-line` + a `.lie-fake-link` and reveals correctly;
-      the in-image toolbar reveal works for the bare embed too (real CSS `:hover`, confirmed with a real
-      `Input.dispatchMouseEvent` — TR-7). Obsidian also renders a native `.internal-embed` sibling but it
-      collapses to ~3×6px and does **not** steal the hover. _Root:_ the same cluster root as **AD10** —
-      the plugin's own block widget drops the reveal machinery Obsidian's native source line would have.
-      _Fix (top-down):_ fold into the Round-2 reveal/dismiss engagement rethink — defer to Obsidian's
-      native detection (AD10) and render the toolbar **alongside** the native embed/source rather than
-      substituting a block widget that drops the reveal. Repro: `example-vault/02 — Crop.md`, first image,
-      line 22 `![](images/sample-landscape.png)`. NOT yet covered by any automated/CDP test
-      (`tests/cdp/verify-reveal.mjs` only exercises a `{…}` standalone fixture). (2026-06-27, user+CDP.)
-
 ---
 
 ## Meta level
@@ -520,7 +467,7 @@ architecture encodes most in its decisions (`AD…`).
   surfaced by the 2026-06-05 finalization re-check). A fix is not verified just because the code is
   written and a guard script exists. Two failures bit at once: (1) the dev **vault build was stale** —
   the region-coupling + submodal-rework source was written but the installed
-  `example-vault/.obsidian/plugins/live-image-editor/main.js` was an earlier snapshot missing
+  `vault-image-toolbar/.obsidian/plugins/live-image-editor/main.js` was an earlier snapshot missing
   `clickDismissesToolbar`/`bindRegionHover`, so any script tested OLD code; (2) two guards
   (`verify-submodal-region.mjs`, `verify-popup-region.mjs`) had **literal backticks inside their
   `EVAL_RUN` template literal** — which closes the template early → `ReferenceError` at module load →

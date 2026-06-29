@@ -37,11 +37,11 @@ wiki-link size (`![[image.png|300]]`) continues to work and is preserved.
 
 ## Example vault
 
-[`example-vault/`](example-vault/) is a self-contained Obsidian vault that demonstrates **every**
+[`vault-image-toolbar/`](vault-image-toolbar/) is a self-contained Obsidian vault that demonstrates **every**
 feature on synthetic, committable images (corner labels **A/B/C/D** + a **TOP** marker make
 rotate/flip obvious). To try it:
 
-1. In Obsidian, **Open folder as vault** → pick the `example-vault/` directory.
+1. In Obsidian, **Open folder as vault** → pick the `vault-image-toolbar/` directory.
 2. Enable **Live Image Editor** in *Settings → Community plugins* (install it first if needed —
    see [Installation](#installation)).
 3. Open **`00 — Start here`** and work through the numbered pages (Rotate & flip, Crop, Size,
@@ -57,7 +57,7 @@ the demo vault (with images rendered *live* by the plugin's runtime) and the des
 from `docs/` via ProperDocs + MaterialX (the maintained MkDocs / Material forks).
 
 - **[User guide](docs/user-guide.md)** — how to use every feature, with screenshots.
-- **[`example-vault/`](example-vault/)** — a demo vault that shows each feature on real images
+- **[`vault-image-toolbar/`](vault-image-toolbar/)** — a demo vault that shows each feature on real images
   (open it as a vault with the plugin enabled; start at *00 — Start here*).
 - **[Development docs](docs/development/README.md)** — the design docs (requirements, architecture,
   plan, tests, the bug & lesson registry) **and the developer workflow**: building from source, the

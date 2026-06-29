@@ -5,16 +5,16 @@
 //   Bug 54: a `<>` dismiss hides the WHOLE raw embed — the fake `![](…)` link AND the `{…}`.
 //   Bug 55: the revealed `{…}` carries CM URL tokens (syntax highlighted), not plain text.
 //
-// Prereqs (CLAUDE.md → Live debugging): a dev build installed in example-vault/ + Obsidian running with
+// Prereqs (CLAUDE.md → Live debugging): a dev build installed in vault-image-toolbar/ + Obsidian running with
 // the CDP relay. Run from the repo root:  node tests/cdp/verify-reveal.mjs
 // Override the endpoint with CDP_HOST / CDP_PORT / CDP_TARGET (defaults host.containers.internal,
-// 9223 direct to Obsidian's own CDP, target "example-vault").
+// 9223 direct to Obsidian's own CDP, target "vault-image-toolbar").
 import { execFileSync } from "node:child_process";
 
 const env = {
   ...process.env,
   CDP_PORT: process.env.CDP_PORT ?? "9223",
-  CDP_TARGET: process.env.CDP_TARGET ?? "example-vault",
+  CDP_TARGET: process.env.CDP_TARGET ?? "vault-image-toolbar",
 };
 
 // async RUN stashes its result on window.__REV (the bridge does not capture an async eval's
@@ -34,7 +34,7 @@ const EVAL_RUN = `(async () => {
     await new Promise((r) => setTimeout(r, 900));
     const ed = app.workspace.activeEditor && app.workspace.activeEditor.editor;
     if (!ed || !ed.cm) { await vault.delete(f); window.__REV = JSON.stringify({ fatal: "no editor/cm (open in LP)" }); return; }
-    plugin.settings.alwaysShowLink = true; plugin.refreshLivePreviewDecorations();
+    plugin.settings.defaultRevealState = "always"; plugin.refreshLivePreviewDecorations();
     ed.setCursor({ line: 0, ch: 0 });
     await new Promise((r) => setTimeout(r, 200));
 
@@ -49,7 +49,7 @@ const EVAL_RUN = `(async () => {
     await new Promise((r) => setTimeout(r, 150));
     const after = { fake: disp(".lie-fake-link"), attr: disp(".lie-attr") };
 
-    plugin.settings.alwaysShowLink = false; plugin.refreshLivePreviewDecorations();
+    plugin.settings.defaultRevealState = "native"; plugin.refreshLivePreviewDecorations();
     await vault.delete(f);
     window.__REV = JSON.stringify({ icon, attrHighlighted, before, after });
   } catch (e) { window.__REV = JSON.stringify({ fatal: String(e) }); }

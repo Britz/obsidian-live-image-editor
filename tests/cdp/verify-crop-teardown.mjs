@@ -18,7 +18,7 @@ import { execFileSync } from "node:child_process";
 const env = {
   ...process.env,
   CDP_PORT: process.env.CDP_PORT ?? "9223",
-  CDP_TARGET: process.env.CDP_TARGET ?? "example-vault",
+  CDP_TARGET: process.env.CDP_TARGET ?? "vault-image-toolbar",
 };
 
 const EVAL_RUN = `(async () => {

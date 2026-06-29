@@ -17,7 +17,7 @@ repo_name: Britz/obsidian-live-image-editor
 repo_url: https://github.com/Britz/obsidian-live-image-editor
 edit_uri: edit/main/docs/
 
-# The example vault lives at example-vault/. A build hook copies its reader pages + images into
+# The example vault lives at vault-image-toolbar/. A build hook copies its reader pages + images into
 # docs/examples/ before the build (see scripts/mkdocs_hooks.py for why a copy, not a symlink).
 hooks:
   - scripts/mkdocs_hooks.py

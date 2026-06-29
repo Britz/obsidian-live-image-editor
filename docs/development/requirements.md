@@ -83,8 +83,9 @@ no language or link-format setting of its own.
   once, ✗/Esc discards.)
 - **F15 — Built-in layout (flat six states).** One built-in **layout** choice per image, a flat set
   of six mutually-exclusive states — **block-left / block-center / block-right** (own line, no wrap),
-  **float-left / float-right** (margin, text wraps the side), **inline** (within a text line) — plus a
-  reset that restores the default. Surfaced as six radio-style controls (exactly one active). Layout
+  **float-left / float-right** (margin, text wraps the side), **inline** (the **vertical alignment** of
+  an image already in a text line — the lone **VERTICAL** axis; the other five are the **HORIZONTAL**
+  axis, F17) — plus a reset that restores the default. Surfaced as six radio-style controls (exactly one active). Layout
   exists as a functional capability; how each state is carried on disk (attribute key vs CSS class) is
   an architecture concern, not a requirement. **Layout is orthogonal to size** (F24) and to decoration
   classes (F16): choosing a size never changes the layout state, and vice versa.
@@ -106,10 +107,17 @@ no language or link-format setting of its own.
     offer a **per-class restore** (a deleted class still appears so it can be brought back). A class
     name active in **two** enabled snippets is flagged as a **collision** (last-loaded wins). A class
     repeated within one file lists once and does not collide with itself.
-- **F17 — Inline (mid-text) images.** The **inline** layout state places an image within a line of
-  text (icon-style) and renders it at its intended **inline size** in both views — not Obsidian's
-  native full-size inline image. Inline is a layout state, chosen independently of the size preset
-  (an in-text icon = inline layout + the `icon` size).
+- **F17 — Inline = the VERTICAL-alignment layout state.** An image with text around it on the line
+  already renders **within that line** by default (both views — not Obsidian's native full-size inline
+  image). The **inline** state governs only that image's **vertical position on the line** — centred
+  against the surrounding text versus the default (sitting on the line). It is therefore the lone
+  **VERTICAL axis**, **orthogonal** to the five **HORIZONTAL** layout states (block-left/centre/right,
+  float-left/right) which place an image that takes its own *block* space. The two axes never compete in
+  practice — a block/float image has no line-mate to align against (inline has **no effect** on it), and
+  an in-line image is not taking block space — so the **six F15 states present as one mutually-exclusive
+  choice while operating on two different axes** (five horizontal, one vertical). Inline is **also
+  orthogonal to size** (F24): any size combines with it, and choosing a size never implies inline nor
+  vice versa.
 - **F18 — Float & text wrap.** The **float-left / float-right** layout states **float** the image so
   the surrounding text wraps around its side — in both reading view and live preview. (The
   **block-left / block-right** states align the image to a side WITHOUT wrapping — own line, text
@@ -146,8 +154,8 @@ no language or link-format setting of its own.
 - **F24 — Size presets.** A defined set of one-tap size presets is offered: **icon, small,
   medium, large, original**. *small / medium / large* set the corresponding **preset width**
   (configurable in settings, F20) through the **same width mechanism** as a custom width — not a
-  separate class; *icon* sets the inline size (F17); *original* clears the explicit width back to
-  the image's natural width.
+  separate class; *icon* sets the **icon width** (the smallest preset width); *original* clears the
+  explicit width back to the image's natural width.
 - **F25 — Never emit plugin-only Markdown (graceful degradation).** Every piece of Markdown the
   plugin writes must stay a **valid image embed that still renders the image without the
   plugin** — in Obsidian with the plugin disabled, or in another Markdown / wiki renderer.

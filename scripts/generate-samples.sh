@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Regenerate the synthetic sample images used by the example-vault demo pages and the docs screenshots.
+# Regenerate the synthetic sample images used by the vault-image-toolbar demo pages and the docs screenshots.
 # Synthetic (ImageMagick) — no third-party content, safe to commit. Requires `magick`.
 set -euo pipefail
-cd "$(dirname "$0")/../example-vault/images"
+cd "$(dirname "$0")/../vault-image-toolbar/images"
 
 # Explicit font — minimal containers have no default ImageMagick font configured.
 FONT="${LIE_FONT:-/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf}"

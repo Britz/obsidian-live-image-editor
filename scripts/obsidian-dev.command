@@ -6,11 +6,11 @@
 # to the devcontainer. There is no in-app UI toggle for this; it must be a
 # launch flag, hence this launcher.
 #
-# It also opens the bundled example vault (example-vault/) so the plugin is ready to
+# It also opens the bundled example vault (vault-image-toolbar/) so the plugin is ready to
 # debug immediately.
 #
 # Override defaults via env: CDP_PORT (default 9223), OBSIDIAN_APP (app path),
-# VAULT (default: the repo's example-vault/ vault).
+# VAULT (default: the repo's vault-image-toolbar/ vault).
 
 set -e
 
@@ -21,7 +21,7 @@ BIN="$APP/Contents/MacOS/Obsidian"
 # The example vault ships with the debug config (.obsidian/) — resolve it relative
 # to this script so it works wherever the repo is checked out on the host.
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-VAULT="${VAULT:-$REPO_DIR/example-vault}"
+VAULT="${VAULT:-$REPO_DIR/vault-image-toolbar}"
 
 if [ ! -x "$BIN" ]; then
   echo "✗ Obsidian binary not found at: $BIN"
@@ -40,7 +40,7 @@ if pgrep -x Obsidian >/dev/null 2>&1; then
 fi
 
 # The obsidian:// URI can only route to a vault Obsidian already knows. After the
-# examples/ -> example-vault/ rename (and on a fresh machine) this folder isn't a
+# examples/ -> vault-image-toolbar/ rename (and on a fresh machine) this folder isn't a
 # registered vault yet, so Obsidian answers "Unable to find a vault for the URL".
 # Register it in Obsidian's global config now — additive + idempotent, and while
 # Obsidian is quit so the relaunched instance reads it on startup. macOS config path.

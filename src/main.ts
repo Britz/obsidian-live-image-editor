@@ -13,6 +13,7 @@ import { CropEditor } from "./crop-editor";
 import { FilterPanel } from "./filter-panel";
 import { ClassPanel } from "./class-panel";
 import { AnchoredSubmenu } from "./anchored-submenu";
+import { bindRegionHover } from "./region-hover";
 import { buildSizeBody, SizeState } from "./size-submenu";
 import { renderTransformedImage, suggestExportPath, saveExport } from "./export";
 import { scanSnippets, SnippetClass } from "./snippet-scanner";
@@ -28,7 +29,7 @@ import { convertEmbedLine, desiredFormat, splitTail, buildEmbed, LinkFormat } fr
 import { replaceEmbedTarget, planReplaceAll } from "./replace-logic";
 import { ImagePickerModal } from "./replace-picker";
 import { writeSource } from "./source-writer";
-import { clickDismissesToolbar } from "./toolbar-region-logic";
+import { clickDismissesToolbar, isEngaged } from "./toolbar-region-logic";
 import { ensureEditingToolbarButtons } from "./editing-toolbar-integration";
 
 // Shared transform modifiers — used by BOTH the single-image toolbar/command path and the
@@ -55,6 +56,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   private snippetClasses: SnippetClass[] = [];
   private activeImage: HTMLImageElement | null = null;
   private hoverShown = false; // true when the floating toolbar was opened by hover (so it dismisses on hover-out)
+  private floatRegionCleanup: (() => void) | null = null; // unbinds the floating bar's image+bar active region (D6)
   private filterPanel: FilterPanel | null = null;
   private classPanel: ClassPanel | null = null;
   private submenu: AnchoredSubmenu | null = null;
@@ -85,7 +87,9 @@ export default class LiveImageEditorPlugin extends Plugin {
           () => this.app.workspace.getActiveFile()?.path ?? "",
           (img) => this.toolbarItemsForImage(img),
           () => this.settings.showCaptions,
-          () => this.settings.alwaysShowLink
+          () => this.settings.defaultRevealState,
+          () => this.settings.renderImagesInCodeBlocks,
+          () => this.engagedImagePos()
         )
       )
     );
@@ -130,8 +134,16 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<LieSettings>);
+    const raw = ((await this.loadData()) ?? {}) as Partial<LieSettings> & { alwaysShowLink?: boolean };
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
     this.settings.presetWidths = Object.assign({}, DEFAULT_SETTINGS.presetWidths, this.settings.presetWidths);
+    // Migrate the legacy boolean reveal setting (Object.assign won't translate it): a stored
+    // `alwaysShowLink` maps to the three-state `defaultRevealState` — true → "always", false → "auto"
+    // (the old `false` meant "auto / on-hover") — only when the new key was not already persisted.
+    if ("alwaysShowLink" in raw && !("defaultRevealState" in raw)) {
+      this.settings.defaultRevealState = raw.alwaysShowLink ? "always" : "auto";
+    }
+    delete (this.settings as { alwaysShowLink?: boolean }).alwaysShowLink;
   }
 
   async saveSettings(): Promise<void> {
@@ -158,7 +170,11 @@ export default class LiveImageEditorPlugin extends Plugin {
     activeDocument.body.classList.toggle("lie-btn-outline-never", mode === "never");
   }
 
-  private refreshLivePreviewDecorations(): void {
+  // Public so the settings tab can force a live re-render after a setting that affects the LP render
+  // (reveal mode, captions, code-block embeds, toolbar) — otherwise the open editor keeps the old
+  // decorations until an unrelated edit, so the change looks like it "didn't take" (e.g. hover no longer
+  // reveals after switching to auto/always).
+  refreshLivePreviewDecorations(): void {
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
       const view = leaf.view;
       if (!(view instanceof MarkdownView)) continue;
@@ -430,10 +446,43 @@ export default class LiveImageEditorPlugin extends Plugin {
   // dismiss it. (Hover visibility still spans the whole region — that's `REGION_SELECTOR` above.)
   private static readonly PANEL_SELECTOR = ".lie-submenu, .lie-filter-panel, .lie-toolbar";
 
+  // AD12 — the engagement state read through the ONE pure `isEngaged` predicate (toolbar-region-logic),
+  // replacing the per-site `filterPanel || classPanel || submenu || cropEditor` chains. `anyPanelOpen`
+  // is the filter/class/size sub-panel subset (excludes crop); `anySurfaceOpen` is the full
+  // plugin-surface union (panels + crop) — the "is an editing surface holding an image?" check the Esc /
+  // overlay-dismiss / hover-leave paths consult (cursor/hover/selection don't gate THOSE decisions, so
+  // they pass false). The full predicate (adding cursor/hover/selected) drives the reveal pin (AB16b).
+  private anyPanelOpen(): boolean {
+    return !!this.filterPanel || !!this.classPanel || !!this.submenu;
+  }
+  private anySurfaceOpen(): boolean {
+    return isEngaged({ cursorOnLine: false, hover: false, selected: false, panelOpen: this.anyPanelOpen(), cropActive: !!this.cropEditor });
+  }
+
+  // AD12 → AB16b reveal PIN (Bug 86): the document POSITION of the image currently ENGAGED via an open
+  // plugin surface (crop / filter / class / sub-menu), so the LP StateField keeps THAT embed's link
+  // revealed and it does NOT flip mid-interaction whatever the cursor does. The position (not the line)
+  // lets the build pin the exact embed — a standalone occupies the whole line, an inline embed only its
+  // own span, so a sibling inline embed on the same line is NOT over-pinned. null when no surface is open
+  // or the active image can't be resolved. Read fresh by `createLivePreviewExtension`'s build.
+  engagedImagePos(): number | null {
+    if (!this.anySurfaceOpen() || !this.activeImage?.isConnected) return null;
+    const wrapper = this.activeImage.closest<HTMLElement>(".lie-wrapper");
+    if (!wrapper) return null;
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (!(view instanceof MarkdownView)) continue;
+      const cm = (view.editor as unknown as { cm?: EditorView }).cm;
+      if (!cm || !cm.dom.contains(wrapper)) continue;
+      try { return cm.posAtDOM(wrapper); } catch { return null; }
+    }
+    return null;
+  }
+
   private registerImageSelectionHandler(): void {
     this.registerDomEvent(activeDocument, "click", (evt: MouseEvent) => {
       const target = evt.target as HTMLElement;
-      const panelOpen = !!this.filterPanel || !!this.classPanel || !!this.submenu;
+      const panelOpen = this.anyPanelOpen();
       // Re-select an image on click ONLY when the bar is "bare" — no modal panel open, not cropping.
       // While a filter/size panel is open an image click is an OUTSIDE-THE-PANEL click → it must
       // CLOSE+persist the panel (handled below), not re-select. Crop owns its clicks entirely — the
@@ -458,11 +507,14 @@ export default class LiveImageEditorPlugin extends Plugin {
       }
     });
 
-    // HOVER path for images that can't host the in-chrome toolbar (`.lie-float`: too-short
-    // block images flagged by the reflow, and inline icons). They use the SAME toolbar, shown
-    // floating on the body (outside `contain: paint`). One delegated `mouseover` both opens it
-    // (entering a `.lie-float` image) and dismisses it (leaving the image AND the toolbar) —
-    // the floating bar sits over the image, so moving onto it stays "inside" and keeps it.
+    // HOVER path for images that can't host the in-chrome toolbar (`.lie-float`: too-short block
+    // images flagged by the reflow, and inline icons). They use the SAME toolbar, shown floating on the
+    // body (outside `contain: paint`). The delegated `mouseover` OPENS it (entering a `.lie-float`
+    // image); DISMISS is no longer immediate-on-leave — the floating bar now rides the SAME
+    // `bindRegionHover` active region as the panels (D6, `bindFloatRegion`): image + bar are ONE region
+    // with the 160ms travel-grace, so moving image→bar across the gap above the image keeps it (the
+    // floating bar sits ABOVE the image with a gap, so an immediate-on-leave dismiss made it unreachable
+    // for a tiny inline icon). The region governs the dismiss when the whole region is truly left.
     this.registerDomEvent(activeDocument, "mouseover", (evt: MouseEvent) => {
       const target = evt.target;
       if (!(target instanceof HTMLElement)) return;
@@ -473,14 +525,20 @@ export default class LiveImageEditorPlugin extends Plugin {
         if (img && this.settings.showToolbar && this.toolbar.getActiveImage() !== img) {
           this.onImageSelected(img);
           this.hoverShown = true;
+          this.bindFloatRegion(floatWrap);
         }
-        return;
       }
-      // Hover-out dismiss for the floating bar — but never while a sub-panel OR a lightweight palette
-      // is open (the panel/palette is a hover member of the region, D6/Bug 64; the host governs its
-      // own close-on-leave and keeps the bar up until then).
-      if (this.hoverShown && !this.filterPanel && !this.classPanel && !this.submenu && !this.cropEditor &&
-          !activeDocument.querySelector(".lie-group-popup")) {
+    });
+  }
+
+  // Bind the floating bar's image + bar as ONE active region (D6), the SAME `bindRegionHover` the panels
+  // use — so the image→bar travel across the gap above the image is graced (160ms) and the bar stays
+  // reachable. Dismiss fires only when the WHOLE region is left (and no panel/palette governs it).
+  private bindFloatRegion(floatWrap: HTMLElement): void {
+    this.floatRegionCleanup?.();
+    const bar = activeDocument.querySelector<HTMLElement>(".lie-toolbar-floating");
+    this.floatRegionCleanup = bindRegionHover([floatWrap, bar], (active) => {
+      if (!active && !this.anySurfaceOpen() && !activeDocument.querySelector(".lie-group-popup")) {
         this.dismissToolbar();
       }
     });
@@ -489,7 +547,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   private registerToolbarDismissHandlers(): void {
     const overlaySelector = ".modal-container, .menu, .prompt, .suggestion-container";
     const observer = new MutationObserver((mutations) => {
-      if (!this.toolbar.isVisible() && !this.filterPanel && !this.classPanel && !this.submenu && !this.cropEditor) return;
+      if (!this.toolbar.isVisible() && !this.anySurfaceOpen()) return;
       for (const mutation of mutations) {
         for (const node of Array.from(mutation.addedNodes)) {
           if (node.instanceOf(HTMLElement) && node.matches(overlaySelector)) { this.dismissToolbar(); return; }
@@ -501,13 +559,15 @@ export default class LiveImageEditorPlugin extends Plugin {
 
     this.registerDomEvent(activeDocument, "keydown", (evt: KeyboardEvent) => {
       if (evt.key !== "Escape") return;
-      if (this.filterPanel || this.classPanel || this.submenu || this.cropEditor) return;
+      if (this.anySurfaceOpen()) return;
       this.dismissToolbar();
     });
     this.registerDomEvent(window, "blur", () => this.dismissToolbar());
   }
 
   private dismissToolbar(): void {
+    this.floatRegionCleanup?.();
+    this.floatRegionCleanup = null;
     this.closeFilterPanel();
     this.closeClassPanel();
     this.closeSubmenu();
@@ -782,7 +842,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       onReset: () => sizeBody.reset(),
       onCommit: () => this.modifyTransformMulti(editor, locations, (tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; }),
       onCancel: () => { for (const { loc, img } of pairs) applyTransformToImage(img, parseAltText(loc.params)); },
-      onClose: () => { this.submenu = null; },
+      onClose: () => { this.submenu = null; this.refreshLivePreviewDecorations(); },
     });
     this.submenu = submenu;
   }
@@ -799,7 +859,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       onPreview: (f: FilterData) => { for (const { img } of pairs) applyFilterPreview(img, f); },
       onCommit: (f: FilterData) => this.modifyTransformMulti(editor, locations, (tr) => setFilter(tr, Object.keys(f).length ? f : undefined)),
       onCancel: () => { for (const { loc, img } of pairs) applyTransformToImage(img, parseAltText(loc.params)); },
-      onClose: () => { this.filterPanel = null; },
+      onClose: () => { this.filterPanel = null; this.refreshLivePreviewDecorations(); },
     });
     panel.open(null, null, this.multiTitle(locations.length));
     this.filterPanel = panel;
@@ -840,7 +900,7 @@ export default class LiveImageEditorPlugin extends Plugin {
           else if (i < 0) tr.classes.push(className);             // add to those that lack it
         });
       },
-      onClose: () => { this.classPanel = null; },
+      onClose: () => { this.classPanel = null; this.refreshLivePreviewDecorations(); },
     });
     panel.open(null, null, this.multiTitle(locations.length));
     this.classPanel = panel;
@@ -1126,7 +1186,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       // ✗ cancel / Esc (F14): discard — no source write. The source was never touched while open,
       // so re-rendering the live image from its original params restores the pre-open size.
       onCancel: () => applyTransformToImage(this.liveTarget(img), this.locationTransform(location)),
-      onClose: () => { this.submenu = null; },
+      onClose: () => { this.submenu = null; this.refreshLivePreviewDecorations(); },
     });
     this.submenu = submenu;
   }
@@ -1158,7 +1218,7 @@ export default class LiveImageEditorPlugin extends Plugin {
           tr.height = undefined;
         }
       }, location),
-      () => { this.cropEditor = null; }
+      () => { this.cropEditor = null; this.refreshLivePreviewDecorations(); }
     );
     // Set the ref BEFORE open(): if open() can't find the 3-layer structure it self-closes
     // synchronously (calling onClosed → nulls the ref), and a post-open assignment would otherwise
@@ -1187,7 +1247,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       // ✗ cancel / Esc (F14): discard — no source write. Re-render from the untouched source to
       // restore the pre-open filter (and any other transform the live preview painted over).
       onCancel: () => applyTransformToImage(this.liveTarget(img), this.locationTransform(location)),
-      onClose: () => { this.filterPanel = null; },
+      onClose: () => { this.filterPanel = null; this.refreshLivePreviewDecorations(); },
     });
     panel.open(img, this.activeToolbarEl());
     this.filterPanel = panel;
@@ -1232,7 +1292,7 @@ export default class LiveImageEditorPlugin extends Plugin {
         return loc ? parseAltText(loc.location.params).classes : [];
       },
       onToggle: (className: string) => this.applyClass(className),
-      onClose: () => { this.classPanel = null; },
+      onClose: () => { this.classPanel = null; this.refreshLivePreviewDecorations(); },
     });
     panel.open(img, this.activeToolbarEl());
     this.classPanel = panel;

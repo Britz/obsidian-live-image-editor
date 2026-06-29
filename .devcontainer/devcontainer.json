@@ -2,8 +2,12 @@
   "name": "Live Image Editor",
   "dockerFile": "DockerFile",
   "mounts": [
-		"source=${devcontainerId}-claude,target=/home/${localEnv:USER}/.claude,type=volume"
+		"source=${devcontainerId}-claude,target=/home/${localEnv:USER}/.claude,type=volume",
+		"source=/etc/localtime,target=/etc/localtime,type=bind,readonly"
 	],
+  "containerEnv": {
+    "TZ": "${localEnv:TZ}"
+  },
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },

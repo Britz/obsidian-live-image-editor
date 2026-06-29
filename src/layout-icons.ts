@@ -1,8 +1,10 @@
 // The six layout icons (F15) — hand-drawn in the Lucide style (24-grid, 2px stroke, round caps,
 // currentColor), a coherent `gallery-vertical` family: a frame line top + bottom, with the image
-// box positioned (BLOCK) / boxed in a corner with text beside it (FLOAT) / sitting small in a text
-// line (INLINE). Lucide ships no image-to-text-relationship icons (like Word/Google Docs, we draw
-// our own). Registered via Obsidian's `addIcon`, which wraps the content in `<svg viewBox="0 0 100
+// box positioned (BLOCK) / boxed in a corner with text beside it (FLOAT). The five BLOCK/FLOAT states
+// are the HORIZONTAL axis (left/centre/right · float side); INLINE is the orthogonal VERTICAL axis —
+// the text line meets the box at its VERTICAL MIDDLE (vertical-align), so its strokes sit centred on
+// the box, not at the foot. Lucide ships no image-to-text-relationship icons (like Word/Google Docs,
+// we draw our own). Registered via Obsidian's `addIcon`, which wraps the content in `<svg viewBox="0 0 100
 // 100">` — so the 24-grid artwork is scaled by 100/24 (the same device as brand-icon.ts). The
 // source of truth for the artwork is `layout-icons-preview.html` at the repo root — keep in sync.
 import { addIcon } from "obsidian";
@@ -42,7 +44,7 @@ const ART: Record<Layout, string> = {
     '<line x1="3" y1="21" x2="21" y2="21"/>',
   inline:
     '<line x1="3" y1="3" x2="21" y2="3"/><rect x="9.5" y="7.5" width="5" height="9" rx="2"/>' +
-    '<line x1="3" y1="16.5" x2="6" y2="16.5"/><line x1="18" y1="16.5" x2="21" y2="16.5"/><line x1="3" y1="21" x2="21" y2="21"/>',
+    '<line x1="3" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="21" y2="12"/><line x1="3" y1="21" x2="21" y2="21"/>',
 };
 
 // addIcon wraps in `<svg viewBox="0 0 100 100">`; scale the 24-grid by 100/24 and carry the Lucide

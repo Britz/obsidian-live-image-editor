@@ -2,8 +2,8 @@
 // FUNCTIONAL — area D of the suite (test-plan §4): instead of only OBSERVING a pre-set state, this
 // DRIVES the UI like a user (types into the size modal's fields, clicks commit) and then verifies BOTH
 // the visible result (the rendered image width) AND the persisted source `{…}`. Run against a DEV
-// build in example-vault/ with Obsidian + the CDP relay:
-//   node tests/cdp/verify-functional.mjs        (CDP_PORT defaults to 9223, target example-vault)
+// build in vault-image-toolbar/ with Obsidian + the CDP relay:
+//   node tests/cdp/verify-functional.mjs        (CDP_PORT defaults to 9223, target vault-image-toolbar)
 //
 // Checks (size modal — F24/D6.1/AD1):
 //   • type a width      → the image re-renders at that width AND the source persists `width=250`

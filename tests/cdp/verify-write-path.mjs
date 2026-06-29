@@ -7,17 +7,17 @@
 // line, not the first basename match. This is exactly the check Bug 56 slipped through (only the
 // resize handle's `width`, via its separate posAtDOM path, persisted).
 //
-// Prereqs (CLAUDE.md → Live debugging): a dev build installed in example-vault/ and Obsidian running
+// Prereqs (CLAUDE.md → Live debugging): a dev build installed in vault-image-toolbar/ and Obsidian running
 // with the CDP relay. Run from the repo root:
 //   node tests/cdp/verify-write-path.mjs
 // Override the endpoint with CDP_HOST / CDP_PORT / CDP_TARGET (defaults host.containers.internal,
-// 9223 direct to Obsidian's own CDP, target "example-vault").
+// 9223 direct to Obsidian's own CDP, target "vault-image-toolbar").
 import { execFileSync } from "node:child_process";
 
 const env = {
   ...process.env,
   CDP_PORT: process.env.CDP_PORT ?? "9223",
-  CDP_TARGET: process.env.CDP_TARGET ?? "example-vault",
+  CDP_TARGET: process.env.CDP_TARGET ?? "vault-image-toolbar",
 };
 
 // Two evals: the async RUN stashes its JSON result on `window.__WPM` (the bridge does not capture

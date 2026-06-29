@@ -3,7 +3,7 @@
 // (test-plan §1: OBSERVE the visible painted result, not CSS properties — so the checks survive
 // CSS refactors AND Obsidian version changes, the trigger for this whole layer).
 //
-// It connects to a running Obsidian (a DEV build installed in example-vault/ + Obsidian launched
+// It connects to a running Obsidian (a DEV build installed in vault-image-toolbar/ + Obsidian launched
 // with the CDP relay — CLAUDE.md → "Live debugging"), and exposes a tiny async API:
 //   • evaluate(expr)        — run JS in the plugin's renderer, await promises, return the value
 //   • hover(x, y)           — move the REAL pointer so CSS `:hover` fires (synthetic events can't)
@@ -12,7 +12,7 @@
 // plus pure pixel helpers: pixel(img, x, y), parseColor(str), near(a, b, tol).
 //
 // Defaults: CDP_HOST host.containers.internal, CDP_PORT 9223 (DIRECT to Obsidian — the 9222 relay
-// flaps after a plugin reload, CLAUDE.md / Lesson 15), CDP_TARGET "example-vault". Override via env.
+// flaps after a plugin reload, CLAUDE.md / Lesson 15), CDP_TARGET "vault-image-toolbar". Override via env.
 //
 // Why its own WebSocket client (not scripts/obsidian-debug.mjs --eval): the optical checks need the
 // Page (screenshot) and Input (real hover) CDP domains, which the --eval one-shot does not expose.
@@ -23,7 +23,7 @@ import zlib from "node:zlib";
 
 const HOST = process.env.CDP_HOST || "host.containers.internal";
 const PORT = Number(process.env.CDP_PORT || 9223);
-const TARGET_MATCH = process.env.CDP_TARGET || "example-vault";
+const TARGET_MATCH = process.env.CDP_TARGET || "vault-image-toolbar";
 
 function httpGetJson(ip, path) {
   return new Promise((resolve, reject) => {
@@ -131,9 +131,15 @@ export async function connectOptical() {
     });
     return decodePng(Buffer.from(r.data, "base64"));
   };
+  // Make the page behave as permanently focused, so FOCUS-GATED behaviour (LP source-reveal on the
+  // cursor line, `.cm-active`, `:focus-within`) works without a real OS window focus — a programmatic
+  // `cm.focus()` does NOT take otherwise (CLAUDE.md → Live debugging). Needed by the reveal checks.
+  const focusEmulation = async (enabled = true) => {
+    await send("Emulation.setFocusEmulationEnabled", { enabled });
+  };
   const close = () => { try { ws.close(); } catch { /* ignore */ } };
 
-  return { evaluate, hover, screenshot, close };
+  return { evaluate, hover, screenshot, focusEmulation, close };
 }
 
 // ---- minimal PNG decoder (8-bit, colorType 2/6, non-interlaced — what Chrome screenshots emit) ----

@@ -1,6 +1,12 @@
 ARG VARIANT=22
 FROM mcr.microsoft.com/devcontainers/typescript-node:${VARIANT}
 
+# Clock sync — resync the container clock (drift after host sleep on the podman/Docker VM).
+# Guarded: systemd isn't running at build time / on this base image, so a failure must not
+# break the build; the effective TZ sync runs via the /etc/localtime bind + TZ env (see
+# devcontainer.json).
+RUN systemctl restart systemd-timesyncd 2>/dev/null || true
+
 
 ARG USER_NAME=vcode
 ARG USER_UID=1000

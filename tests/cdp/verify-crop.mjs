@@ -14,16 +14,16 @@
 //   • a width edit on a crop PRESERVES transform=/aspect-ratio=;                        (G)
 //   • entering crop does not move the image (no jump/reflow).                           (D8)
 //
-// Prereqs (CLAUDE.md → Live debugging): a DEV build installed in example-vault/ and Obsidian running with
+// Prereqs (CLAUDE.md → Live debugging): a DEV build installed in vault-image-toolbar/ and Obsidian running with
 // the CDP relay. Run from the repo root:  node tests/cdp/verify-crop.mjs
 // Override the endpoint with CDP_HOST / CDP_PORT / CDP_TARGET (defaults: host.containers.internal,
-// 9223 direct to Obsidian's own CDP, target "example-vault").
+// 9223 direct to Obsidian's own CDP, target "vault-image-toolbar").
 import { execFileSync } from "node:child_process";
 
 const env = {
   ...process.env,
   CDP_PORT: process.env.CDP_PORT ?? "9223",
-  CDP_TARGET: process.env.CDP_TARGET ?? "example-vault",
+  CDP_TARGET: process.env.CDP_TARGET ?? "vault-image-toolbar",
 };
 
 const EVAL_RUN = `(async () => {

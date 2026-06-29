@@ -14,6 +14,11 @@ export const URL_BRACE_CLASS = "cm-formatting cm-formatting-link-string cm-strin
 // Obsidian renders its own (full-size) inline image and shows the `{…}` as text.
 const INLINE_EMBED = /(!\[[^\]]*\]\([^)]*\)|!\[\[[^\]]+\]\])(\{[^}]*\})?/g;
 
+// Every embed on a line that CARRIES a `{…}` attr list (the `{…}` is required, group 2) — used to
+// highlight the `{…}` as link syntax in SOURCE mode for EVERY embed, standalone AND inline (the
+// whole-line EMBED_LINE would skip an embed with text/char around it). Global; reset lastIndex per use.
+const EMBED_WITH_ATTR = /(!\[[^\]]*\]\([^)]+\)|!\[\[[^\]]+\]\])(\{[^}]*\})/g;
+
 export interface InlineEmbed { from: number; to: number; embed: string; params: string; }
 
 /**
@@ -49,21 +54,27 @@ export type LineDecoration =
  * marked as link syntax.
  */
 export function lineDecorations(lineText: string, lineFrom: number, isLivePreview: boolean): LineDecoration[] {
-  const match = EMBED_LINE.exec(lineText);
-  if (!match) return [];
-
   if (isLivePreview) {
+    // LP: a STANDALONE embed line becomes one widget descriptor (the adapter chooses replace vs overlay).
+    const match = EMBED_LINE.exec(lineText);
+    if (!match) return [];
     const block = match[3];
     return [{ kind: "widget", from: lineFrom, to: lineFrom + lineText.length, embed: match[2] ?? "", params: block ? block.slice(1, -1) : "" }];
   }
 
-  const block = match[3];
-  if (!block) return [];
-  const start = lineFrom + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
-  const end = start + block.length;
-  const decorations: LineDecoration[] = [{ kind: "mark", from: start, to: start + 1, class: URL_BRACE_CLASS }];
-  if (end - 1 > start + 1) decorations.push({ kind: "mark", from: start + 1, to: end - 1, class: URL_CLASS });
-  decorations.push({ kind: "mark", from: end - 1, to: end, class: URL_BRACE_CLASS });
+  // SOURCE mode: highlight EVERY embed's {…} attr list as link syntax (braces = formatting, inside = url
+  // string). Scan the WHOLE line — standalone AND inline — because the whole-line EMBED_LINE would skip
+  // an embed that has text/a trailing char around it, leaving its {…} un-highlighted (the inline-source bug).
+  const decorations: LineDecoration[] = [];
+  EMBED_WITH_ATTR.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = EMBED_WITH_ATTR.exec(lineText)) !== null) {
+    const start = lineFrom + m.index + (m[1]?.length ?? 0);
+    const end = start + (m[2]?.length ?? 0);
+    decorations.push({ kind: "mark", from: start, to: start + 1, class: URL_BRACE_CLASS });
+    if (end - 1 > start + 1) decorations.push({ kind: "mark", from: start + 1, to: end - 1, class: URL_CLASS });
+    decorations.push({ kind: "mark", from: end - 1, to: end, class: URL_BRACE_CLASS });
+  }
   return decorations;
 }
 
@@ -83,6 +94,12 @@ export function rewriteWidth(lineText: string, width: number): string | null {
 // here so it can be tested without CodeMirror. `dismissed` holds the line-start positions whose
 // source the `<>` toggle has hidden; `hoveredLine` is the line-start of the mouse-hovered image.
 
+// The natural reveal mode for the link source (the global *default raw-link reveal state*, F8/AD11):
+// "native" = the source shows ONLY on the active (cursor) line (the default); "auto" = additionally on
+// cm-line HOVER of the image's line; "always" = everywhere. The `<>` dismiss is a SEPARATE per-line
+// override on top of this — not a fourth mode.
+export type RevealMode = "native" | "auto" | "always";
+
 /** Line-start positions = keys; the transient reveal state the StateField tracks. */
 export interface RevealState {
   dismissed: Set<number>;
@@ -97,24 +114,26 @@ export interface RevealEvents {
   toggles: number[];
   /** Image hover enter/leave events this transaction (line-start + on/off). */
   hovers: { line: number; on: boolean }[];
-  /** The cursor's current line-start (the "active" line that naturally reveals). */
+  /** The cursor's current line-start (the "active" line that naturally reveals in every mode). */
   activeLineFrom: number;
-  /** The global default-state setting: true = always-reveal mode (no auto-clear). */
-  alwaysShow: boolean;
+  /** The global default-state setting (native / auto / always) — drives the auto-clear. */
+  mode: RevealMode;
 }
 
 /**
  * Compute the next reveal state from the previous one and a transaction's events. Pure.
  *
  * - `<>` toggles add/remove the line from `dismissed`; hover enter/leave tracks `hoveredLine`.
- * - AUTO-CLEAR (auto mode only): a dismissed line that is NaturalReveal:false — neither the active
- *   (cursor) line nor hovered — resets, so the dismiss clears when you LEAVE the image (not sticky
- *   across visits). A line toggled THIS transaction is exempt: a fresh `<>` dismiss always takes
- *   effect in its own transaction and only auto-clears on a LATER leave/cursor-move. This makes the
- *   "clear on leave, not within a visit" intent hold for EVERY input path (mouse, and the
- *   `:focus-within`/keyboard path where no prior `mouseenter` set `hoveredLine`), instead of relying
- *   on the implicit invariant that the control is only reachable while the image is hovered.
- * - In always mode NaturalReveal is never false, so a dismiss persists until toggled again / reload.
+ * - AUTO-CLEAR (native & auto modes): a dismissed line that is NaturalReveal:false resets, so the
+ *   dismiss clears when you LEAVE the image (not sticky across visits). "NaturalReveal" follows the
+ *   mode: NATIVE → the active (cursor) line only; AUTO → the active line OR the hovered line. (The
+ *   broader AD12 ENGAGED pin — keeping a dismiss while a crop / filter / class / sub-menu panel holds
+ *   the image — is the reveal-DISPLAY freeze layered on top in the StateField/CSS, CDP-gated, Bug 86;
+ *   ENGAGED ⊇ cursor∪hover, so it only ever KEEPS a dismiss longer, never clears one earlier than this.)
+ * - A line toggled THIS transaction is exempt: a fresh `<>` dismiss always takes effect in its own
+ *   transaction and only auto-clears on a LATER leave/cursor-move — so the intent holds for EVERY input
+ *   path (mouse, and the `:focus-within`/keyboard path where no prior `mouseenter` set `hoveredLine`).
+ * - In ALWAYS mode NaturalReveal is never false, so a dismiss persists until toggled again / reload.
  *
  * Returns the SAME `dismissed` reference when nothing changed it (so the StateField can skip a
  * rebuild) and a NEW one when it did — the lazy-clone contract the caller relies on.
@@ -136,12 +155,88 @@ export function reduceReveal(prev: RevealState, ev: RevealEvents): RevealState {
   for (const h of ev.hovers) {
     hoveredLine = h.on ? h.line : (hoveredLine === h.line ? null : hoveredLine);
   }
-  if (!ev.alwaysShow && dismissed.size) {
+  if (ev.mode !== "always" && dismissed.size) {
     const justToggled = new Set(ev.toggles);
+    // Keep a dismiss only where the source naturally reveals for the mode (so it clears on leave).
+    const naturallyRevealed = (lineFrom: number): boolean =>
+      lineFrom === ev.activeLineFrom || (ev.mode === "auto" && lineFrom === hoveredLine);
     for (const lineFrom of [...dismissed]) {
       if (justToggled.has(lineFrom)) continue; // a fresh dismiss survives its own transaction
-      if (lineFrom !== ev.activeLineFrom && lineFrom !== hoveredLine) { mutate(); dismissed.delete(lineFrom); }
+      if (!naturallyRevealed(lineFrom)) { mutate(); dismissed.delete(lineFrom); }
     }
   }
   return { dismissed, hoveredLine };
+}
+
+// ---- AB16b: the WHOLE-link reveal decision (F8/F9, D16/D17) — pure, unit-testable -------------------
+// The architectural CORE of the rework: the plugin is the SINGLE AUTHORITY over the link and DRIVES
+// the outcome from Obsidian's OWN parse, it does NOT react to the DOM. Given an embed's parse-derived
+// spans (is the cursor within the BODY `![](…)` span? within the `{…}` span?) plus the mode / dismiss /
+// engaged state, it computes — by construction (D16) — what to render. The StateField turns this into a
+// TOP-DOWN line marker class; the CSS keys on it with plain parent→child selectors (no `:has`).
+
+/** One embed's reveal-relevant inputs, all derived by the caller from the parse spans + selection. */
+export interface LinkRevealInput {
+  /** The global default reveal mode (F8): native = active line only, auto = + hover, always = everywhere. */
+  mode: RevealMode;
+  /** This image's source is `<>`-dismissed (transient, F8). */
+  dismissed: boolean;
+  /** The plugin is engaged with this image (AD12) — the reveal is PINNED (does not flip, Bug 86). */
+  engaged: boolean;
+  /** The cursor/selection is on this embed's line (the "active line"). */
+  onLine: boolean;
+  /** This embed's line is pointer-hovered (only matters in auto mode). */
+  hovered: boolean;
+  /** The selection intersects the parse-given BODY span (`![](…)` / `![[…]]`) — Obsidian's own reveal condition. */
+  cursorInBody: boolean;
+  /** The selection intersects the `{…}` attribute span. */
+  cursorInAttr: boolean;
+}
+
+/** What to render for the whole link. The body shows as EITHER the native raw link OR the stand-in. */
+export interface LinkRevealState {
+  /** Paint the plugin's display-only stand-in (fake) raw link (AB16a). */
+  showStandIn: boolean;
+  /** RESERVE the stand-in's source box (width+height) even while hidden, as an invisible placeholder, so
+   *  the image never reflows when the reveal toggles. False ONLY when the native carries the body
+   *  (`cursorInBody`) — then it must collapse, else the box is reserved twice (native + stand-in) and the
+   *  line over-flows/wraps. `showStandIn ⇒ reserveStandIn` (a shown stand-in is reserved+visible). */
+  reserveStandIn: boolean;
+  /** Show the `{…}` attribute list (always in lock-step with the body — D17). */
+  showAttr: boolean;
+  /** Actively suppress Obsidian's OWN native raw-link reveal (only on a `<>` dismiss — Bug 65). */
+  suppressNative: boolean;
+}
+
+/**
+ * Resolve the whole-link reveal from the parse-derived inputs (AB16b). Pure (Lesson 6).
+ *
+ *  - **dismissed** → the whole link is hidden AND Obsidian's native raw link is **actively suppressed**
+ *    (Bug 65) — the plugin overrides even where Obsidian would reveal.
+ *  - **engaged** → the link is shown and PINNED (it does not flip while a crop/panel holds the image,
+ *    so the line never reflows mid-interaction — Bug 86).
+ *  - otherwise the link reveals **for looking** per the mode (native: the active line; auto: + hover;
+ *    always: everywhere), OR whenever the cursor sits **anywhere on the link** (body or `{…}`).
+ *  - **Mutual exclusion BY CONSTRUCTION (D16):** when the cursor is within the BODY span Obsidian reveals
+ *    the native raw link, so the stand-in is hidden; otherwise the stand-in carries the body. The `{…}`
+ *    shows/hides as ONE WHOLE with the body (D17) — so the native↔stand-in swap at the body/`{…}`
+ *    boundary is seamless and the whole link stays visible while the cursor is anywhere on it.
+ */
+export function resolveLinkReveal(ev: LinkRevealInput): LinkRevealState {
+  // Dismiss hides everything AND suppresses the native (Bug 65) — and collapses the reserve (the user
+  // explicitly cleared the source; no placeholder gap is left behind).
+  if (ev.dismissed) return { showStandIn: false, reserveStandIn: false, showAttr: false, suppressNative: true };
+  const naturalShow =
+    ev.engaged ||
+    ev.mode === "always" ||
+    ev.onLine ||
+    (ev.mode === "auto" && ev.hovered);
+  const show = naturalShow || ev.cursorInBody || ev.cursorInAttr;
+  // The stand-in HOLDS the source box whenever the native is NOT carrying the body — visible when
+  // revealed, an invisible placeholder otherwise — so the box stays constant and the image never
+  // reflows. It collapses ONLY when the cursor is within the body (native carries the identical box).
+  const reserveStandIn = !ev.cursorInBody;
+  if (!show) return { showStandIn: false, reserveStandIn, showAttr: false, suppressNative: false };
+  // Cursor within the body → native carries it (hide the stand-in); otherwise the stand-in carries it.
+  return { showStandIn: !ev.cursorInBody, reserveStandIn, showAttr: true, suppressNative: false };
 }

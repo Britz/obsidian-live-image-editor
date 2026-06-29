@@ -30,7 +30,7 @@ nudged slightly up-and-left. Re-open the editor and you'll see the **same** cut 
 a reset to the full image: the stored `transform=` / `aspect-ratio=` round-trips exactly. Resizing
 the width afterwards keeps the cut intact and simply rescales it with the column.
 
-![](images/sample-landscape.png){transform="translate(-12%, -6%) scale(1.4)" aspect-ratio=4/3 width=300}
+![](images/sample-landscape.png){transform="translate(-12%, -6%) scale(1.4)" aspect-ratio=4/3 width=300}.
 
 ## A centred square crop of the square sample
 

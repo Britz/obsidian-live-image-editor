@@ -1,9 +1,10 @@
 import { App, TFile, editorLivePreviewField, setIcon } from "obsidian";
-import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
+import { EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
+import { syntaxTree, ensureSyntaxTree } from "@codemirror/language";
 import { parseAltText, getWidthPx, getHeightPx, applyNativeSize, ImageTransform } from "./transforms";
 import { parseEmbedLine } from "./link-format";
-import { lineDecorations, inlineEmbeds, rewriteWidth, reduceReveal, EMBED_LINE, URL_CLASS } from "./live-preview-logic";
+import { lineDecorations, rewriteWidth, reduceReveal, resolveLinkReveal, URL_CLASS, RevealMode } from "./live-preview-logic";
 import { estimatedBlockHeight } from "./renderer-logic";
 import { captionMarkdown, createCaption, CaptionHandle } from "./caption";
 import { buildLayers as applyTransformToImage } from "./render-core";
@@ -20,14 +21,10 @@ const toggleReveal = StateEffect.define<number>();
 // Whether a line's image is mouse-hovered (line-start pos), so the auto-clear can tell when the
 // source is NaturalReveal:false (neither hovered nor the cursor's active line).
 const setHover = StateEffect.define<{ line: number; on: boolean }>();
-// Suppresses a `<>`-dismissed line's source, overriding the natural reveal. Added as a LINE
-// decoration so the CSS (`.lie-dismissed .lie-fake-link/.lie-attr`) can hide it.
-const DISMISSED_LINE = Decoration.line({ class: "lie-dismissed" });
 
-// Natural-reveal mode for the link source: "auto" = on cm-line hover / the active line; "always"
-// = everywhere (the global default-state setting). The `<>` dismiss is a SEPARATE per-line
-// override on top of this — no longer a third mode.
-type RevealMode = "auto" | "always";
+// `RevealMode` (native / auto / always) is the natural-reveal mode for the link source — defined in
+// live-preview-logic.ts (the pure layer) alongside `reduceReveal`. The `<>` dismiss is a SEPARATE
+// per-line override on top of it — not a fourth mode.
 // "standalone" = a `{…}` embed: an inline widget in the embed's OWN (non-BFC) cm-line, so
 // lie-left/right floats escape into `.cm-content` and wrap the following lines (R0). "block"
 // = a BARE (block-promoted, no cm-line) embed: a block:true `.cm-content` child, since an
@@ -71,11 +68,14 @@ function highlightEmbed(embed: string): DocumentFragment {
 // ONLY thing standing in for the native embed text; CSS shows it together with the
 // native `{…}` per the reveal mode, never alongside a native render of the same source.
 class FakeLinkWidget extends WidgetType {
-  constructor(private embed: string, private mode: RevealMode) { super(); }
-  eq(o: FakeLinkWidget): boolean { return o.embed === this.embed && o.mode === this.mode; }
+  // `show` = the AB16b decision (resolveLinkReveal.showStandIn) for THIS embed — per-embed, so the one
+  // uniform mechanism drives standalone, inline and bare alike. Visibility rides the `lie-show` class
+  // (CSS, no `:has`); `show` is in `eq()` so the widget re-renders when the reveal flips.
+  constructor(private embed: string, private show: boolean) { super(); }
+  eq(o: FakeLinkWidget): boolean { return o.embed === this.embed && o.show === this.show; }
   toDOM(): HTMLElement {
     const el = activeDocument.createElement("span");
-    el.className = `lie-fake-link lie-rev-${this.mode}`;
+    el.className = this.show ? "lie-fake-link lie-show" : "lie-fake-link";
     el.setAttribute("contenteditable", "false");
     el.appendChild(highlightEmbed(this.embed));
     return el;
@@ -96,17 +96,49 @@ class EmbedWidget extends WidgetType {
     private sourcePath: string,
     private getActions: (img: HTMLImageElement) => ToolbarItem[],
     private mode: WidgetMode,
-    private revealMode: RevealMode,
+    // Block (bare-embed) mode hosts the stand-in raw link INSIDE this widget (a bare embed is
+    // block-promoted, so an inline stand-in decoration is swallowed). `showStandIn`/`reserveStandIn`
+    // ride eq() so a reveal flip makes eq() false — but `updateDOM` then mutates ONLY the stand-in's
+    // class in place; the image + its ASYNC caption are NOT rebuilt (no flicker / resize-affordance 1c).
+    private showStandIn: boolean,
+    private reserveStandIn: boolean,
     private showCaptions: boolean,
     private dismissed: boolean
   ) {
     super();
   }
 
-  private sig(): string {
-    return `${this.embed}|${this.params}|${this.sourcePath}|${this.mode}|${this.revealMode}|${this.showCaptions}|${this.dismissed}`;
+  // eq() includes the reveal state → a flip is "not equal" → CM offers `updateDOM` (below), which
+  // updates the stand-in in place when only the reveal changed.
+  private sig(): string { return `${this.structuralSig()}|${this.showStandIn}|${this.reserveStandIn}`; }
+  // Everything that REQUIRES a full rebuild (all but the reveal). Stored on the wrapper so `updateDOM`
+  // can tell a reveal-only flip (mutate in place) from a structural change (recreate).
+  private structuralSig(): string {
+    return `${this.embed}|${this.params}|${this.sourcePath}|${this.mode}|${this.showCaptions}|${this.dismissed}`;
   }
   eq(other: EmbedWidget): boolean { return this.sig() === other.sig(); }
+
+  // A reveal flip (cursor on/off the line, hover) changes only showStandIn/reserveStandIn. Rather than
+  // let CM destroy + rebuild this widget (which would re-create the async caption → flicker / 1c), update
+  // the hosted block stand-in's reserve-triad class IN PLACE and keep the DOM. Return false on a real
+  // structural change so CM recreates as normal.
+  updateDOM(dom: HTMLElement): boolean {
+    if (dom.dataset["lieStruct"] !== this.structuralSig()) return false;
+    if (this.mode === "block") {
+      const fake = dom.querySelector<HTMLElement>(".lie-fake-link-block");
+      if (fake) fake.className = this.blockFakeClass();
+    }
+    return true;
+  }
+
+  // The bare stand-in's reserve-triad class (collapse · reserve-invisible `lie-reserve` · reserve-visible
+  // `lie-reserve lie-show`). `showStandIn ⇒ reserveStandIn`, so a shown stand-in is reserved+visible.
+  private blockFakeClass(): string {
+    const cls = ["lie-fake-link", "lie-fake-link-block"];
+    if (this.reserveStandIn) cls.push("lie-reserve");
+    if (this.showStandIn) cls.push("lie-show");
+    return cls.join(" ");
+  }
 
   // The {…} block transform with the native wikilink/markdown size (the alias/alt size token of
   // `this.embed`, e.g. `![[img|160]]`) folded in — the block wins (Bug 94). Used by every render
@@ -128,25 +160,29 @@ class EmbedWidget extends WidgetType {
 
   toDOM(view: EditorView): HTMLElement {
     const wrapper = activeDocument.createElement("div");
-    // Inline icons never carry an in-chrome toolbar (too small) — flag them `lie-float` so
-    // the plugin shows the floating toolbar on hover (standalone/block widgets get the flag
-    // dynamically from the reflow when they turn out too short).
+    // The chrome ASSEMBLY below is UNIFORM across all three modes (one path, no inline fork) — only the
+    // wrapper class differs, for CSS placement. `lie-float` just routes to the FLOATING toolbar instead
+    // of the in-chrome one (a mid-text icon has no room for the in-chrome bar); standalone/block get the
+    // flag dynamically from the reflow when too short, inline carries it by default.
     wrapper.className =
       this.mode === "inline" ? "lie-wrapper lie-wrapper-inline lie-float"
       : this.mode === "standalone" ? "lie-wrapper lie-wrapper-standalone"
       : "lie-wrapper lie-wrapper-block";
     wrapper.setAttribute("contenteditable", "false");
+    wrapper.dataset["lieStruct"] = this.structuralSig(); // updateDOM keys reveal-only flips off this
 
     const file = this.resolveFile();
     if (!file) { wrapper.textContent = this.embed; return wrapper; }
 
-    if (this.mode === "inline") {
-      const inlineImg = activeDocument.createElement("img");
-      inlineImg.src = this.app.vault.getResourcePath(file);
-      inlineImg.dataset["lieSrc"] = file.path;
-      wrapper.appendChild(inlineImg);
-      applyTransformToImage(inlineImg, this.parsedTransform());
-      return wrapper;
+    // AB16b — the BARE embed's stand-in raw link, hosted here (no cm-line to carry an inline stand-in
+    // decoration when block-promoted). Its reveal-triad class flips IN PLACE via `updateDOM`, so a reveal
+    // change never rebuilds this widget's image/caption (the flicker / 1c regression). Same CSS as before.
+    if (this.mode === "block") {
+      const fake = activeDocument.createElement("span");
+      fake.className = this.blockFakeClass();
+      fake.setAttribute("contenteditable", "false");
+      fake.appendChild(highlightEmbed(this.embed));
+      wrapper.appendChild(fake);
     }
 
     const area = activeDocument.createElement("div");
@@ -277,93 +313,124 @@ interface LivePreviewState {
   decorations: DecorationSet;
 }
 
+// AD10 — embed detection IS Obsidian's OWN logic: the embeds are ENUMERATED from the editor
+// `syntaxTree` (the parse), not found by a parallel regex. A markdown embed begins at an `image-marker`
+// node (the `!` of `![`), a wikilink embed at a `formatting-embed` node (the `![[`) — CDP-grounded
+// against Obsidian's real node names (probe-tree). A code-block `![](…)` carries NEITHER (only
+// `hmd-codeblock`), so it is excluded BY CONSTRUCTION — no separate code check. The regex below only
+// PARSES the span the parse located (the `![…](…)`/`![[…]]` body + the trailing `{…}` attr list, which
+// is plain text after the embed, not a markdown node). Placement (standalone / bare-block / inline) is
+// read from the line around the located span ("model from the parse, placement from reality").
+const EMBED_AT = /^(!\[[^\]]*\]\([^)]+\)|!\[\[[^\]]+\]\])(\{[^}]*\})?/;
+interface TreeEmbed { from: number; embedEnd: number; attrEnd: number; embed: string; params: string; mode: WidgetMode; }
+
+function collectEmbeds(state: EditorState, includeCode: boolean): TreeEmbed[] {
+  const out: TreeEmbed[] = [];
+  const doc = state.doc;
+  const seen = new Set<number>();
+  const addAt = (from: number): void => {
+    if (seen.has(from)) return;
+    const line = doc.lineAt(from);
+    const m = EMBED_AT.exec(doc.sliceString(from, line.to));
+    if (!m) return;
+    seen.add(from);
+    const embed = m[1] ?? "";
+    const embedEnd = from + embed.length;
+    const attr = m[2] ?? "";
+    const attrEnd = embedEnd + attr.length;
+    const standalone = doc.sliceString(line.from, from).trim() === "" && doc.sliceString(attrEnd, line.to).trim() === "";
+    const mode: WidgetMode = !standalone ? "inline" : attr ? "standalone" : "block";
+    out.push({ from, embedEnd, attrEnd, embed, params: attr ? attr.slice(1, -1) : "", mode });
+  };
+  let parsed = false;
+  try {
+    // ensureSyntaxTree forces the parse up to the END of the document (not just the incrementally-parsed
+    // / viewport region), so embeds on lower lines are found in the SAME build — otherwise they'd only
+    // appear on a later unrelated transaction. Null on timeout (huge doc) → fall back to syntaxTree +
+    // the regex scan below (fail-open).
+    const full = ensureSyntaxTree(state, doc.length, 100);
+    const cursor = (full ?? syntaxTree(state)).cursor();
+    do { if (/image-marker|formatting-embed/.test(cursor.name)) addAt(cursor.from); } while (cursor.next());
+    parsed = full !== null;
+  } catch { /* parse unavailable → regex fail-open below */ }
+  // F20 "render images in code blocks" re-includes the code-section embeds the parse excluded; and if
+  // the full parse was unavailable (timeout/error), fail OPEN via a regex scan so embeds never vanish.
+  if (includeCode || !parsed) {
+    const re = /!\[[^\]]*\]\([^)]+\)|!\[\[[^\]]+\]\]/g;
+    for (let i = 1; i <= doc.lines; i++) {
+      const line = doc.line(i); re.lastIndex = 0; let mm: RegExpExecArray | null;
+      while ((mm = re.exec(line.text)) !== null) addAt(line.from + mm.index);
+    }
+  }
+  out.sort((a, b) => a.from - b.from);
+  return out;
+}
+
 export function createLivePreviewExtension(
   app: App,
   getSourcePath: () => string,
   getActions: (img: HTMLImageElement) => ToolbarItem[],
   getShowCaptions: () => boolean,
-  getAlwaysShow: () => boolean
+  getRevealMode: () => RevealMode,
+  getRenderInCodeBlocks: () => boolean,
+  getEngagedPos: () => number | null
 ) {
   const build = (
     state: import("@codemirror/state").EditorState,
-    dismissed: Set<number>
+    dismissed: Set<number>,
+    hoveredLine: number | null
   ): DecorationSet => {
     const builder = new RangeSetBuilder<Decoration>();
     const isLivePreview = state.field(editorLivePreviewField);
     const sourcePath = getSourcePath();
     const showCaptions = getShowCaptions();
-    const revealMode: RevealMode = getAlwaysShow() ? "always" : "auto";
+    const revealMode: RevealMode = getRevealMode();
+    const renderInCode = getRenderInCodeBlocks(); // F20 — the lone override of the AD10 code-block exclusion
+    const engagedPos = getEngagedPos();           // AD12 — the position of the image engaged via a panel/crop (pin, Bug 86)
+    const head = state.selection.main.head;
 
-    for (let i = 1; i <= state.doc.lines; i++) {
-      const line = state.doc.line(i);
-      for (const d of lineDecorations(line.text, line.from, isLivePreview)) {
-        if (d.kind === "widget") {
-          const isDismissed = dismissed.has(d.from);
-          const m = EMBED_LINE.exec(line.text);
-          const embedEnd = d.from + (m?.[1]?.length ?? 0) + d.embed.length;
-          // The reveal is DECLARATIVE in CSS: the fake link + {…} ride on the mode class plus
-          // Obsidian's `.cm-active` / cm-line hover; the fake yields to the native source via
-          // `.cm-line:has(> .cm-formatting)`. A `<>`-dismissed line additionally gets a
-          // `.lie-dismissed` LINE class that overrides (hides) the source until it auto-resets
-          // (auto: on leave — neither hovered nor active; always: until `<>` again / reload).
-          // (0) The dismiss flag on the line.
-          if (isDismissed) builder.add(d.from, d.from, DISMISSED_LINE);
-          // (1) The fake link (the swallowed embed source).
-          builder.add(d.from, d.from, Decoration.widget({ widget: new FakeLinkWidget(d.embed, revealMode), side: -1 }));
-          // (2) The {…} block — NATIVE editable text, marked. It rides `lie-attr lie-rev-<mode>`
-          // (so CSS shows/hides it per mode + the dismiss, F3) AND carries the CM url-string token
-          // classes (`cm-string cm-url`, = URL_CLASS) so the revealed block is SYNTAX-HIGHLIGHTED
-          // like a (url) string (Bug 55: the bare-key/inline-widget migration had dropped the
-          // highlight). Crucially NOT `cm-formatting` — that would make the cm-line match
-          // `:has(> .cm-formatting)`, the heuristic that detects Obsidian's OWN native source
-          // reveal, and wrongly hide the fake link (regression caught by scripts/verify-reveal.mjs).
-          if (m && m[3]) {
-            builder.add(embedEnd, embedEnd + m[3].length, Decoration.mark({ class: `lie-attr lie-rev-${revealMode} ${URL_CLASS}` }));
-          }
-          // (3) The transformed image — UNIFORM: the plugin always draws it, and the native
-          // image is always CSS-suppressed. A `{…}` embed keeps Obsidian's cm-line, so it is an
-          // INLINE widget in that line (a lie-left/right float then escapes into `.cm-content`
-          // and wraps the following lines; the fake-link + {…} share the line, R0). A BARE
-          // `![](…)` line (no `{…}`) is BLOCK-PROMOTED by Obsidian into a cm-line-less
-          // `.cm-content` child that swallows an inline widget — so render a BLOCK widget
-          // (block:true) for it, which lands as its own `.cm-content` child next to the
-          // (image-suppressed) native embed. `m[3]` is the `{…}` token: absent ⇒ bare.
-          const isBare = !(m && m[3]);
-          builder.add(
-            d.to, d.to,
-            isBare
-              ? Decoration.widget({
-                  widget: new EmbedWidget(app, d.embed, d.params, sourcePath, getActions, "block", revealMode, showCaptions, isDismissed),
-                  block: true, side: 1,
-                })
-              : Decoration.widget({
-                  widget: new EmbedWidget(app, d.embed, d.params, sourcePath, getActions, "standalone", revealMode, showCaptions, isDismissed),
-                  side: 1,
-                })
-          );
-        } else {
-          builder.add(d.from, d.to, Decoration.mark({ class: d.class }));
+    if (isLivePreview) {
+      // AD10 — the embeds come from Obsidian's OWN parse (collectEmbeds enumerates the syntaxTree image/
+      // embed nodes); the regex only PARSED each located span. ONE uniform AB16b mechanism then builds
+      // standalone / bare-block / inline from the same per-embed decision — no `:has`, no `.cm-active` guess.
+      for (const e of collectEmbeds(state, renderInCode)) {
+        const line = state.doc.lineAt(e.from);
+        const isDismissed = e.mode !== "inline" && dismissed.has(line.from);
+        const reveal = resolveLinkReveal({
+          mode: revealMode,
+          dismissed: isDismissed,
+          engaged: engagedPos !== null && engagedPos >= e.from && engagedPos <= e.attrEnd, // AD12 pin (Bug 86)
+          onLine: head >= line.from && head <= line.to,
+          hovered: line.from === hoveredLine,
+          cursorInBody: head >= e.from && head <= e.embedEnd,        // D16: cursor in the body → native carries it
+          cursorInAttr: e.attrEnd > e.embedEnd && head >= e.embedEnd && head <= e.attrEnd,
+        });
+        // Line-level (standalone / bare only): the dismiss + the ACTIVE suppression of Obsidian's OWN
+        // native raw link (Bug 65) ride the cm-line; the per-element show/hide is on the elements below.
+        if (e.mode !== "inline") {
+          const lineCls = [isDismissed ? "lie-dismissed" : "", reveal.suppressNative ? "lie-suppress-native" : ""].filter(Boolean).join(" ");
+          if (lineCls) builder.add(line.from, line.from, Decoration.line({ class: lineCls }));
         }
+        // (1) The stand-in fake link — per-embed `lie-show` from the AB16b decision (standalone/inline;
+        //     for a block embed it is swallowed off-line — the bare stand-in is hosted in the widget at (3)).
+        builder.add(e.from, e.from, Decoration.widget({ widget: new FakeLinkWidget(e.embed, reveal.showStandIn), side: -1 }));
+        // (2) The {…} attr list — NATIVE editable text, marked + url-string highlighted (URL_CLASS, no
+        //     cm-formatting — Bug 55), `lie-show` per the decision (shows/hides as one whole with the body, D17).
+        if (e.attrEnd > e.embedEnd) {
+          builder.add(e.embedEnd, e.attrEnd, Decoration.mark({ class: reveal.showAttr ? `lie-attr lie-show ${URL_CLASS}` : `lie-attr ${URL_CLASS}` }));
+        }
+        // (3) The plugin's own transformed image (native image CSS-suppressed). A bare embed (no `{…}`) is
+        //     block-promoted by Obsidian → a `block:true` widget that HOSTS the stand-in; the reveal flip is
+        //     applied via `updateDOM` (in place) so the image + caption are never rebuilt (no flicker / 1c).
+        const w = new EmbedWidget(app, e.embed, e.params, sourcePath, getActions, e.mode, e.mode === "block" ? reveal.showStandIn : false, e.mode === "block" ? reveal.reserveStandIn : false, showCaptions, isDismissed);
+        builder.add(e.attrEnd, e.attrEnd, e.mode === "block" ? Decoration.widget({ widget: w, block: true, side: 1 }) : Decoration.widget({ widget: w, side: 1 }));
       }
-      if (isLivePreview) {
-        // Inline (mid-text / in-list) embeds get the SAME reveal machinery as the standalone path
-        // (architecture AB16: "Inline embeds get the same widget; only chrome placement differs"). The
-        // OLD cursor-skipped `Decoration.replace` DEVIATED from that: when the cursor entered the embed
-        // the replace was dropped, so the native image (uniformly CSS-suppressed) vanished and the bare
-        // `{…}` was left as stray text with NO link (Bug 100; the "double"/missing-attr reveal glitches).
-        // Now — exactly like standalone — we never replace and never skip on the cursor: a fake link paints
-        // the source for the reveal-for-looking, the `{…}` is a marked + highlighted native text, and the
-        // plugin draws its own INLINE image widget after it. The native embed stays (image CSS-suppressed).
-        for (const ie of inlineEmbeds(line.text, line.from)) {
-          const attrStart = ie.from + ie.embed.length;
-          // (1) The fake link (the source), revealed on cursor/hover via CSS.
-          builder.add(ie.from, ie.from, Decoration.widget({ widget: new FakeLinkWidget(ie.embed, revealMode), side: -1 }));
-          // (2) The {…} block — native editable text, marked + url-string highlighted (as standalone).
-          if (ie.to > attrStart) {
-            builder.add(attrStart, ie.to, Decoration.mark({ class: `lie-attr lie-rev-${revealMode} ${URL_CLASS}` }));
-          }
-          // (3) The transformed inline image widget, drawn by the plugin (native image suppressed).
-          builder.add(ie.to, ie.to, Decoration.widget({ widget: new EmbedWidget(app, ie.embed, ie.params, sourcePath, getActions, "inline", revealMode, false, false), side: 1 }));
+    } else {
+      // Source mode: no widgets — just highlight each `{…}` attr list as link syntax, per line.
+      for (let i = 1; i <= state.doc.lines; i++) {
+        const line = state.doc.line(i);
+        for (const d of lineDecorations(line.text, line.from, false)) {
+          if (d.kind === "mark") builder.add(d.from, d.to, Decoration.mark({ class: d.class }));
         }
       }
     }
@@ -390,32 +457,42 @@ export function createLivePreviewExtension(
       toggles,
       hovers,
       activeLineFrom: tr.state.doc.lineAt(tr.state.selection.main.head).from,
-      alwaysShow: getAlwaysShow(),
+      mode: getRevealMode(),
     });
   };
 
-  return StateField.define<LivePreviewState>({
+  const field = StateField.define<LivePreviewState>({
     create(state) {
       const dismissed = new Set<number>();
-      return { dismissed, hoveredLine: null, decorations: build(state, dismissed) };
+      return { dismissed, hoveredLine: null, decorations: build(state, dismissed, null) };
     },
     update(value, tr) {
       const { dismissed, hoveredLine } = nextState(value, tr);
       const dismissedChanged = dismissed !== value.dismissed;
+      const hoverChanged = hoveredLine !== value.hoveredLine; // the reveal line marker depends on hover (auto mode)
       const modeChanged =
         tr.startState.field(editorLivePreviewField) !== tr.state.field(editorLivePreviewField);
       const refresh = tr.effects.some((e) => e.is(refreshDecorations));
-      if (tr.docChanged || tr.selection || modeChanged || dismissedChanged || refresh) {
-        return { dismissed, hoveredLine, decorations: build(tr.state, dismissed) };
-      }
-      // Hover-only change: keep the decorations, just remember the hovered line.
-      if (hoveredLine !== value.hoveredLine) {
-        return { dismissed, hoveredLine, decorations: value.decorations };
+      if (tr.docChanged || tr.selection || modeChanged || dismissedChanged || hoverChanged || refresh) {
+        return { dismissed, hoveredLine, decorations: build(tr.state, dismissed, hoveredLine) };
       }
       return value;
     },
-    provide(field) {
-      return EditorView.decorations.from(field, (v) => v.decorations);
+    provide(f) {
+      return EditorView.decorations.from(f, (v) => v.decorations);
     },
   });
+
+  // AD10 — the parse is INCREMENTAL: `syntaxTree` covers only the region parsed so far, and the
+  // StateField does NOT otherwise rebuild when the background parser advances. So when the tree grows
+  // (a pure parse-progress update, no doc/selection change), dispatch a refresh so embeds in the
+  // newly-parsed region render. Guarded to the growth case → it settles once fully parsed (no loop).
+  const reparseRebuild = EditorView.updateListener.of((update) => {
+    if (!update.state.field(editorLivePreviewField)) return;
+    if (syntaxTree(update.state).length > syntaxTree(update.startState).length) {
+      Promise.resolve().then(() => { try { update.view.dispatch({ effects: refreshDecorations.of() }); } catch { /* view gone */ } });
+    }
+  });
+
+  return [field, reparseRebuild];
 }

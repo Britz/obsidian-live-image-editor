@@ -384,59 +384,36 @@ body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall.lie-float-rig
   text-align: right !important;
 }
 
-/* Reveal-for-looking (F8) + native edit (F9). The reveal is two parts living in the embed's
-   cm-line, SHARING it with the inline image widget: the FAKE link (an inline widget for the
-   `![[…]]`/`![](…)` source — uneditable, syntax-highlighted) and the NATIVE `{…}` text (a
-   mark — editable). Visibility is DECLARATIVE in CSS (AD5/R0): it rides on Obsidian's own
-   active-line class `.cm-active`, on HOVER of the host cm-line, plus the mode class build()
-   stamps on each (`lie-rev-auto|always`) — NO JS re-derivation of the cursor line.
-   Both are always in the DOM (hidden by default), so revealing is an instant, synchronous
-   class flip with no widget-creation lag. When the cursor enters the embed, Obsidian reveals
-   the native source itself (its syntax tokens become the line's direct children); the fake
-   then yields PURELY in CSS via `.cm-line:has(> .cm-formatting)` — slaved to Obsidian's own
-   DOM, so the fake and the native source are never both present at any instant. */
+/* Reveal-for-looking (F8) + native edit (F9) — AB16b, TOP-DOWN, no `:has`, no `.cm-active` guess.
+   The plugin is the SINGLE AUTHORITY: the StateField computes the WHOLE-link reveal from Obsidian's
+   OWN parse-given SPANS (cursor within the body span? within the `{…}`?) and stamps a line marker it
+   OWNS — `lie-show-standin` (paint the fake raw-link stand-in) and/or `lie-show-attr` (show the `{…}`)
+   — set in the SAME transaction as the selection change. The CSS keys on it with plain parent→child
+   selectors. Hidden by default; mutual exclusion is BY CONSTRUCTION (D16) — when the cursor is within
+   the body Obsidian reveals the native raw link and the StateField simply does NOT set `lie-show-standin`,
+   so the stand-in stays hidden (no `:has`, no `!important`). A `<>` dismiss likewise just withholds the
+   show markers, so the whole link stays hidden — nothing to override. (Inline mid-text embeds still use
+   the legacy per-element reveal — pending the per-embed marker; this block drives the standalone case.) */
 .lie-fake-link { display: none; white-space: pre; }
 .lie-attr { display: none; }
-/* Reveal for LOOKING (F8): the painted fake link + {…} on HOVER of the host cm-line ("auto"
-   mode — the image and its source share the line, the pure-CSS "Auto (with toolbar)" reveal),
-   EVERYWHERE ("always" mode), AND — crucially — while EDITING the attrs (cursor on the line,
-   `.cm-active`, auto mode). On the active line Obsidian keeps the image EMBED and renders NO
-   separate native source for the `![…]` part, so the painted fake is the ONLY thing showing the
-   link: it MUST stay visible so the source is readable while you edit the {…} (else the link
-   vanishes the moment the cursor enters the line — the bug this fixes). */
-/* The HOVER reveal is SUPPRESSED on a line that is being CROPPED (`:not(:has(.lie-cropping))`).
-   The crop chrome (rotate handle etc.) extends well beyond the image/crop-frame, so dragging the
-   pointer onto it leaves the `.cm-line` and would FLIP the hover reveal mid-crop. During a crop the
-   source must NOT change visibility: it follows ONLY the stable signals — `.cm-active`, always-mode,
-   and the `<>` dismiss — so an OFF source (auto-mode resting state, or `<>`-dismissed) STAYS off and
-   an always-shown one stays shown, regardless of where the crop drags the mouse. */
-.cm-line:not(:has(.lie-cropping)):hover .lie-fake-link.lie-rev-auto,
-.cm-active .lie-fake-link.lie-rev-auto,
-.cm-line:not(:has(.lie-cropping)):hover .lie-attr.lie-rev-auto,
-.lie-fake-link.lie-rev-always,
-.lie-attr.lie-rev-always { display: inline; }
-/* The `<>` toggle DISMISSED this line's source (build() stamps `.lie-dismissed` on it):
-   override the reveal above and keep it hidden until the dismiss auto-resets (auto: on leave;
-   always: until toggled again). Beats the `display:inline` reveal via `!important`. */
-.lie-dismissed .lie-fake-link,
-.lie-dismissed .lie-attr { display: none !important; }
-/* The {…} attr text shows whenever the line is active or its native source is revealed. The
-   ONLY thing that HIDES the fake is Obsidian GENUINELY revealing the real source as the line's
-   DIRECT children (e.g. a cmd+A selection that overlaps the line — our fake's own tokens are
-   nested inside `.lie-fake-link`, so they never match the selector), so the link is never shown
-   twice. The match is the EMBED's OWN link/image formatting tokens (`cm-formatting-link` for a
-   wikilink, `cm-formatting-image` + `cm-formatting-link-string` for a markdown link) — NOT the bare
-   `cm-formatting`, which a LIST bullet (`cm-formatting-list`) or callout/quote marker also carries as
-   a direct child, so on a list/callout image line the coarse selector mis-fired PERMANENTLY (fake
-   always hidden, {…} always shown — a stray attr with no link). Narrowing to the link/image tokens
-   leaves those structural markers out (Inline/list embeds now reveal like the standalone path). */
-.cm-active .lie-attr,
-.cm-line:has(> .cm-formatting-link) .lie-attr,
-.cm-line:has(> .cm-formatting-image) .lie-attr,
-.cm-line:has(> .cm-formatting-link-string) .lie-attr { display: inline; }
-.cm-line:has(> .cm-formatting-link) .lie-fake-link,
-.cm-line:has(> .cm-formatting-image) .lie-fake-link,
-.cm-line:has(> .cm-formatting-link-string) .lie-fake-link { display: none !important; }
+.lie-fake-link.lie-show { display: inline; }
+.lie-attr.lie-show { display: inline; }
+/* A BARE/raw-link block stand-in (no `{…}`) has its OWN line ABOVE the image, so reserving it holds a
+   line of HEIGHT without displacing the image — RESERVE TRIAD (AB16b): collapse (native carries the
+   body, `cursorInBody`) · reserve-invisible (`.lie-reserve`, an empty placeholder line) · reserve-visible
+   (`.lie-reserve.lie-show`). `visibility` toggles only the content, so reserve↔reveal is a pure paint
+   swap (no reflow). (Standalone/inline embeds keep the legacy collapse/show: there the source is INLINE
+   before the image, so reserving its width would push the image sideways — a separate layout rework.) */
+.lie-fake-link-block.lie-reserve { display: block; visibility: hidden; }
+.lie-fake-link-block.lie-reserve.lie-show { visibility: visible; }
+/* AB16b dismiss (Bug 65): the `<>` dismiss must hide the link EVEN where Obsidian reveals its OWN
+   native raw-link source on the active line. The StateField marks the dismissed line
+   `lie-suppress-native`; hide Obsidian's revealed body tokens (the `![](…)` `cm-image` marker/alt +
+   the `cm-url` link tokens) — scoped to that line, excluding the plugin's own `{…}` mark. Plain
+   parent→child + `:not`, no `:has`, no `!important`. (The native text stays in the document and editable;
+   only the on-screen reveal is suppressed — Lesson 11/12. CDP-verified.) */
+.cm-line.lie-suppress-native > .cm-image,
+.cm-line.lie-suppress-native > .cm-url:not(.lie-attr) { display: none; }
 
 /* The `<>` toggle shows faint while the line's source is dismissed (D5). */
 .lie-toolbar-reveal.is-off { color: var(--text-faint); }
@@ -920,21 +897,46 @@ body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall.lie-float-rig
 
 .lie-class-hidden { display: none; }
 
-/* Syntax & info card: the stored `{…}` form as an offset monospace example + a per-attribute list,
-   mirroring the documentation idiom other plugins use in their settings. */
+/* Syntax & info card: the stored `{…}` form as a code sample inside an "example" callout + one native
+   setting row per keyword, mirroring the documentation idiom other plugins use in their settings. */
 .lie-syntax-example {
-  margin: var(--size-4-2) 0;
+  margin: var(--size-4-2) 0 0;
   padding: var(--size-4-3);
-  background: var(--background-secondary);
+  background: var(--code-background);
   border-radius: var(--radius-s);
-  overflow-x: auto;
 }
+/* Wrap instead of scrolling horizontally; selectable so the sample can be copied (the surrounding
+   settings UI is not selectable by default). */
 .lie-syntax-example code {
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
   color: var(--text-normal);
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
-.lie-syntax-attrs { margin: var(--size-4-2) 0 0; padding-left: var(--size-4-5); }
-.lie-syntax-attrs li { margin-bottom: var(--size-2-3); color: var(--text-muted); }
-.lie-syntax-attrs code { color: var(--text-normal); }
+/* Keyword reference rows: the token reads as the row name (monospace), the explanation as its desc.
+   Selectable so the keyword can be copied (the surrounding settings UI is not selectable by default). */
+.lie-syntax-attr .setting-item-name code {
+  font-size: var(--font-ui-smaller);
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+/* Heading row: book-open icon next to the title (left); the store button rides the native heading
+   control slot (right). */
+.lie-syntax-card .setting-item-name { display: inline-flex; align-items: center; gap: var(--size-4-2); }
+.lie-syntax-heading-icon { display: inline-flex; align-items: center; color: var(--text-muted); }
+.lie-syntax-heading-icon .svg-icon { width: 18px; height: 18px; }
+/* "More info" CTA: the external/third-party glyph sits left of the label. */
+.lie-store-btn { display: inline-flex; align-items: center; gap: var(--size-4-1); }
+.lie-store-btn .lie-store-btn-icon { display: inline-flex; align-items: center; }
+.lie-store-btn .svg-icon { width: 16px; height: 16px; }
+/* Example highlighting — mirror the editor: the whole link in accent (`.lie-syntax-link`) with muted
+   punctuation (`.lie-syntax-punct`, the `![`/`](`/`)`/braces), each `{…}` attribute its own underlined
+   token (`.lie-syntax-token`). */
+.lie-syntax-link { color: var(--text-accent); }
+.lie-syntax-token { color: var(--text-accent); text-decoration: underline; }
+.lie-syntax-punct { color: var(--text-muted); }

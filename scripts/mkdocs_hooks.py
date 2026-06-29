@@ -1,13 +1,13 @@
 """MkDocs build hook — surface the Obsidian example vault and repo-root docs inside the site.
 
-The demo vault lives at `example-vault/` and must stay a working Obsidian vault (the
+The demo vault lives at `vault-image-toolbar/` and must stay a working Obsidian vault (the
 `.obsidian` config, `npm run dev:vault`). We can't just symlink it into
 `docs/`: the wikilink plugin resolves `[[…]]` by walking the docs tree with `os.walk`, which
 does NOT follow symlinks, so every example wikilink would be left unresolved.
 
 So we COPY the vault's feature pages + images into `docs/examples/` only WHILE building, and
 remove them again when the process exits (`atexit`, so it covers both `build` and `serve`).
-`example-vault/` stays the single source — there is never a second copy committed to or left
+`vault-image-toolbar/` stays the single source — there is never a second copy committed to or left
 lying in the repo. The one committed file in `docs/examples/` is `README.md`, the section
 landing page; it is kept across builds. `.obsidian/`/`.claude*`, shell scripts and the
 Obsidian-only "00 — Start here" intro are dropped from the copy so only reader pages ship (the
@@ -29,7 +29,7 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
 _DOCS = _ROOT / "docs"
-_SRC = _ROOT / "example-vault"
+_SRC = _ROOT / "vault-image-toolbar"
 _DST = _DOCS / "examples"
 # docs/examples/README.md is the committed section landing page (what this is + that the runtime
 # works); it is kept across builds. Everything else in docs/examples/ is generated.
@@ -41,7 +41,7 @@ _IGNORE = shutil.ignore_patterns(".obsidian", ".claude", ".claudian", "*.sh", "R
 
 # Repo-root documents surfaced as in-site pages: repo path (relative to root) -> staged docs page.
 # Staged into docs/ at build, removed on exit. Links to these resolve in-site (see on_page_markdown);
-# any OTHER repo path (plugin source, the non-markdown LICENSE, example-vault/) is sent to GitHub
+# any OTHER repo path (plugin source, the non-markdown LICENSE, vault-image-toolbar/) is sent to GitHub
 # instead. README.md IS the site home (docs/index.md is generated from it, not committed) so the
 # project overview has a single source — its own relative links are rewritten by on_page_markdown.
 _SITE_PAGES = {"README.md": "index.md", "CHANGELOG.md": "changelog.md"}

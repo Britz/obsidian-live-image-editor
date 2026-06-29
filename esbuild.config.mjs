@@ -12,8 +12,9 @@ const mode = process.argv[2];
 const prod = mode === "production";
 const watch = !prod && mode !== "dev";
 
-// In dev mode, optionally write the bundle straight into a vault plugin folder
-// so a live-reload plugin (Developer Toolbox) picks it up on each save.
+// In dev mode, optionally write the bundle straight into a vault plugin folder.
+// A JS change needs a manual reload (CDP `location.reload()`); styles.css/manifest
+// changes are reloaded automatically by the watcher below.
 const pluginDir = !prod ? process.env.OBSIDIAN_PLUGIN_DIR : undefined;
 const outfile = pluginDir ? path.join(pluginDir, "main.js") : "main.js";
 

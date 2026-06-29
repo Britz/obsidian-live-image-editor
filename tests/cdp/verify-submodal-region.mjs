@@ -16,8 +16,8 @@
 // actually moved). The real pointer makes every transition honest. (A test that can't drive what it
 // asserts is as useless as one that's always green.)
 //
-// Prereqs (CLAUDE.md → Live debugging): a DEV build in example-vault/ + Obsidian with the CDP relay.
-//   node tests/cdp/verify-submodal-region.mjs   (CDP_PORT defaults 9223, target example-vault)
+// Prereqs (CLAUDE.md → Live debugging): a DEV build in vault-image-toolbar/ + Obsidian with the CDP relay.
+//   node tests/cdp/verify-submodal-region.mjs   (CDP_PORT defaults 9223, target vault-image-toolbar)
 
 import { connectOptical } from "./_optical.mjs";
 

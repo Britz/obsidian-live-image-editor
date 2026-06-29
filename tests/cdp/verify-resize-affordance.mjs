@@ -20,11 +20,11 @@
 //                        this is the VEIL-PORTAL canary: if the portal fails to escape containment or
 //                        carry the pan hit-surface, this point hits the editor instead → FAIL.  [D8/D15]
 //
-// Prereqs (CLAUDE.md → "Live debugging"): a DEV build installed in example-vault/ and Obsidian
+// Prereqs (CLAUDE.md → "Live debugging"): a DEV build installed in vault-image-toolbar/ and Obsidian
 // launched with the CDP relay, the fixture note open-able in Live Preview. Run from the repo root:
 //   node tests/cdp/verify-resize-affordance.mjs
 // Override the endpoint with CDP_HOST / CDP_PORT / CDP_TARGET (defaults host.containers.internal,
-// 9223 direct to Obsidian, target "example-vault").
+// 9223 direct to Obsidian, target "vault-image-toolbar").
 //
 // NOTE (untested-by-author): the pixel thresholds below are first-cut and may want tuning on the
 // first live run; the four hit-test checks (1, 3, 5) are the robust backbone and the real

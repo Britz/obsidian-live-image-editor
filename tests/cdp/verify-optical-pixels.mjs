@@ -2,8 +2,8 @@
 // OPTICAL RENDER PIXELS — area B of the black-box / optical-regression suite (test-plan §4). It
 // captures the rendered image and SAMPLES PIXELS to prove the content is actually transformed /
 // filtered — not merely that a box has the right size (area A). Run against a DEV build in
-// example-vault/ with Obsidian + the CDP relay:
-//   node tests/cdp/verify-optical-pixels.mjs        (CDP_PORT defaults to 9223, target example-vault)
+// vault-image-toolbar/ with Obsidian + the CDP relay:
+//   node tests/cdp/verify-optical-pixels.mjs        (CDP_PORT defaults to 9223, target vault-image-toolbar)
 //
 // The bundled sample images are left/right symmetric but top/bottom distinct, so the reliable axis
 // is VERTICAL. Checks:

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // OPTICAL / CDP SUITE RUNNER — runs every `verify-*.mjs` in this folder against the running Obsidian
 // and summarises pass/fail. "Test a new Obsidian version" = one command:
-//   node tests/cdp/verify-all.mjs            (CDP_PORT defaults to 9223, target example-vault)
+//   node tests/cdp/verify-all.mjs            (CDP_PORT defaults to 9223, target vault-image-toolbar)
 //
 // Scripts run SEQUENTIALLY — they share the one Obsidian window (active leaf + self-created
 // fixtures), so parallel runs would collide. Each script is self-contained (connects via _optical.mjs
@@ -19,7 +19,7 @@ const scripts = readdirSync(here)
   .filter((f) => f.startsWith("verify-") && f.endsWith(".mjs") && f !== self)
   .sort();
 
-const env = { ...process.env, CDP_PORT: process.env.CDP_PORT ?? "9223", CDP_TARGET: process.env.CDP_TARGET ?? "example-vault" };
+const env = { ...process.env, CDP_PORT: process.env.CDP_PORT ?? "9223", CDP_TARGET: process.env.CDP_TARGET ?? "vault-image-toolbar" };
 
 console.log(`Running ${scripts.length} CDP/optical checks against Obsidian (CDP_PORT=${env.CDP_PORT})\n`);
 

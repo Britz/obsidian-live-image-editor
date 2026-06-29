@@ -17,7 +17,7 @@ on:
     branches: [main]
     paths:
       - "docs/**"
-      - "example-vault/**"
+      - "vault-image-toolbar/**"
       - "mkdocs.yml"
       - "scripts/mkdocs_hooks.py"
       - ".github/requirements-docs.txt"

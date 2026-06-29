@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Capture the user-guide screenshots from the example-vault demo vault via CDP.
+// Capture the user-guide screenshots from the vault-image-toolbar demo vault via CDP.
 // Each shot: open a demo page, arrange the feature's state (hover / open a panel / start crop),
 // then Page.captureScreenshot clipped to the feature. Writes docs/img/*.png.
 //
@@ -7,14 +7,14 @@
 //   node scripts/shoot-docs.mjs toolbar    # only the named shot(s)
 //
 // Env: CDP_HOST (default host.containers.internal), CDP_PORT (default 9223 — direct to Obsidian,
-// survives reloads), CDP_TARGET (default "example-vault" — the demo vault window).
+// survives reloads), CDP_TARGET (default "vault-image-toolbar" — the demo vault window).
 import http from "node:http";
 import dns from "node:dns/promises";
 import fs from "node:fs";
 
 const HOST = process.env.CDP_HOST || "host.containers.internal";
 const PORT = Number(process.env.CDP_PORT || 9223);
-const TARGET = (process.env.CDP_TARGET || "example-vault").toLowerCase();
+const TARGET = (process.env.CDP_TARGET || "vault-image-toolbar").toLowerCase();
 const only = process.argv.slice(2);
 const OUT = "docs/img";
 fs.mkdirSync(OUT, { recursive: true });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { rewriteWidth, reduceReveal, URL_CLASS, URL_BRACE_CLASS } from "../../src/live-preview-logic";
-import type { RevealState, RevealEvents } from "../../src/live-preview-logic";
+import { rewriteWidth, reduceReveal, resolveLinkReveal, URL_CLASS, URL_BRACE_CLASS } from "../../src/live-preview-logic";
+import type { RevealState, RevealEvents, LinkRevealInput } from "../../src/live-preview-logic";
 import { parseAltText, serializeTransform, setWidthPx, isCrop, getRotation } from "../../src/transforms";
 import { nativeBoxWidth } from "../../src/renderer-logic";
 
@@ -113,7 +113,7 @@ describe("Bug 78/79 — no-explicit-width box sizing is the native cap (cropped 
 
 describe("Bug 54 — the `<>` dismiss / auto-clear state machine (reduceReveal — auto mode is default)", () => {
   const base = (over: Partial<RevealEvents> = {}): RevealEvents =>
-    ({ remap: null, toggles: [], hovers: [], activeLineFrom: -1, alwaysShow: false, ...over });
+    ({ remap: null, toggles: [], hovers: [], activeLineFrom: -1, mode: "auto", ...over });
   const st = (dismissed: number[] = [], hoveredLine: number | null = null): RevealState =>
     ({ dismissed: new Set(dismissed), hoveredLine });
 
@@ -146,7 +146,23 @@ describe("Bug 54 — the `<>` dismiss / auto-clear state machine (reduceReveal �
   });
 
   it("ALWAYS mode never auto-clears: a dismiss persists with neither hover nor active", () => {
-    const next = reduceReveal(st([10], null), base({ activeLineFrom: 0, alwaysShow: true }));
+    const next = reduceReveal(st([10], null), base({ activeLineFrom: 0, mode: "always" }));
+    expect([...next.dismissed]).toEqual([10]);
+  });
+
+  it("AUTO mode keeps a dismiss on the HOVERED line (NaturalReveal includes hover)", () => {
+    const next = reduceReveal(st([10], 10), base({ activeLineFrom: 0, mode: "auto" }));
+    expect([...next.dismissed]).toEqual([10]); // hovered → still naturally revealed → kept
+  });
+
+  it("NATIVE mode ignores hover: a dismiss on a hovered-but-not-active line auto-clears", () => {
+    // native NaturalReveal = the active (cursor) line ONLY, so hover does not keep the dismiss.
+    const next = reduceReveal(st([10], 10), base({ activeLineFrom: 0, mode: "native" }));
+    expect(next.dismissed.size).toBe(0);
+  });
+
+  it("NATIVE mode keeps a dismiss on the ACTIVE (cursor) line", () => {
+    const next = reduceReveal(st([10], null), base({ activeLineFrom: 10, mode: "native" }));
     expect([...next.dismissed]).toEqual([10]);
   });
 
@@ -160,6 +176,73 @@ describe("Bug 54 — the `<>` dismiss / auto-clear state machine (reduceReveal �
     const next = reduceReveal(st([10], 10), base({ remap: (p) => p + 5, activeLineFrom: 15 }));
     expect([...next.dismissed]).toEqual([15]); // 10 → 15
     expect(next.hoveredLine).toBe(15);
+  });
+});
+
+// AB16b — the WHOLE-link reveal DECISION (the architectural core: the plugin DRIVES the outcome from
+// the parse-given spans, it does NOT observe the DOM). The mutual exclusion (D16) and the one-whole
+// show/hide (D17) are proven here, off Obsidian. The live wiring (parse spans → top-down line class →
+// CSS) is the StateField/CSS half, CDP.
+describe("resolveLinkReveal — AB16b whole-link reveal (F8: native/auto/always; D16/D17)", () => {
+  const base = (over: Partial<LinkRevealInput> = {}): LinkRevealInput => ({
+    mode: "native", dismissed: false, engaged: false, onLine: false, hovered: false,
+    cursorInBody: false, cursorInAttr: false, ...over,
+  });
+
+  it("DISMISS hides the whole link AND suppresses Obsidian's native raw link (Bug 65)", () => {
+    // even ON the line, in the body — the plugin overrides Obsidian's reveal.
+    expect(resolveLinkReveal(base({ dismissed: true, onLine: true, cursorInBody: true })))
+      .toEqual({ showStandIn: false, reserveStandIn: false, showAttr: false, suppressNative: true });
+  });
+
+  it("ENGAGED pins the link SHOWN even off the line (no flip → no jump, Bug 86)", () => {
+    const r = resolveLinkReveal(base({ engaged: true, onLine: false }));
+    expect(r.showStandIn).toBe(true); // stand-in carries the body (cursor not in body)
+    expect(r.showAttr).toBe(true);
+    expect(r.suppressNative).toBe(false);
+  });
+
+  it("MUTUAL EXCLUSION (D16): cursor IN the body → native carries it, stand-in HIDDEN; {…} still shown (D17)", () => {
+    expect(resolveLinkReveal(base({ onLine: true, cursorInBody: true })))
+      .toEqual({ showStandIn: false, reserveStandIn: false, showAttr: true, suppressNative: false });
+  });
+
+  it("SEAMLESS SWAP (D17): cursor in the {…} (past the body) → stand-in carries the body, whole link stays shown", () => {
+    expect(resolveLinkReveal(base({ onLine: true, cursorInAttr: true, cursorInBody: false })))
+      .toEqual({ showStandIn: true, reserveStandIn: true, showAttr: true, suppressNative: false });
+  });
+
+  it("RESERVE TRIAD: stand-in HOLDS its box unless the native carries it (no reflow); collapses only on cursorInBody", () => {
+    // collapse — native carries the identical box (cursor in body), reserving too would double the line.
+    expect(resolveLinkReveal(base({ onLine: true, cursorInBody: true })).reserveStandIn).toBe(false);
+    // reserve-invisible — off-line + hidden: an invisible placeholder holds the box so a later reveal can't jump.
+    expect(resolveLinkReveal(base({ mode: "native", onLine: false })))
+      .toMatchObject({ showStandIn: false, reserveStandIn: true });
+    // reserve-visible — shown ⇒ reserved (a shown stand-in is reserved+visible).
+    const shown = resolveLinkReveal(base({ mode: "always" }));
+    expect(shown.showStandIn && shown.reserveStandIn).toBe(true);
+    // dismiss collapses the reserve too (no placeholder gap left behind).
+    expect(resolveLinkReveal(base({ dismissed: true })).reserveStandIn).toBe(false);
+  });
+
+  it("NATIVE mode: shown on the active line, hidden off it (no hover reveal)", () => {
+    expect(resolveLinkReveal(base({ mode: "native", onLine: true })).showStandIn).toBe(true);
+    expect(resolveLinkReveal(base({ mode: "native", onLine: false, hovered: true })).showStandIn).toBe(false);
+  });
+
+  it("AUTO mode: also shown on hover of the line", () => {
+    expect(resolveLinkReveal(base({ mode: "auto", onLine: false, hovered: true })).showStandIn).toBe(true);
+    expect(resolveLinkReveal(base({ mode: "auto", onLine: false, hovered: false })).showStandIn).toBe(false);
+  });
+
+  it("ALWAYS mode: shown everywhere, even off the line and not hovered", () => {
+    expect(resolveLinkReveal(base({ mode: "always" })).showStandIn).toBe(true);
+  });
+
+  it("there is NO 'never' mode — a non-dismissed link in every mode can be shown (transient hide is the dismiss only)", () => {
+    for (const mode of ["native", "auto", "always"] as const) {
+      expect(resolveLinkReveal(base({ mode, onLine: true })).showAttr).toBe(true);
+    }
   });
 });
 

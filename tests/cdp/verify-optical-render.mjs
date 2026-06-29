@@ -2,8 +2,8 @@
 // OPTICAL RENDER GEOMETRY — area A of the black-box / optical-regression suite (test-plan §4).
 // It OBSERVES the rendered layout (getBoundingClientRect of the real image box, caption and editor
 // content) — never CSS properties — so it survives CSS refactors AND Obsidian updates. Run against a
-// DEV build in example-vault/ with Obsidian + the CDP relay (CLAUDE.md → "Live debugging"):
-//   node tests/cdp/verify-optical-render.mjs        (CDP_PORT defaults to 9223, target example-vault)
+// DEV build in vault-image-toolbar/ with Obsidian + the CDP relay (CLAUDE.md → "Live debugging"):
+//   node tests/cdp/verify-optical-render.mjs        (CDP_PORT defaults to 9223, target vault-image-toolbar)
 //
 // Checks (each a requirement that should already be implemented):
 //   • column cap (D3)          — a no-width image fits the text column and is not upscaled

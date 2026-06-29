@@ -59,6 +59,31 @@ describe("lineDecorations", () => {
       { kind: "mark", from: 12, to: 13, class: URL_BRACE_CLASS },
     ]);
   });
+
+  it("marks an INLINE embed's {…} in source mode — not just standalone (the inline-source bug)", () => {
+    // "text " (5) + "![a](b.png)" (11) → {.x} at 16; trailing " more" makes it inline, not standalone.
+    expect(lineDecorations("text ![a](b.png){.x} more", 0, false)).toEqual([
+      { kind: "mark", from: 16, to: 17, class: URL_BRACE_CLASS },
+      { kind: "mark", from: 17, to: 19, class: URL_CLASS },
+      { kind: "mark", from: 19, to: 20, class: URL_BRACE_CLASS },
+    ]);
+  });
+
+  it("marks the {…} even with a trailing char after the block (the `.` that flips it to inline)", () => {
+    expect(lineDecorations("![a](b.png){.x}.", 0, false)).toEqual([
+      { kind: "mark", from: 11, to: 12, class: URL_BRACE_CLASS },
+      { kind: "mark", from: 12, to: 14, class: URL_CLASS },
+      { kind: "mark", from: 14, to: 15, class: URL_BRACE_CLASS },
+    ]);
+  });
+
+  it("marks MULTIPLE embeds' {…} on one inline line", () => {
+    // "![a](b.png){.x} ![c](d.png){.y}" → two embeds, two {…}
+    const decos = lineDecorations("![a](b.png){.x} ![c](d.png){.y}", 0, false);
+    expect(decos).toHaveLength(6);
+    expect(decos[0]).toEqual({ kind: "mark", from: 11, to: 12, class: URL_BRACE_CLASS });
+    expect(decos[3]).toEqual({ kind: "mark", from: 27, to: 28, class: URL_BRACE_CLASS });
+  });
 });
 
 describe("inlineEmbeds (mid-text images, e.g. lie-inline) — F17", () => {

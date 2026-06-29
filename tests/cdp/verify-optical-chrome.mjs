@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // OPTICAL CHROME / UX — area C of the black-box / optical-regression suite (test-plan §4). It drives
 // the running app and OBSERVES the editing chrome by real hover + pointer hit-tests + geometry (never
-// CSS properties). Run against a DEV build in example-vault/ with Obsidian + the CDP relay:
-//   node tests/cdp/verify-optical-chrome.mjs        (CDP_PORT defaults to 9223, target example-vault)
+// CSS properties). Run against a DEV build in vault-image-toolbar/ with Obsidian + the CDP relay:
+//   node tests/cdp/verify-optical-chrome.mjs        (CDP_PORT defaults to 9223, target vault-image-toolbar)
 //
 // Checks:
 //   • toolbar on hover (D1/F7)      — hovering the image makes a toolbar button GRABBABLE

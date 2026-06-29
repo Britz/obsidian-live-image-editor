@@ -47,14 +47,14 @@ podman). Every build, test and lint runs **inside** the container — never on t
 ```bash
 npm install         # first time only
 npm run build       # type-check + production bundle (main.js + lie-runtime.js)
-npm run dev:vault   # watch build, written straight into example-vault/.obsidian/plugins/…
+npm run dev:vault   # watch build, written straight into vault-image-toolbar/.obsidian/plugins/…
 npm test            # vitest (pure *-logic.ts units)
 npm run lint        # eslint
 ```
 
-`npm run dev:vault` rebuilds into the bundled `example-vault/` demo vault (a real Obsidian
-vault — open that folder in Obsidian); the Developer Toolbox plugin there auto-reloads the
-plugin on each rebuild. To install into your own vault instead:
+`npm run dev:vault` rebuilds into the bundled `vault-image-toolbar/` demo vault (a real Obsidian
+vault — open that folder in Obsidian). A JS change needs a manual reload (CDP `location.reload()`);
+styles.css/manifest changes reload automatically. To install into your own vault instead:
 `bash scripts/dev-install.sh ~/path/to/vault --dev`.
 
 `npm run dev` is the plain esbuild watch (writes `main.js` to the repo root, no type-check). For a

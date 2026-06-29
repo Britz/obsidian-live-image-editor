@@ -43,7 +43,7 @@ each one runs — some are container-side, some must run on the **host** (macOS)
 ## Demo assets
 
 - **`generate-samples.sh`** *(container; needs ImageMagick `magick`)* — regenerates the synthetic
-  sample images in `example-vault/images/` (`sample-landscape.png` 3:2, `sample-portrait.png` 2:3,
+  sample images in `vault-image-toolbar/images/` (`sample-landscape.png` 3:2, `sample-portrait.png` 2:3,
   `sample-square.png` 1:1). They carry corner labels **A/B/C/D** and a **TOP** marker so rotate/flip
   are unambiguous, and are drawn from scratch (no third-party content → safe to commit). Set
   `LIE_FONT` to override the font path on containers with no default ImageMagick font.
@@ -53,7 +53,7 @@ each one runs — some are container-side, some must run on the **host** (macOS)
 - **`mkdocs_hooks.py`** — a build hook (registered in `mkdocs.yml`, run by **ProperDocs** — the
   maintained MkDocs 1.x fork; see `docs/development/issues.md` → Decision 11). It **copies** the demo
   vault's feature pages + images into `docs/examples/` for the duration of a `build`/`serve` and
-  removes them again on exit (`atexit`), so `example-vault/` stays the single source and no second
+  removes them again on exit (`atexit`), so `vault-image-toolbar/` stays the single source and no second
   copy is ever committed (only the committed `docs/examples/README.md` landing page survives). It
   also rewrites repo-root-relative source links (e.g. `[main.ts](src/main.ts#L141)`) that point
   outside `docs/` to their GitHub blob URLs so they don't 404 on the site. Not run by hand —
@@ -75,7 +75,7 @@ dev build ships its own in-plugin relay; `cdp-relay.mjs` is the manual fallback)
 
 - **`obsidian-dev.command`** *(host, macOS — double-clickable in Finder)* — the launcher. Quits any
   running Obsidian, relaunches it with `--remote-debugging-port=9223 --remote-allow-origins=*`, and
-  registers + opens the bundled `example-vault/` so the plugin is ready to debug. There is no in-app
+  registers + opens the bundled `vault-image-toolbar/` so the plugin is ready to debug. There is no in-app
   toggle for the debug port — it must be a launch flag, hence this script. Override via env:
   `CDP_PORT`, `OBSIDIAN_APP`, `VAULT`.
 - **`cdp-relay.mjs`** *(host — fallback only)* — a tiny zero-dependency TCP relay that forwards

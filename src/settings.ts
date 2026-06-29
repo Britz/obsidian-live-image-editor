@@ -2,6 +2,7 @@ import { App, PluginSettingTab, Setting, Notice, Modal, setIcon, SearchComponent
 import { t } from "./i18n";
 import type LiveImageEditorPlugin from "./main";
 import { PresetWidths, DEFAULT_PRESET_WIDTHS } from "./styles-injector";
+import { RevealMode } from "./live-preview-logic";
 import {
   getEditingToolbarStatus, addEditingToolbarButtons, removeEditingToolbarButtons, EDITING_TOOLBAR_ID,
 } from "./editing-toolbar-integration";
@@ -64,10 +65,14 @@ class ConfirmModal extends Modal {
 export interface LieSettings {
   showToolbar: boolean;
   showCaptions: boolean;
-  // The link-source reveal MODE (F8/F20): always-shown vs. auto (shown on hover). This
-  // is INDEPENDENT of the `<>` control, which temporarily HIDES the link per image
-  // regardless of the mode (not persisted per image).
-  alwaysShowLink: boolean;
+  // The default link-source reveal MODE (F8/F20/AD11): "native" = only on the active (cursor) line;
+  // "auto" = additionally on hover; "always" = everywhere. INDEPENDENT of the `<>` control, which
+  // temporarily HIDES the link per image regardless of the mode (not persisted per image). Migrated
+  // from the legacy boolean `alwaysShowLink` (true → "always", false → "auto") in main.ts loadSettings.
+  defaultRevealState: RevealMode;
+  // F20 — render image embeds that sit inside a fenced/inline code block (Live Preview only, default
+  // off). The lone override of AD10's "defer to Obsidian's parse" (which excludes code-block embeds).
+  renderImagesInCodeBlocks: boolean;
   // The configurable preset widths for small / medium / large (F24/F20).
   presetWidths: PresetWidths;
   disabledInternalClasses: string[];
@@ -91,7 +96,8 @@ export interface LieSettings {
 export const DEFAULT_SETTINGS: LieSettings = {
   showToolbar: true,
   showCaptions: false,
-  alwaysShowLink: false, // default: auto-reveal (show on hover), not always shown
+  defaultRevealState: "native", // default: reveal only on the active (cursor) line (F8)
+  renderImagesInCodeBlocks: false, // default off — defer to the parse (code-block embeds excluded, AD10)
   presetWidths: { ...DEFAULT_PRESET_WIDTHS },
   disabledInternalClasses: [],
   disabledSnippetClasses: [],
@@ -134,14 +140,20 @@ export class LieSettingTab extends PluginSettingTab {
     return group.createDiv("setting-items");
   }
 
-  // A native Obsidian "info" callout (admonition) for a section-level note — Obsidian styles
-  // `.callout[data-callout="info"]` globally, so it picks up the info colour/tint in the settings too.
+  // A native Obsidian callout (admonition) — Obsidian styles `.callout[data-callout="…"]` globally,
+  // so it picks up that type's colour/tint in the settings too. Returns the `.callout-content` div
+  // for the caller to fill (a paragraph, a code sample, …).
+  private renderCallout(parent: HTMLElement, type: string, icon: string, title: string, markerClass?: string): HTMLElement {
+    const callout = parent.createDiv({ cls: `callout${markerClass ? ` ${markerClass}` : ""}`, attr: { "data-callout": type } });
+    const head = callout.createDiv({ cls: "callout-title" });
+    setIcon(head.createDiv({ cls: "callout-icon" }), icon);
+    head.createDiv({ cls: "callout-title-inner", text: title });
+    return callout.createDiv({ cls: "callout-content" });
+  }
+
+  // A section-level "info" note.
   private renderInfoCallout(parent: HTMLElement, text: string): void {
-    const callout = parent.createDiv({ cls: "callout lie-info-callout", attr: { "data-callout": "info" } });
-    const title = callout.createDiv({ cls: "callout-title" });
-    setIcon(title.createDiv({ cls: "callout-icon" }), "info");
-    title.createDiv({ cls: "callout-title-inner", text: t("settingsInfoTitle") });
-    callout.createDiv({ cls: "callout-content" }).createEl("p", { text });
+    this.renderCallout(parent, "info", "info", t("settingsInfoTitle"), "lie-info-callout").createEl("p", { text });
   }
 
   // ── General — the four toggles in one card ─────────────────────────────────────────────────
@@ -151,19 +163,33 @@ export class LieSettingTab extends PluginSettingTab {
     new Setting(items)
       .setName(t("settingsToolbar"))
       .addToggle((tg) => tg.setValue(this.plugin.settings.showToolbar)
-        .onChange(async (v) => { this.plugin.settings.showToolbar = v; await this.plugin.saveSettings(); }));
+        .onChange(async (v) => { this.plugin.settings.showToolbar = v; await this.plugin.saveSettings(); this.plugin.refreshLivePreviewDecorations(); }));
 
     new Setting(items)
       .setName(t("settingsCaptions"))
       .setDesc(t("settingsCaptionsDesc"))
       .addToggle((tg) => tg.setValue(this.plugin.settings.showCaptions)
-        .onChange(async (v) => { this.plugin.settings.showCaptions = v; await this.plugin.saveSettings(); }));
+        .onChange(async (v) => { this.plugin.settings.showCaptions = v; await this.plugin.saveSettings(); this.plugin.refreshLivePreviewDecorations(); }));
 
     new Setting(items)
       .setName(t("settingsRevealDefault"))
       .setDesc(t("settingsRevealDefaultDesc"))
-      .addToggle((tg) => tg.setValue(this.plugin.settings.alwaysShowLink)
-        .onChange(async (v) => { this.plugin.settings.alwaysShowLink = v; await this.plugin.saveSettings(); }));
+      .addDropdown((dd) => dd
+        .addOption("native", t("settingsRevealNative"))
+        .addOption("auto", t("settingsRevealAuto"))
+        .addOption("always", t("settingsRevealAlways"))
+        .setValue(this.plugin.settings.defaultRevealState)
+        .onChange(async (v) => {
+          this.plugin.settings.defaultRevealState = v as RevealMode;
+          await this.plugin.saveSettings();
+          this.plugin.refreshLivePreviewDecorations(); // apply to the open editor immediately (F8)
+        }));
+
+    new Setting(items)
+      .setName(t("settingsRenderCodeBlocks"))
+      .setDesc(t("settingsRenderCodeBlocksDesc"))
+      .addToggle((tg) => tg.setValue(this.plugin.settings.renderImagesInCodeBlocks)
+        .onChange(async (v) => { this.plugin.settings.renderImagesInCodeBlocks = v; await this.plugin.saveSettings(); this.plugin.refreshLivePreviewDecorations(); }));
 
     new Setting(items)
       .setName(t("settingsTallFloat"))
@@ -481,28 +507,112 @@ export class LieSettingTab extends PluginSettingTab {
 
   // ── Syntax & info (F20) — a read-only help card describing the stored `{…}` attribute form, then a
   //   button that opens THIS plugin's own page in Obsidian's community-plugin browser. The same
-  //   documentation idiom other plugins use in their settings: intro → code example → per-attribute
-  //   list. The attribute tokens (`width=`, `align=`, `.classname`) are literal code, not localized;
-  //   only the prose around them follows the locale.
+  //   documentation idiom other plugins use in their settings: intro → code sample (in an "example"
+  //   callout) → one native setting row per keyword. The attribute tokens (`width=`, `align=`,
+  //   `.classname`) are literal code, not localized; only the prose around them follows the locale.
   private renderSyntaxInfo(c: HTMLElement): void {
-    const items = this.cardGroup(c, t("settingsSyntax"));
+    // Heading row: a book-open icon + the title on the left, the self-store-link button on the right.
+    const items = this.cardGroup(c, t("settingsSyntax"), {
+      markerClass: "lie-syntax-card",
+      icons: (h) => {
+        const icon = h.nameEl.createSpan({ cls: "lie-syntax-heading-icon" });
+        setIcon(icon, "book-open");
+        h.nameEl.prepend(icon);
+        h.addButton((b) => {
+          b.setButtonText(t("settingsOpenPluginStore")).setCta()
+            .setTooltip(t("settingsStoreLink"))
+            .onClick(() => this.openPluginStore(this.plugin.manifest.id));
+          // Obsidian's "external/third-party" glyph (the community-plugin / external-link mark).
+          b.buttonEl.addClass("lie-store-btn");
+          const icon = b.buttonEl.createSpan({ cls: "lie-store-btn-icon" });
+          setIcon(icon, "external-link");
+          b.buttonEl.prepend(icon);
+        });
+      },
+    });
 
-    items.createEl("p", { cls: "setting-item-description", text: t("settingsSyntaxIntro") });
-    items.createEl("pre", { cls: "lie-syntax-example" }).createEl("code", { text: t("settingsSyntaxExample") });
+    // Intro, example and size hint sit ABOVE the framed list (outside `.setting-items`) — the frame
+    // begins at the first keyword row (`width=`). Plain `<p>` paragraphs (no `.setting-item-description`)
+    // so they read in normal body text; a bare wrapper holds them, inserted before the frame.
+    const group = items.parentElement;
+    const lead = group?.createDiv();
+    if (group && lead) group.insertBefore(lead, items);
+    const head = lead ?? items;
+    this.renderProse(head, t("settingsSyntaxIntro"));
+    this.renderSyntaxExample(head);
+    this.renderProse(head, t("settingsSyntaxSizeHint"));
 
-    const list = items.createEl("ul", { cls: "lie-syntax-attrs" });
+    // Each keyword as its own native setting row (name = the literal token, desc = the explanation) —
+    // so the reference reads like the rest of the settings, as if every keyword were a setting.
     const attr = (token: string, desc: string): void => {
-      const li = list.createEl("li");
-      li.createEl("code", { text: token });
-      li.appendText(` — ${desc}`);
+      const row = new Setting(items).setDesc(desc);
+      row.settingEl.addClass("lie-syntax-attr");
+      row.nameEl.createEl("code", { text: token });
     };
-    attr("width= / height=", t("settingsSyntaxSizeDesc"));
-    attr("align=", t("settingsSyntaxAlignDesc"));
+    // The keyword line carries the possible values (literal, not localized — fixed enums joined by `|`,
+    // free values as a `<placeholder>`); the desc below explains them. Grouped: size → layout →
+    // orientation/crop → appearance → classes/raw/marker.
+    attr("width=<length>", t("settingsSyntaxWidthDesc"));
+    attr("height=<length>", t("settingsSyntaxHeightDesc"));
+    attr("aspect-ratio=<w/h>", t("settingsSyntaxAspectDesc"));
+    attr("align=left|right|block-left|block-center|block-right", t("settingsSyntaxAlignDesc"));
+    attr("rotate=<deg>", t("settingsSyntaxRotateDesc"));
+    attr("flip=horizontal|vertical", t("settingsSyntaxFlipDesc"));
+    attr("transform=<css>", t("settingsSyntaxTransformDesc"));
+    attr("filter=<css>", t("settingsSyntaxFilterDesc"));
     attr(".classname", t("settingsSyntaxClassDesc"));
+    attr("style=<css>", t("settingsSyntaxStyleDesc"));
+    attr(".lie", t("settingsSyntaxLieDesc"));
+  }
 
-    new Setting(items)
-      .setName(t("settingsStoreLink"))
-      .addButton((b) => b.setButtonText(t("settingsOpenPluginStore")).setCta()
-        .onClick(() => this.openPluginStore(this.plugin.manifest.id)));
+  // A body-text paragraph where `backtick`-delimited spans become native inline `<code>` (keyword
+  // mentions), the rest plain text — locale-flexible (the marks live in the translation string).
+  private renderProse(parent: HTMLElement, text: string): void {
+    const p = parent.createEl("p");
+    text.split(/`([^`]+)`/).forEach((seg, i) => {
+      if (i % 2 === 1) p.createEl("code", { text: seg });
+      else if (seg) p.appendText(seg);
+    });
+  }
+
+  // Render the copyable code sample inside an "example" callout, highlighted like the editor: the whole
+  // `![…](…){…}` link is coloured (not just the `{…}` block) — the link in accent with muted
+  // punctuation, then each attribute its own underlined token. Built from spans here since the settings
+  // card is outside CodeMirror, so it can't reuse the `.cm-*` token classes.
+  private renderSyntaxExample(parent: HTMLElement): void {
+    const content = this.renderCallout(parent, "example", "list", t("settingsSyntaxExampleTitle"));
+    const code = content.createEl("pre", { cls: "lie-syntax-example" }).createEl("code");
+    t("settingsSyntaxExample").split("\n").forEach((line, i) => {
+      if (i > 0) code.appendText("\n");
+      this.renderExampleLine(code, line);
+    });
+  }
+
+  // One example line: the link prefix coloured by `renderEmbedPrefix`, then inside `{…}` the braces are
+  // muted punctuation and every whitespace-separated attribute is an underlined token (whitespace kept
+  // verbatim between).
+  private renderExampleLine(code: HTMLElement, line: string): void {
+    const open = line.indexOf("{");
+    const close = line.lastIndexOf("}");
+    const hasBlock = open >= 0 && close > open;
+    this.renderEmbedPrefix(code, hasBlock ? line.slice(0, open) : line);
+    if (!hasBlock) return;
+    code.createSpan({ cls: "lie-syntax-punct", text: "{" });
+    for (const part of line.slice(open + 1, close).split(/(\s+)/)) {
+      if (part === "" || /^\s+$/.test(part)) code.appendText(part);
+      else code.createSpan({ cls: "lie-syntax-token", text: part });
+    }
+    code.createSpan({ cls: "lie-syntax-punct", text: "}" });
+    code.appendText(line.slice(close + 1));
+  }
+
+  // The `![alt](url)` / `![[target|caption]]` link prefix: the markers (`![`, `](`, `)`, `![[`, `]]`,
+  // `|`) are muted punctuation, the text/target in accent — mirroring the editor's link colouring.
+  private renderEmbedPrefix(code: HTMLElement, embed: string): void {
+    for (const part of embed.split(/(!\[\[|\]\]|!\[|\]\(|[)|])/)) {
+      if (part === "") continue;
+      const punct = /^(!\[\[|\]\]|!\[|\]\(|[)|])$/.test(part);
+      code.createSpan({ cls: punct ? "lie-syntax-punct" : "lie-syntax-link", text: part });
+    }
   }
 }

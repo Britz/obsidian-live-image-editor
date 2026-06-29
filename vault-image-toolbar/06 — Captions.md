@@ -49,7 +49,7 @@ The image is rendered grayscale, but the caption is ordinary note text and stays
 For a `![](wikilink)` embed the **display text** after the `|` becomes the caption (here *A portrait*).
 A bare `|size` value such as `|160` is treated as a size, not a caption, so it would produce no text.
 
-![[sample-portrait.png|160 "*A portrait*"]]{.lie}
+!["*A portrait*"](sample-portrait.png){.lie width=160}
 
 ## No alt text → no caption
 

@@ -34,11 +34,12 @@ above it:
   mapping, caption-text extraction, crop quantization, sub-menu placement, transform
   round-trips and link-form normalization — the `*-logic.ts` units that `implementation-plan.md`
   §1 lists and `AD7` mandates. Run with vitest.
-- **Integration tests (Mid)** confirm the **architecture decisions** (`AD1`–`AD9`) hold once the
+- **Integration tests (Mid)** confirm the **architecture decisions** (`AD1`–`AD12`) hold once the
   pieces are wired into Obsidian — the source round-trip, the verbatim native-CSS routing, the
   uniform box and its one sizing direction, the two adapters producing one DOM, the one-path-per-
   mode widget with the native image uniformly CSS-suppressed, declarative sizing with no measure
-  loop, the shared sub-menu host, and the platform-reuse seams. Verified by CDP eval in a running vault.
+  loop, the shared sub-menu host, the platform-reuse seams, the parse-derived embed detection, the
+  per-span link-visibility authority, and the one engagement predicate. Verified by CDP eval in a running vault.
 - **Behaviour / acceptance tests (High)** confirm the **requirements** (`Fn`/`Dn`) as observed by
   a user. Verified by CDP eval in a running vault on the example pages. These include **functional
   (interaction-driven)** checks that DRIVE the UI as a user would — entering a value in a panel,
@@ -54,7 +55,7 @@ refactors and Obsidian version changes. They are **additive** to the implementat
 unit/structural checks, not a replacement.
 
 The pure units live under `tests/unit/*.test.ts`; the CDP checks run via the dev-bridge
-(`AB23` / CLAUDE.md *Live debugging*) against the example vault pages (`example-vault/`), which are
+(`AB23` / CLAUDE.md *Live debugging*) against the example vault pages (`vault-image-toolbar/`), which are
 fixtures exercising each requirement area. The read-back CDP checks are
 `tests/cdp/verify-write-path.mjs` (the §3 AD1 write-path matrix, the Bug 56 guard) and
 `tests/cdp/verify-crop.mjs` (the Bug 51 crop editor — structural facts read back from the live
@@ -78,7 +79,7 @@ block/float/inline, both views), `verify-optical-pixels.mjs` (rotate/flip conten
 `verify-functional.mjs` — it types into the size modal and reads back the rendered width AND the
 persisted source (the §4 *Resize via the size modal* item). `verify-all.mjs` runs every `verify-*.mjs`
 and sums pass/fail — "test a new Obsidian version" in one command. The crop scripts **self-create** their `_crop-fixture.md`
-(and delete it); the manual crop demo is `example-vault/02 — Crop.md`.
+(and delete it); the manual crop demo is `vault-image-toolbar/02 — Crop.md`.
 
 > **The load-bearing rule (the Bug 56 lesson).** A green suite must mean an **edit actually
 > reaches the source and re-renders** — not merely that an isolated pure function is correct.
@@ -136,7 +137,22 @@ Pure box / inner-image geometry; the single source shared by the renderer and th
   (`AD1`, `D11`).
 - **`EMBED_LINE`** — matches a standalone image line (Markdown and wikilink forms, with/without
   native size and a trailing block) and rejects a mid-text occurrence. Verifies the standalone
-  vs inline split feeding the two modes.
+  vs inline split feeding the two modes. **Under `AD10` the regex is no longer the detection
+  *gate*** — the gate is Obsidian's own parse (`syntaxTree` / `metadataCache.embeds`, verified at
+  the integration level, §3 `AD10`); the regex survives only as a **text-parser of an
+  already-confirmed span**. The unit therefore pins its parsing fidelity (escaping, braces — Bug 24),
+  not "is this line an embed".
+- **`reduceReveal` — the reveal-state reducer (`AB16b`, `F8`).** Given the cursor / hover / `<>`-dismiss /
+  engaged inputs and the mode (**native / auto / always**, F8), computes the link's target visibility
+  and the dismiss life-cycle: a fresh dismiss **survives its own transaction** and **auto-clears only on
+  full disengagement** (AD12) in native & auto, but **persists** in always until toggled. Verifies the
+  reveal state machine is a pure decision (pins **Bug 54**; supersedes the old two-mode auto/always
+  reducer). *(Lives in `tests/unit/regressions.test.ts` per §5.1.)*
+- **the engagement predicate (`AD12`)** — the union cursor-on-line ∪ hover ∪ selected/active ∪
+  any-panel-open (crop / filter / class / sub-menu) is a **pure boolean** over its inputs. Verifies the
+  **one** predicate that the reveal pin, the dismiss auto-clear and the toolbar greyed/active state all
+  read (replaces the scattered `filterPanel || classPanel || submenu || cropEditor` chain). Its inputs
+  are gathered from live state (CDP, §3 `AD12`); only the union is unit-pure.
 
 ### 2.3 `caption-logic.ts` — caption text (`AB7`)
 
@@ -263,7 +279,7 @@ Verifies that **every** op persists, not just `width` (`AD1`, `T2.3`; pins **Bug
 
 ## 3. Integration tests (Mid) — one per load-bearing decision
 
-One test per architecture decision (`AD1`–`AD9`), each confirming the decision **holds when
+One test per architecture decision (`AD1`–`AD12`), each confirming the decision **holds when
 wired into the running app**. These are **not** unit-testable (CM6 / Obsidian are required) and
 run via CDP eval against the example vault (`Lesson 6`, `AD7`).
 
@@ -311,14 +327,16 @@ run via CDP eval against the example vault (`Lesson 6`, `AD7`).
     widget (CDP: a real height, not a blank ~6px line), next to the image-suppressed native embed.
   - **inline mid-text → the same widget** in inline mode (`Decoration.replace`), same uniform chrome —
     only the placement differs (`AB9`, `F17`); no `{…}` shown as text.
-  Confirm the `{…}` is real document text CSS-**hidden** when rendered and shown when the line is active
-  (`.cm-active` / `.cm-line:has(> .cm-formatting)`); confirm the reveal-for-looking is a display-only
-  "fake" raw link painted by the plugin, shown by CSS in **auto** mode (cm-line hover / active line) or
-  **always** mode (the `alwaysShowLink` setting), and **dismissed** per image by the `<>` toggle
-  (a `.lie-dismissed` line class that auto-clears in auto mode) — **no reactive JS**, no third "hidden"
-  mode. *Verifies one owning path per mode, no double render, the native embed embraced and
-  CSS-hidden (`F3`, `F8`, `F17`, `F18`, `T6`).* *To verify (`DEC-6`): that `.cm-active` flips in
-  lock-step with Obsidian's native source-reveal, with the native-widget-DOM `:has()` fallback.*
+  Confirm the `{…}` is real document text CSS-**hidden** when rendered and shown when the link is
+  revealed, and that the reveal-for-looking is a display-only "fake" raw-link **stand-in** painted by
+  the plugin (`AB16a`). *Verifies one owning path per mode, no double render, the native embed embraced
+  and CSS-hidden (`F3`, `F8`, `F17`, `F18`, `T6`).* The **reveal-for-looking semantics** — the three
+  modes (native / auto / always), the mutual exclusion of native raw link vs stand-in (D16), the
+  whole-link show/hide (D17), the `<>` dismiss + native suppression, and the engaged-pin — are
+  **`AD11` / `AD12` / `AB16b` + the §4 Raw-link reveal area**, not restated here. The old
+  `.cm-line:has(> .cm-formatting)` reveal heuristic and the `cm-formatting`-avoidance on the `{…}` mark
+  are **retired** by that rework (the reveal is now derived from the parse-given span / a deterministic
+  condition, not a DOM guess — §2.5).
 - **AD6 — Declarative sizing, no measure loop.** Confirm a rotated image converges to the
   stored bounding-box size with **no** render-time measure/retry — including with a cached image
   and a backgrounded window (animation frames throttled). *Verifies sizing is box→image at edit
@@ -347,6 +365,34 @@ run via CDP eval against the example vault (`Lesson 6`, `AD7`).
   uses the native handle/frame, the column cap reads `--file-line-width`, link conversion calls
   `fileManager.generateMarkdownLink`, and i18n follows Obsidian's locale. *Verifies the platform
   is the building block, not a parallel reimplementation (`F5`, `F22`, `F21`, `D4`).*
+- **AD10 — Embed detection derives from Obsidian's parse.** In the running editor, confirm the set of
+  embed spans the plugin acts on **equals Obsidian's own parse** (`syntaxTree` live / `metadataCache.embeds`
+  cached), not a parallel regex: every variant is detected — **bare `![](…)`**, **`{…}` standalone**,
+  **inline mid-text**, and embeds **inside a list / callout** — while a **fenced code-block** `![](…)` is
+  **excluded by construction** (CDP-confirmed on `05 — Layout, float & wrap.md`: 8 raw `![](…)` lines →
+  **7** parsed embeds, the fenced one at line 99 typed `code` in `cache.sections`). Confirm the **`EMBED_LINE`
+  / `INLINE_EMBED` regexes no longer gate** — they only parse a span the parse already confirmed. Confirm the
+  lone override: with **F20 (render images in code blocks)** **on**, the plugin's own fallback scan
+  re-includes code-section embeds and renders them; **off** (default) they stay code; **reading view renders
+  nothing in code blocks either way**. *Verifies the single parse-derived source of truth, the code-block
+  exclusion, and the one F20 override (`F4`, `F20`; designs out the Bug 2b doubling with no special-case;
+  the bare-embed detection underlying **Bug 114**).*
+- **AD11 — The plugin owns source-link visibility per embed span.** For each parsed span, confirm the
+  plugin is the **single authority** over the link: by **default** it mirrors Obsidian's native
+  cursor-reveal — the **native raw link** shows while the cursor is within the span, the plugin's
+  **stand-in** otherwise (never both, D16); on a `<>` **dismiss** it **actively suppresses** the native
+  reveal so the link stays hidden **even where Obsidian's native image widget would reveal it** (**Bug 65**);
+  while **engaged** (AD12) it **pins** the state; and throughout, **native editing of the source still works**
+  — the line is never replaced, only the tokens are suppressed (Lesson 11/12). *Verifies the per-span
+  single-authority + active-suppress + pin model, without disabling native editing (`F8`, `F9`; **Bug 65 / 86**).*
+- **AD12 — One engagement predicate.** Confirm a **single** predicate — the union of cursor-on-line ∪
+  pointer-hover ∪ selected/active (editor focused) ∪ any open plugin surface (**crop / filter / class /
+  sub-menu**) — drives **every** cross-cutting decision: the reveal **pin** (AB16b), the `<>` dismiss
+  **auto-clear** (fires only on **full disengagement**), and the toolbar's **greyed/active** state. Confirm
+  **no per-surface ad-hoc check remains** (the old `filterPanel || classPanel || submenu || cropEditor`
+  chain is centralized into this one predicate). The union itself is **pure** (unit-testable, §2.2); its
+  inputs are read from live state. *Verifies the one-predicate centralization across pin, auto-clear and
+  greyed state (`F7`, `F8`).*
 
 - **AB7a — Portable runtime & fallback degradation (IMPLEMENTED).** On a plain page (no Obsidian) —
   the `tests/runtime-smoke.html` fixture, verified in a real Chromium engine via an isolated iframe (no
@@ -453,6 +499,40 @@ Grouped by area; each line states what is checked.
   trailing block stays intact; a Markdown native size folds into the block; a wikilink native
   size is left as written. A native pipe / Markdown size is folded into the rendered width in **both**
   views (the `{…}` block wins), and an actual edit normalizes it into the block, off the pipe (Bug 94).
+- **Raw-link reveal (`F8`, `F9`, `D16`, `D17`, `AB16`/`AB16a`/`AB16b`).** The link source — the **body**
+  (`![](…)` / `![[…]]`, native raw link *or* its stand-in) plus any trailing **`{…}`** — reveals as **one
+  whole** across every variant, in Live Preview against the example pages. The no-flicker / atomicity claims
+  are **CDP-verified, never assumed** (Lesson 16): cursor-gated reveal needs CDP **focus-emulation**
+  (`Emulation.setFocusEmulationEnabled`), hover needs a **real `Input` pointer** (synthetic events don't fire
+  `:hover`). Extend `tests/cdp/verify-reveal.mjs` beyond its current `{…}`-standalone fixture to the
+  bare/block, inline, list, callout and code-block fixtures + the LEIT-TESTFALL below.
+  - **Three modes (`F8`).** *native* (default) reveals **only on the active (cursor) line**; *auto*
+    additionally on **hover** of the image's line; *always* **everywhere**. Switching the *default
+    reveal-state* setting (F20) takes effect live.
+  - **Variants.** The whole-link logic holds for a **bare `![](…)`** (block widget — **Bug 114**: it now
+    reveals on the active line / hover, where before it never did — no fake-link, no `.cm-line`), a **`{…}`
+    standalone**, an **inline mid-text** embed, and embeds **inside a list / callout** (revealed **once**, no
+    over-match — Bug 106); with **F20 off** a fenced `![](…)` shows **as code** (no stand-in, no reveal),
+    with **F20 on** it renders and the reveal model applies (the literal `![](…)` stays code text — §2.7).
+  - **No doubled link (`D16`).** The native raw link and the stand-in are **never both** on screen at once;
+    the switch is **atomic** — no in-between frame, no flicker (Bug 52 / 54 / 96).
+  - **One whole (`D17`).** Body and `{…}` **always show/hide together**; a shown body with a hidden `{…}`
+    (or the reverse) is a **fail** (unless there is no `{…}`).
+  - **Dismiss hides both + suppresses native (`F8`; Bug 54 / 65).** The `<>` dismiss hides the stand-in
+    **and** the `{…}` **atomically** and **suppresses the native raw link** too — so it stays hidden even
+    where Obsidian's native image widget would reveal it; it **auto-clears on full disengagement** (AD12) in
+    native & auto, **persists** in always until toggled.
+  - **Engaged-pin (`D8`; Bug 86 / 109).** While **engaged** with the image (a crop, or an open filter /
+    class / sub-menu panel — AD12) the reveal state **does not flip**, whatever the cursor does (crop is one
+    case of many).
+  - **Native editing preserved (`F9`, Lesson 11 / 12).** The revealed source is **native editable text** —
+    the caret enters it and edits write back live; the line is **never replaced**, only the tokens suppressed.
+  - **LEIT-TESTFALL — seamless body↔`{…}` swap.** Move the cursor from the **body into the `{…}` and back**:
+    the **whole link stays visible** the entire time. At the body/`{…}` boundary, Obsidian hides the native
+    raw link (cursor past the body) and the **stand-in carries the body** while the `{…}` is edited natively;
+    the native↔stand-in swap is **seamless** (the user never sees the fake differ from the real source) and
+    **flicker-free**. The atomicity is **CDP-verified** (§2.5) — this is the bar the chosen mechanism (CSS or
+    a deterministic same-transaction toggle) must clear before it ships.
 - **Change image source (`F26`).** Swapping one embed's file keeps the `{…}` block **and** the caption
   (alt) — only the link target changes, so the new image inherits the existing transforms. There is
   **no link-swap "replace all"** (a note-wide replace means baking → the flatten path, not this).
@@ -467,8 +547,10 @@ Grouped by area; each line states what is checked.
   click-steal**, image clickable via `z-index:1`). A float taller than ~250px **stacks as a
   non-floated block in BOTH views** under the *Stack tall floated images* setting (default permissive — off), so
   it can't derender on scroll in LP and the reader matches it (`tallFloatSafe`; the tall-float cap).
-- **Settings (`F20`, `D11`, `D14`).** General toggles (hover toolbar, captions, default reveal state,
-  button-outlines Auto/Always/Never), preset widths, snippet list with per-class toggles and
+- **Settings (`F20`, `D11`, `D14`).** General toggles (hover toolbar, captions, **default raw-link
+  reveal state — native / auto / always** (F8, default native), button-outlines Auto/Always/Never, the
+  tall-float cap, **render images in code blocks — Live Preview only, default off** (AD10 override)),
+  preset widths, snippet list with per-class toggles and
   install/reset, and editing-toolbar integration all take effect live; edits never jump scroll, and a
   single-image edit places the caret on its image's line (`D11` revised) — keeping undo anchored there —
   while hovering never moves the cursor (Bug 77/108).
@@ -529,11 +611,17 @@ lessons in `issues.md`). Pure-logic regressions become **unit** tests (§2); the
 | Bug 92 | Editing chrome is **live-preview only** — a touch long-press in reading view opens no toolbar | CDP (`F7`, Decision 22) |
 | Bug 93 | The plugin follows Obsidian's locale **even when Obsidian is set to English** (`detectLocale` mirrors `getLanguage`) | **unit** (i18n `detectLocale`) + CDP (`F21`) |
 | Bug 94 | A native pipe/markdown size (`![[img\|160]]`) is **folded into the render width in both views** (the explicit `{…}` block wins); an edit normalizes it into the block, off the pipe | **unit** (`applyNativeSize` / `foldNativeSize`) + CDP (`F6`, `T2`) |
-| Bug 96 / 100 / 106 | Raw-link reveal is correct for **inline / list / callout** embeds: link shown **once** (no double), the `{…}` syntax-highlighted, never a stray `{…}` with no link | CDP (`F8`, `AD5`; `verify-reveal.mjs`) |
+| Bug 96 / 100 / 106 | Raw-link reveal is correct for **inline / list / callout** embeds: link shown **once** (no double, D16), the `{…}` syntax-highlighted, never a stray `{…}` with no link (D17) — now derived from the parse-given span, not the `:has` over-match guess | CDP (`F8`, `AB16b`, `AD10`/`AD11`; `verify-reveal.mjs`) |
 | Bug 107 | With a caption the resize handle anchors to the **image corner**, not the caption's bottom | CDP (`D4`, `D9`) |
 | Bug 108 | Resizing via the **hover handle without a prior click** keeps cmd+Z on the image (resize write passes the `D11` cursor) | CDP (`D11`) |
-| Bug 109 | The link-source reveal **stays put during a crop** (hover reveal suppressed on a cropping line) | CDP (`F8`, `D8`) |
+| Bug 109 | The link-source reveal **stays put during a crop** — now the general **engaged-pin** (AD12): the reveal does not flip while engaged with the image (crop is one case) | CDP (`F8`, `D8`, `AD12`, `AB16b`) |
 | Bug 110 | The standalone runtime renders the caption **without `innerHTML`** (DOMParser + `replaceChildren` on escaped HTML) | **unit** (`runtime-markdown`) + CDP / manual (off-Obsidian) |
+
+> **Open reveal-rework cluster (not yet in this table — still `issues.md`).** **Bug 114** (bare embed's link
+> never reveals), **Bug 65** (`<>` dismiss doesn't suppress the native source tokens) and **Bug 86** (reveal
+> not pinned during crop) are the bugs the AD10–AD12 / AB16b rework fixes. They are **not** listed above
+> (which pins only **solved** `CHANGELOG` bugs); their verification is the **§4 Raw-link reveal** area + the
+> **§3 `AD10` / `AD11` / `AD12`** integration tests. When the rework ships they move here as solved entries.
 
 ### 5.2 Per learned lesson (`T-Ln`, in `issues.md`)
 

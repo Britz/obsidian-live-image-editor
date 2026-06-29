@@ -27,3 +27,21 @@ export function clickDismissesToolbar(opts: {
   if (opts.panelOpen) return !opts.insidePanel;
   return !opts.insideRegion;
 }
+
+// AD12 — the ONE engagement predicate. "Is the plugin engaged with THIS image?" is the UNION of every
+// way an image can be active: the editor cursor on its line, the pointer hovering it, the image
+// selected/active (the editor focused on it), and any plugin surface open for it (a crop, or a filter /
+// class / sub-menu panel). Every cross-cutting "is this image active?" decision — the raw-link reveal
+// PIN (AB16b: the reveal does not flip while engaged, Bug 86), the `<>` dismiss auto-clear (fires ONLY
+// on full DISengagement) and the toolbar greyed/active state — reads THIS one predicate, never a fresh
+// per-surface `filterPanel || classPanel || submenu || cropEditor` check (the scattered chain it
+// centralizes). The inputs are gathered from live CM/DOM state by the caller; only the union is pure.
+export function isEngaged(opts: {
+  cursorOnLine: boolean;
+  hover: boolean;
+  selected: boolean;
+  panelOpen: boolean;   // any of filter / class / sub-menu open
+  cropActive: boolean;
+}): boolean {
+  return opts.cursorOnLine || opts.hover || opts.selected || opts.panelOpen || opts.cropActive;
+}

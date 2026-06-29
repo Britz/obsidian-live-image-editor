@@ -65,7 +65,7 @@ And, just to put a few words below the block, some random filler: *At vero eos e
 
 ## Inline — `.lie-inline`
 
-The image is shrunk to text height and flows **within** the line ![](images/sample-square.png){.lie-inline height=1.2em} like an oversized glyph —
+The image is shrunk to text height and flows **within** the line ![](images/sample-square.png){height=1.2em} like an oversized glyph —
 aligned with the surrounding words and never breaking onto its own line.
 No wrapping paragraph is needed here;
 the whole point is that the image does **not** claim its own block, so a single sentence with the image dropped into it is exactly the test.

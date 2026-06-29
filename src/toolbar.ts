@@ -293,7 +293,10 @@ export class ImageToolbar {
   }
 
   private positionAbove(toolbar: HTMLElement, img: HTMLImageElement): void {
-    const rect = img.getBoundingClientRect();
+    // Anchor to the VISIBLE box (`.lie-image-area`), not the raw `<img>`: a cropped/scaled image's own
+    // bounding rect overflows the box (the frame clips it), so anchoring to `img` floated the bar far
+    // above the visible image, detached and unreachable. The image-area is what the user sees and hovers.
+    const rect = (img.closest<HTMLElement>(".lie-image-area") ?? img).getBoundingClientRect();
     const gap = 8;
     // position:fixed + z-index are in the `.lie-toolbar-floating` rule (styles.css); the bar is
     // fixed but recomputed on scroll, so it tracks the image rather than staying pinned to the page
