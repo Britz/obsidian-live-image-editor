@@ -407,13 +407,14 @@ body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall.lie-float-rig
 .lie-fake-link-block.lie-reserve { display: block; visibility: hidden; }
 .lie-fake-link-block.lie-reserve.lie-show { visibility: visible; }
 /* AB16b dismiss (Bug 65): the `<>` dismiss must hide the link EVEN where Obsidian reveals its OWN
-   native raw-link source on the active line. The StateField marks the dismissed line
-   `lie-suppress-native`; hide Obsidian's revealed body tokens (the `![](…)` `cm-image` marker/alt +
-   the `cm-url` link tokens) — scoped to that line, excluding the plugin's own `{…}` mark. Plain
-   parent→child + `:not`, no `:has`, no `!important`. (The native text stays in the document and editable;
-   only the on-screen reveal is suppressed — Lesson 11/12. CDP-verified.) */
-.cm-line.lie-suppress-native > .cm-image,
-.cm-line.lie-suppress-native > .cm-url:not(.lie-attr) { display: none; }
+   native raw-link source on the active line — and ONLY this embed's link, never the whole line. The
+   StateField stamps a per-embed MARK (`lie-suppress-native`) over the embed's BODY span (`![](…)`), so
+   the class lands directly on Obsidian's revealed body tokens (the `cm-image` marker/alt + the `cm-url`
+   link tokens) of THIS embed; a sibling embed or surrounding text on the same line is untouched. The
+   `{…}` is a separate span (never in the body range) and hides via its own withheld `lie-show`. No
+   `:has`, no `!important`. (The native text stays in the document and editable; only the on-screen
+   reveal is suppressed — Lesson 11/12.) */
+.lie-suppress-native { display: none; }
 
 /* The `<>` toggle shows faint while the line's source is dismissed (D5). */
 .lie-toolbar-reveal.is-off { color: var(--text-faint); }

@@ -133,7 +133,7 @@ requirement + the storage/permission implications) before any code.
 
 ### Known open bugs (Bug)
 
-_**117 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
+_**118 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
 
 > **Bugs 95–104 — a regression batch from the layout rework (`ba2dfa4`, "decouple size from layout"),
 > found in a CLEAN store install (v0.6.6).** The dev vault MASKED most of them: its `styles.css` was a
@@ -220,11 +220,6 @@ _**117 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       only nulls a FULLY-degenerate session (placement AND aspect identity); a real crop with an identity
       placement isn't stripped. _Fix:_ serialization must omit an identity transform (drop
       `translate(0%,0%)`, `rotate(0deg)`, `scale(1,1)`; keep only `aspect-ratio`).
-- [ ] **Bug 104 — The plugin's OWN `<>` reveal/toggle button is not shown.** The toolbar's `<>`
-      reveal/dismiss control ([live-preview.ts:205](src/live-preview.ts#L205)) doesn't render. No code is
-      meant to hide it (only **Bug 31** hides the NATIVE edit-block `<>`), so its absence is a regression —
-      likely `ba2dfa4`'s toolbar/overlay changes. Recurring area (Bug 29/53/54) but a NEW cause → new
-      number per the numbering policy.
 - [ ] **Bug 105 — `Replace all` link-swaps every occurrence of the SAME image instead of flattening all
       images (wrong concept, user-declared).** The shipped `replace-all-images` command
       ([commands.ts:70](src/commands.ts#L70), `planReplaceAll`) re-points every occurrence of one source

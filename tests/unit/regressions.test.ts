@@ -113,7 +113,8 @@ describe("Bug 78/79 — no-explicit-width box sizing is the native cap (cropped 
 
 describe("Bug 54 — the `<>` dismiss / auto-clear state machine (reduceReveal — auto mode is default)", () => {
   const base = (over: Partial<RevealEvents> = {}): RevealEvents =>
-    ({ remap: null, toggles: [], hovers: [], activeLineFrom: -1, mode: "auto", ...over });
+    // lineOf is identity here — these tests use each key AS its own line (per-embed keys = embed positions).
+    ({ remap: null, toggles: [], hovers: [], activeLineFrom: -1, mode: "auto", lineOf: (p) => p, ...over });
   const st = (dismissed: number[] = [], hoveredLine: number | null = null): RevealState =>
     ({ dismissed: new Set(dismissed), hoveredLine });
 
@@ -172,10 +173,23 @@ describe("Bug 54 — the `<>` dismiss / auto-clear state machine (reduceReveal �
     expect(next.dismissed).toBe(prev.dismissed);
   });
 
-  it("a doc change remaps the dismissed line positions (and the hovered line)", () => {
+  it("a doc change remaps the dismissed embed positions (and the hovered line)", () => {
     const next = reduceReveal(st([10], 10), base({ remap: (p) => p + 5, activeLineFrom: 15 }));
     expect([...next.dismissed]).toEqual([15]); // 10 → 15
     expect(next.hoveredLine).toBe(15);
+  });
+
+  it("PER-EMBED: two embeds on ONE line dismiss independently (keys are embed positions, not the line)", () => {
+    const lineOf = (): number => 5; // both embeds 10 and 20 live on line 5
+    const next = reduceReveal(st([], 5), base({ toggles: [10], hovers: [{ line: 5, on: true }], activeLineFrom: 0, lineOf }));
+    expect(next.dismissed.has(10)).toBe(true);
+    expect(next.dismissed.has(20)).toBe(false); // the sibling embed on the same line is untouched
+  });
+
+  it("PER-EMBED auto-clear keys on the embed's LINE (via lineOf), not the embed position", () => {
+    const lineOf = (): number => 5; // embed key 10 sits on line 5
+    expect(reduceReveal(st([10], null), base({ activeLineFrom: 99, lineOf })).dismissed.has(10)).toBe(false); // line left → clears
+    expect(reduceReveal(st([10], null), base({ activeLineFrom: 5, lineOf })).dismissed.has(10)).toBe(true);  // line active → kept
   });
 });
 

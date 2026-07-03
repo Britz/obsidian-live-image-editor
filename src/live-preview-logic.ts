@@ -100,7 +100,8 @@ export function rewriteWidth(lineText: string, width: number): string | null {
 // override on top of this — not a fourth mode.
 export type RevealMode = "native" | "auto" | "always";
 
-/** Line-start positions = keys; the transient reveal state the StateField tracks. */
+/** The transient reveal state the StateField tracks. `dismissed` keys are EMBED positions (`e.attrEnd`),
+ *  so each embed dismisses independently — even two on the same line. */
 export interface RevealState {
   dismissed: Set<number>;
   hoveredLine: number | null;
@@ -110,7 +111,8 @@ export interface RevealState {
 export interface RevealEvents {
   /** Doc-change position remap (CM `changes.mapPos`), or null when the doc did not change. */
   remap: ((pos: number) => number) | null;
-  /** Line-start positions toggled by the `<>` control this transaction. */
+  /** EMBED positions (`e.attrEnd`) toggled by the `<>` control this transaction — per-embed, NOT per
+   *  line, so two embeds on one line dismiss independently. */
   toggles: number[];
   /** Image hover enter/leave events this transaction (line-start + on/off). */
   hovers: { line: number; on: boolean }[];
@@ -118,6 +120,9 @@ export interface RevealEvents {
   activeLineFrom: number;
   /** The global default-state setting (native / auto / always) — drives the auto-clear. */
   mode: RevealMode;
+  /** Map a dismissed EMBED key to its line-start, so the per-embed auto-clear can ask "is THIS embed's
+   *  line the active/hovered one?" (keys are embed positions; the natural reveal is per line). */
+  lineOf: (pos: number) => number;
 }
 
 /**
@@ -148,21 +153,22 @@ export function reduceReveal(prev: RevealState, ev: RevealEvents): RevealState {
     for (const pos of prev.dismissed) dismissed.add(ev.remap(pos));
     if (hoveredLine !== null) hoveredLine = ev.remap(hoveredLine);
   }
-  for (const line of ev.toggles) {
+  for (const pos of ev.toggles) {
     mutate();
-    if (dismissed.has(line)) dismissed.delete(line); else dismissed.add(line);
+    if (dismissed.has(pos)) dismissed.delete(pos); else dismissed.add(pos);
   }
   for (const h of ev.hovers) {
     hoveredLine = h.on ? h.line : (hoveredLine === h.line ? null : hoveredLine);
   }
   if (ev.mode !== "always" && dismissed.size) {
     const justToggled = new Set(ev.toggles);
-    // Keep a dismiss only where the source naturally reveals for the mode (so it clears on leave).
-    const naturallyRevealed = (lineFrom: number): boolean =>
-      lineFrom === ev.activeLineFrom || (ev.mode === "auto" && lineFrom === hoveredLine);
-    for (const lineFrom of [...dismissed]) {
-      if (justToggled.has(lineFrom)) continue; // a fresh dismiss survives its own transaction
-      if (!naturallyRevealed(lineFrom)) { mutate(); dismissed.delete(lineFrom); }
+    // Keep a dismiss only where the source naturally reveals for the mode (so it clears on leave). The
+    // keys are EMBED positions; `lineOf` maps each to its line to compare against the active/hovered line.
+    const naturallyRevealed = (pos: number): boolean =>
+      ev.lineOf(pos) === ev.activeLineFrom || (ev.mode === "auto" && ev.lineOf(pos) === hoveredLine);
+    for (const pos of [...dismissed]) {
+      if (justToggled.has(pos)) continue; // a fresh dismiss survives its own transaction
+      if (!naturallyRevealed(pos)) { mutate(); dismissed.delete(pos); }
     }
   }
   return { dismissed, hoveredLine };

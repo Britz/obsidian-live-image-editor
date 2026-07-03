@@ -1,4 +1,4 @@
-import { App, TFile, editorLivePreviewField, setIcon } from "obsidian";
+import { App, TFile, editorLivePreviewField } from "obsidian";
 import { EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { syntaxTree, ensureSyntaxTree } from "@codemirror/language";
@@ -10,17 +10,28 @@ import { captionMarkdown, createCaption, CaptionHandle } from "./caption";
 import { buildLayers as applyTransformToImage } from "./render-core";
 import { ToolbarItem, buildToolbarElement } from "./toolbar";
 import { writeSource } from "./source-writer";
-import { t } from "./i18n";
 
 // Force a rebuild when external state (captions / reveal mode settings) changed.
 export const refreshDecorations = StateEffect.define<void>();
 
-// `<>` TOGGLE for the per-line `dismissed` state (F8): transiently click the link source away,
-// click again to bring it back. Transient (not persisted); auto-clears in auto mode.
+// `<>` TOGGLE for the per-EMBED `dismissed` state (F8): transiently click the link source away,
+// click again to bring it back. The value is the embed's doc position (`e.attrEnd`), so two embeds
+// on one line dismiss independently. Transient (not persisted); auto-clears in auto mode.
 const toggleReveal = StateEffect.define<number>();
 // Whether a line's image is mouse-hovered (line-start pos), so the auto-clear can tell when the
 // source is NaturalReveal:false (neither hovered nor the cursor's active line).
 const setHover = StateEffect.define<{ line: number; on: boolean }>();
+
+// The `<>` reveal/dismiss ACTION, shared by BOTH toolbar presentations (in-chrome + floating). The
+// toolbar item (built in main's `toolbarItemsForImage`) only has the `<img>`; resolve its editor +
+// the embed's per-embed key here. `findFromDOM` recovers the EditorView from any node inside it.
+export function toggleEmbedReveal(img: HTMLImageElement): void {
+  const wrapper = img.closest<HTMLElement>(".lie-wrapper");
+  if (!wrapper) return;
+  const view = EditorView.findFromDOM(wrapper);
+  if (!view) return;
+  view.dispatch({ effects: toggleReveal.of(view.posAtDOM(wrapper)) });
+}
 
 // `RevealMode` (native / auto / always) is the natural-reveal mode for the link source — defined in
 // live-preview-logic.ts (the pure layer) alongside `reduceReveal`. The `<>` dismiss is a SEPARATE
@@ -170,6 +181,10 @@ class EmbedWidget extends WidgetType {
       : "lie-wrapper lie-wrapper-block";
     wrapper.setAttribute("contenteditable", "false");
     wrapper.dataset["lieStruct"] = this.structuralSig(); // updateDOM keys reveal-only flips off this
+    // The dismiss state rides the wrapper as a plain class, so BOTH toolbar presentations (in-chrome +
+    // floating) read it the same way per show (the `<>` `is-off`/label) — the one toolbar, two views. A
+    // dismiss flip is in `structuralSig`, so updateDOM recreates and this is set fresh; no updateDOM path.
+    wrapper.classList.toggle("lie-dismissed", this.dismissed);
 
     const file = this.resolveFile();
     if (!file) { wrapper.textContent = this.embed; return wrapper; }
@@ -206,7 +221,7 @@ class EmbedWidget extends WidgetType {
     if (imageArea) host.appendChild(imageArea);
     host.appendChild(this.makeResizeCorner(view, wrapper, img));
     area.appendChild(host);
-    area.appendChild(this.makeToolbar(view, img, wrapper));
+    area.appendChild(this.makeToolbar(img));
     if (this.showCaptions) {
       const caption = createCaption(this.app, captionMarkdown(this.embed), this.sourcePath);
       if (caption) {
@@ -216,13 +231,13 @@ class EmbedWidget extends WidgetType {
       }
     }
 
-    // Click the image (not a button) → caret onto the line so the native source reveals
-    // for editing (F9 — the `{…}` is native editable text above the image).
+    // Click the image (not a button/handle) → caret onto the EMBED so its own source reveals for
+    // editing (F9), UNIFORM for every mode. The resize handle (which fully covers a tiny inline image)
+    // is skipped here but handles a plain click itself (below), so clicking any image still reveals.
     area.addEventListener("mousedown", (e) => {
       if ((e.target as HTMLElement).closest(".lie-toolbar, .image-resize-corner")) return;
       e.preventDefault();
-      view.dispatch({ selection: { anchor: view.state.doc.lineAt(view.posAtDOM(wrapper)).from } });
-      view.focus();
+      this.moveCaretToEmbed(view, wrapper);
     });
 
     // Track hover of this image so the auto-clear (auto mode) knows when the line is no longer
@@ -238,35 +253,13 @@ class EmbedWidget extends WidgetType {
     (dom as unknown as { _lieCaption?: CaptionHandle })._lieCaption?.destroy();
   }
 
-  private makeToolbar(view: EditorView, img: HTMLImageElement, wrapper: HTMLElement): HTMLElement {
+  // The IN-CHROME presentation of the ONE toolbar: the shared `buildToolbarElement` over the SAME item
+  // model the floating bar uses (`getActions` === main's `toolbarItemsForImage`, which now carries the
+  // `<>` reveal as a normal item). Only the host class differs — `lie-toolbar-in-image` vs `-floating`.
+  private makeToolbar(img: HTMLImageElement): HTMLElement {
     const toolbar = buildToolbarElement(this.getActions(img));
     toolbar.classList.add("lie-toolbar-in-image");
-    const sep = activeDocument.createElement("span");
-    sep.className = "lie-toolbar-sep";
-    toolbar.prepend(sep);
-    toolbar.prepend(this.makeRevealButton(view, wrapper));
     return toolbar;
-  }
-
-  // The `<>` toggle (F8/Bug 53): click the link source AWAY (dismiss), click again to bring it
-  // back. The icon is the Lucide "code" glyph (`<>`) in BOTH states — the dismissed state shows
-  // faint (`is-off`) and the tooltip/aria flips, so the affordance stays honest without changing
-  // the icon to an eye.
-  private makeRevealButton(view: EditorView, wrapper: HTMLElement): HTMLElement {
-    const button = activeDocument.createElement("button");
-    button.className = "lie-toolbar-btn lie-toolbar-reveal";
-    if (this.dismissed) button.classList.add("is-off");
-    const label = this.dismissed ? t("revealLink") : t("hideLinkSource");
-    button.setAttribute("aria-label", label);
-    button.title = label;
-    setIcon(button, "code");
-    button.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
-    button.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      view.dispatch({ effects: toggleReveal.of(view.state.doc.lineAt(view.posAtDOM(wrapper)).from) });
-    });
-    return button;
   }
 
   private resolveFile(): TFile | null {
@@ -275,6 +268,14 @@ class EmbedWidget extends WidgetType {
     const linkpath = decodeURIComponent(md?.[1] ?? wiki?.[1] ?? "");
     if (!linkpath) return null;
     return this.app.metadataCache.getFirstLinkpathDest(linkpath, this.sourcePath);
+  }
+
+  // Caret onto the EMBED span (`posAtDOM(wrapper)` = the widget's own doc position), UNIFORM for
+  // standalone, block and inline — so clicking any image reveals ITS source for editing (F9), never the
+  // line start (which for a mid-text inline image is other text, not the link). No per-mode fork.
+  private moveCaretToEmbed(view: EditorView, wrapper: HTMLElement): void {
+    view.dispatch({ selection: { anchor: view.posAtDOM(wrapper) } });
+    view.focus();
   }
 
   private makeResizeCorner(view: EditorView, wrapper: HTMLElement, img: HTMLImageElement): HTMLElement {
@@ -286,11 +287,21 @@ class EmbedWidget extends WidgetType {
       const box = img.closest<HTMLElement>(".lie-image-area") ?? img;
       const startX = e.clientX;
       const startWidth = box.getBoundingClientRect().width;
+      // Any CLICK is an active interaction → move the caret onto the embed (reveal its source) NOW, even
+      // when the click goes on to be a resize drag. This is `pointerdown`, so pure hover never reaches it —
+      // hover alone moves nothing. Same reveal as clicking the image body; on a tiny inline image the
+      // handle IS the whole image, so this is how that click reveals. Uniform, no fork.
+      this.moveCaretToEmbed(view, wrapper);
+      let dragged = false;
       const widthAt = (ev: PointerEvent) => Math.max(40, Math.round(startWidth + (ev.clientX - startX)));
-      const onMove = (ev: PointerEvent) => { box.style.width = `${widthAt(ev)}px`; };
+      const onMove = (ev: PointerEvent) => {
+        if (Math.abs(ev.clientX - startX) > 2) dragged = true; // ignore sub-pixel jitter, so a plain click isn't a resize
+        if (dragged) box.style.width = `${widthAt(ev)}px`;
+      };
       const onUp = (ev: PointerEvent) => {
         activeDocument.removeEventListener("pointermove", onMove);
         activeDocument.removeEventListener("pointerup", onUp);
+        if (!dragged) return; // a plain click already moved the caret on pointerdown; nothing to resize
         const line = view.state.doc.lineAt(view.posAtDOM(wrapper));
         const replacement = rewriteWidth(line.text, widthAt(ev));
         if (replacement === null) return;
@@ -308,7 +319,7 @@ class EmbedWidget extends WidgetType {
 }
 
 interface LivePreviewState {
-  dismissed: Set<number>;     // line-start positions whose source is `<>`-dismissed (transient)
+  dismissed: Set<number>;     // EMBED positions (`e.attrEnd`) whose source is `<>`-dismissed (transient)
   hoveredLine: number | null; // line-start of the currently mouse-hovered image (for auto-clear)
   decorations: DecorationSet;
 }
@@ -395,7 +406,7 @@ export function createLivePreviewExtension(
       // standalone / bare-block / inline from the same per-embed decision — no `:has`, no `.cm-active` guess.
       for (const e of collectEmbeds(state, renderInCode)) {
         const line = state.doc.lineAt(e.from);
-        const isDismissed = e.mode !== "inline" && dismissed.has(line.from);
+        const isDismissed = dismissed.has(e.attrEnd); // per-EMBED key (e.attrEnd) — two embeds on one line dismiss independently; no inline exception
         const reveal = resolveLinkReveal({
           mode: revealMode,
           dismissed: isDismissed,
@@ -405,15 +416,16 @@ export function createLivePreviewExtension(
           cursorInBody: head >= e.from && head <= e.embedEnd,        // D16: cursor in the body → native carries it
           cursorInAttr: e.attrEnd > e.embedEnd && head >= e.embedEnd && head <= e.attrEnd,
         });
-        // Line-level (standalone / bare only): the dismiss + the ACTIVE suppression of Obsidian's OWN
-        // native raw link (Bug 65) ride the cm-line; the per-element show/hide is on the elements below.
-        if (e.mode !== "inline") {
-          const lineCls = [isDismissed ? "lie-dismissed" : "", reveal.suppressNative ? "lie-suppress-native" : ""].filter(Boolean).join(" ");
-          if (lineCls) builder.add(line.from, line.from, Decoration.line({ class: lineCls }));
-        }
         // (1) The stand-in fake link — per-embed `lie-show` from the AB16b decision (standalone/inline;
         //     for a block embed it is swallowed off-line — the bare stand-in is hosted in the widget at (3)).
         builder.add(e.from, e.from, Decoration.widget({ widget: new FakeLinkWidget(e.embed, reveal.showStandIn), side: -1 }));
+        // (1b) DISMISS suppresses ONLY this embed's link (Bug 65, link-only): hide Obsidian's OWN native
+        //      body tokens over the BODY span (e.from…e.embedEnd) — NOT the whole cm-line — so a sibling
+        //      embed or surrounding text on the same line is untouched, and it works for inline too (no
+        //      line-level exception). The stand-in + {…} hide via their own withheld `lie-show`.
+        if (reveal.suppressNative) {
+          builder.add(e.from, e.embedEnd, Decoration.mark({ class: "lie-suppress-native" }));
+        }
         // (2) The {…} attr list — NATIVE editable text, marked + url-string highlighted (URL_CLASS, no
         //     cm-formatting — Bug 55), `lie-show` per the decision (shows/hides as one whole with the body, D17).
         if (e.attrEnd > e.embedEnd) {
@@ -458,6 +470,8 @@ export function createLivePreviewExtension(
       hovers,
       activeLineFrom: tr.state.doc.lineAt(tr.state.selection.main.head).from,
       mode: getRevealMode(),
+      // dismissed keys are EMBED positions (e.attrEnd); map each back to its line for the auto-clear.
+      lineOf: (pos) => tr.state.doc.lineAt(Math.min(pos, tr.state.doc.length)).from,
     });
   };
 

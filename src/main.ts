@@ -20,7 +20,7 @@ import { scanSnippets, SnippetClass } from "./snippet-scanner";
 import { StylesInjector } from "./styles-injector";
 import { registerCommands, CommandHandler } from "./commands";
 import { LieSettings, DEFAULT_SETTINGS, LieSettingTab } from "./settings";
-import { createLivePreviewExtension, refreshDecorations } from "./live-preview";
+import { createLivePreviewExtension, refreshDecorations, toggleEmbedReveal } from "./live-preview";
 import { captionFromAlt, createCaption, CaptionHandle } from "./caption";
 import { Prec } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -602,7 +602,17 @@ export default class LiveImageEditorPlugin extends Plugin {
       active: LAYOUTS.includes(b.id as Layout) ? b.id === cur : b.active,
       action: () => { this.activeImage = img; b.action(); },
     });
-    return this.buildToolbarItems().map((it) =>
+    // The `<>` reveal is a normal toolbar item — ONE toolbar model both presentations render. Leftmost,
+    // with per-show state read off the wrapper: dismissed → `is-off` + the label flips to "reveal". Its
+    // action resolves the editor itself (toggleEmbedReveal → findFromDOM), so it works floating too.
+    const dismissed = !!img.closest(".lie-wrapper")?.classList.contains("lie-dismissed");
+    const reveal: ToolbarButton = {
+      kind: "button", id: "reveal", icon: "code",
+      titleKey: dismissed ? "revealLink" : "hideLinkSource",
+      className: dismissed ? "lie-toolbar-reveal is-off" : "lie-toolbar-reveal",
+      action: () => toggleEmbedReveal(img),
+    };
+    return [reveal, ...this.buildToolbarItems()].map((it) =>
       it.kind === "button" ? bind(it) : { ...it, buttons: it.buttons.map(bind) }
     );
   }

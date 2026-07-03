@@ -31,8 +31,8 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/caption-logic.ts` | AB7 Caption (text, pure) | `captionMarkdown`<br>`captionFromAlt` |
 | `src/caption.ts` | AB7 Caption (DOM) | `createCaption`<br>`CaptionHandle` |
 | `src/live-preview-logic.ts` | AB9 LP line→decoration (pure) | `lineDecorations`<br>`inlineEmbeds`<br>`rewriteWidth`<br>`EMBED_LINE` / `INLINE_EMBED` *(span text-parsers, not the detection gate — AD10)*<br>`reduceReveal` *(pure reveal-state reducer: mode + engaged + dismiss + cursor-vs-spans → show? + auto-clear?)* |
-| `src/live-preview.ts` | AB9 Live-preview adapter (+ AB16 widget + CSS native-suppression) | `createLivePreviewExtension`<br>`refreshDecorations`<br>*(internal: `WidgetMode = block\|inline\|standalone`, `RevealMode = native\|auto\|always`)* |
-| `src/toolbar.ts` | AB10 Toolbar | `ImageToolbar`<br>`buildToolbarElement` |
+| `src/live-preview.ts` | AB9 Live-preview adapter (+ AB16 widget + CSS native-suppression) | `createLivePreviewExtension`<br>`refreshDecorations`<br>`toggleEmbedReveal` *(the `<>` dismiss action, shared by both toolbar presentations — resolves the editor via `EditorView.findFromDOM`, keys the toggle on `e.attrEnd`)*<br>*(internal: `WidgetMode = block\|inline\|standalone`, `RevealMode = native\|auto\|always`)* |
+| `src/toolbar.ts` | AB10 Toolbar | `ImageToolbar` *(floating presentation, on `body`)*<br>`buildToolbarElement` *(the ONE renderer — turns the shared `ToolbarItem[]` into the bar for **both** presentations; the EmbedWidget hosts it in-chrome, `ImageToolbar` floats it, only host + class differ)*<br>`ToolbarButton` *(now `className?` for the `<>` reveal's `lie-toolbar-reveal` + per-show `is-off`)* |
 | `src/anchored-submenu-logic.ts` | AB11 Sub-menu placement (pure) | `placeSubmenu`<br>`SubmenuPlacement` |
 | `src/anchored-submenu.ts` | AB11 Shared sub-menu host | `AnchoredSubmenu` |
 | `src/region-hover.ts` | AB11a Active-region hover binder (D6.2/D6.4) | `bindRegionHover` *(N members → one grace-bridged, nesting-robust hover signal)*<br>`couplePaletteToRegion` *(body-level palette ↔ region, not greyed)* |
@@ -349,9 +349,12 @@ there is no second crop/rotate/scale implementation. (This collapses the old dup
   `reserve-visible` (`.lie-reserve.lie-show`). *(Standalone/inline embeds DON'T reserve: there the source
   is INLINE before the image on the same cm-line, so reserving its width would push the image sideways —
   the no-jump fix for standalone is a separate layout rework, putting the source on its own line.)* The `<>`
-  toggle stamps a **`.lie-dismissed` LINE class** that **actively suppresses** stand-in, `{…}` **and** the
-  native raw link (`!important`) for that one image — hidden even where Obsidian would reveal it (Bug 65);
-  it **auto-clears on full disengagement** (AD12) in native & auto, **persists** in always. The decision
+  toggle dismisses **one embed** — keyed by its doc position `e.attrEnd`, **not the line**, so two embeds
+  on a line dismiss independently. It is **link-only**: a per-embed `lie-suppress-native` **MARK** over the
+  body span (`e.from…e.embedEnd`) hides only THIS embed's native raw link — even where Obsidian would
+  reveal it (Bug 65) — while the stand-in + `{…}` hide via their own withheld `lie-show`; a sibling embed
+  or surrounding text on the line is **untouched** (no LINE class, no `!important`). It **auto-clears on
+  full disengagement** (AD12) in native & auto, **persists** in always. The decision
   is the pure `reduceReveal`; its application is CSS in the **same transaction** as the selection change
   (no JS style-write frame → atomic, D16) — **no reactive JS loop**, no edit field, no third "hidden"
   mode. **The no-flicker atomicity is CDP-verified before commit** (§3.3, §2.5 / Lesson 16).
@@ -503,11 +506,12 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
     `:has(> .cm-formatting)` guess), so the two body faces are mutually exclusive **by construction**
     (D16). The **reveal state** is the global *default raw-link reveal state* setting (`defaultRevealState`,
     AB19/F20) in **three modes**: **native** (active/cursor line only — default), **auto** (+ the line on
-    **hover**), **always** (everywhere). The `<>` toolbar control is a transient per-image **dismiss** (a
-    `.lie-dismissed` LINE class via a `toggleReveal` StateEffect, **not persisted**, F8) that **actively
-    suppresses** the link — stand-in, `{…}` **and** the native raw link (Bug 65) — auto-clearing on full
-    disengagement (AD12) in native & auto, persisting in always. There is **no** third "hidden" mode, no
-    `cycleRevealMode`.
+    **hover**), **always** (everywhere). The `<>` toolbar control is a transient per-**embed** **dismiss**
+    (keyed by `e.attrEnd` via a `toggleReveal` StateEffect, **not persisted**, F8) that suppresses the link
+    **link-only** — the stand-in + `{…}` withhold their `lie-show`, and a per-embed `lie-suppress-native`
+    MARK over the body span hides the native raw link (Bug 65) — for THAT embed alone, auto-clearing on
+    full disengagement (AD12) in native & auto, persisting in always. There is **no** third "hidden" mode,
+    no `cycleRevealMode`.
   - **The seamless body↔`{…}` swap (the LEIT-case).** The `{…}` is **native editable text**. When the
     cursor moves from the body **into** the `{…}`, Obsidian hides the native raw link (cursor past the
     body) — so the **stand-in carries the body** while the `{…}` is edited natively, and the **whole link
@@ -553,8 +557,10 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   to the body / `{…}` spans; it returns whether the link shows and whether the dismiss **auto-clears**
   (only on full disengagement, native & auto; persists in always). `cycleRevealMode` is **gone**;
   `RevealMode` is the three-valued `native|auto|always` derived from `defaultRevealState` (AB19/F20) — no
-  per-line mode cycle. The `<>` control is the per-image **dismiss** (a `.lie-dismissed` LINE decoration
-  via a `toggleReveal` StateEffect).
+  per-line mode cycle. `reduceReveal` also takes **`lineOf`** (maps each dismissed **embed** key back to
+  its line) so the auto-clear works per-embed. The `<>` control is the per-**embed** **dismiss** (keyed by
+  `e.attrEnd` via a `toggleReveal` StateEffect); it suppresses **link-only** via a per-embed
+  `lie-suppress-native` MARK over the body span — no LINE decoration.
 - **Embed detection derives from the parse (AD10).** The build no longer *gates* on `EMBED_LINE` /
   `INLINE_EMBED` walking `for i=1..doc.lines`: the **model** (whether/where a line holds an image embed)
   comes from **Obsidian's own parse** — the editor **`syntaxTree(state)`** live (`@codemirror/language`;
@@ -581,8 +587,15 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
 
 ### 3.4 Editing UI
 
-- **`toolbar.ts`** — `ImageToolbar` builds the ordered, divider-grouped bar (`buildToolbarElement`),
-  revealed on hover/selection, positioned `absolute` on the box (D1, D2). **D1.1 (too-small →
+- **`toolbar.ts`** — `buildToolbarElement` renders the ordered, divider-grouped bar from the shared
+  `ToolbarItem[]` — the **ONE** toolbar, shown in **two presentations**: the EmbedWidget hosts it
+  **in-chrome** on the box (`lie-toolbar-in-image`), and `ImageToolbar` **floats** the identical bar on
+  `body` (`lie-toolbar-floating`) for a `.lie-float` image (inline / too-short). Only host + class differ;
+  buttons, order and behaviour are the same by construction. The `<>` reveal is a **normal item**
+  (leftmost, built in main's `toolbarItemsForImage`, action `toggleEmbedReveal`), so **both** presentations
+  carry it identically; its per-show `is-off`/label reads the wrapper's `.lie-dismissed` class (a plain DOM
+  signal set in the widget, since a dismiss flip already recreates the widget). Revealed on hover/selection,
+  positioned `absolute` on the box (D1, D2). **D1.1 (too-small →
   above)** is a **CSS container query** on the box, no JS: *(CDP-verified)* `.lie-image-area
   { container-type: size }` + `@container (max-height: <bar height>) { .lie-toolbar { top: auto;
   bottom: 100% } }` flips the bar above at small sizes and is inert when large. (`container-type:

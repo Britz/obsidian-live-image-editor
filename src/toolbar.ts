@@ -11,6 +11,9 @@ export interface ToolbarButton {
   // Radio active-state (layout buttons): highlighted when it matches the image's current state.
   // Computed per show in `toolbarItemsForImage`; undefined for stateless buttons.
   active?: boolean;
+  // Extra class(es) for buttons that carry their own CSS hook + per-show state (the `<>` reveal:
+  // `lie-toolbar-reveal` always, plus `is-off` when the link is dismissed). Computed per show.
+  className?: string;
 }
 
 export interface ToolbarGroup {
@@ -61,6 +64,7 @@ function makeButton(btn: ToolbarButton): HTMLButtonElement {
   const el = activeDocument.createElement("button");
   el.classList.add("lie-toolbar-btn");
   if (btn.active) { el.classList.add("is-active"); el.setAttribute("aria-pressed", "true"); }
+  if (btn.className) el.classList.add(...btn.className.split(" "));
   el.dataset["lieId"] = btn.id;
   const anim = ANIM_BY_ID[btn.id];
   if (anim) el.dataset["anim"] = anim;
