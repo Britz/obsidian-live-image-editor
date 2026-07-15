@@ -90,7 +90,11 @@ requirement + the storage/permission implications) before any code.
       `window` → `activeWindow` half, and the original prerequisite — **confirm whether the plugin is even
       reachable in a popout** (its hosts: LP editor + reading-view embeds) and scope which references are
       genuinely main-window-only (e.g. the `localStorage` language read) vs. document-relative — plus a
-      real popout-window behaviour test (CDP). (2026-06-07; partial 2026-06-16.)
+      real popout-window behaviour test (CDP). **Note on the runtime:** the shared core references
+      `activeDocument` (and will reference `activeWindow` once this sweep lands), which the standalone
+      runtime lacks — so the runtime ENTRY shims both globals (`runtime.ts`, Bug 119 / [0.6.13]); the
+      `activeWindow` sweep is therefore already safe in the runtime, guarded by
+      `tests/unit/runtime-global-shim.test.ts`. (2026-06-07; partial 2026-06-16.)
 - [ ] **Feature 41 — "Bake & replace" a SINGLE image IN PLACE (the per-image case of Feature 31).** What
       the user means by "replace image" — NOT the shipped **Feature 35** (which only repoints the link to
       another source file and touches nothing else). Here: turn THIS image's non-destructive edits into a
@@ -133,7 +137,7 @@ requirement + the storage/permission implications) before any code.
 
 ### Known open bugs (Bug)
 
-_**118 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
+_**119 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
 
 > **Bugs 95–104 — a regression batch from the layout rework (`ba2dfa4`, "decouple size from layout"),
 > found in a CLEAN store install (v0.6.6).** The dev vault MASKED most of them: its `styles.css` was a

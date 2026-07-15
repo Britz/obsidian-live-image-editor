@@ -8,6 +8,8 @@
 //     that is not a parallel reimplementation of a platform capability (AD9); fidelity is bounded by
 //     the lossy alt attribute.
 // The caption TEXT logic is reused too — both paths derive the text from `caption-logic.ts`.
+// `activeDocument` is Obsidian's window-aware global; off-Obsidian the standalone runtime SHIMS it
+// (see `runtime.ts`), so this shared module stays identical for both callers (Bug 119).
 export function createCaptionEl(tag: "div" | "span" = "div"): HTMLElement {
   const el = activeDocument.createElement(tag);
   el.className = "lie-caption";

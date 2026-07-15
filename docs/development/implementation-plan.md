@@ -440,7 +440,15 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   (the structural layer rules, injected by the plugin AND the runtime — one source, R0) and the
   identification (`CLAIM_SELECTOR` + `readTransform`). The plugin renderer and the runtime are **two
   callers of this one builder** (R0); the reading-view adapter (the post-processor wiring) lives in
-  `main.ts`.
+  `main.ts`. **Pitfall — Obsidian-only globals in the runtime closure:** the shared core (and
+  `caption-dom.ts`) reference Obsidian's window-aware globals `activeDocument` / `activeWindow`, which
+  do NOT exist off-Obsidian — so the first hydrate threw a ReferenceError until fixed (Bug 119, a
+  Change 40 sweep regression). Rather than thread a Document through the shared core, the runtime ENTRY
+  (`runtime.ts`) SHIMS these globals (AD9 runtime exception — the runtime supplies the missing platform
+  binding itself, as it supplies its own inline-Markdown renderer): `Object.assign(globalThis, {
+  activeDocument: document, activeWindow: window })` at the top of `run()`, before the first hydrate.
+  So the shared core stays identical for both callers and Feature 39's future `window` → `activeWindow`
+  sweep is safe in the runtime too. Guarded by `tests/unit/runtime-global-shim.test.ts`.
 - **`caption.ts` / `caption-logic.ts`** — `createCaption` renders the alt text via Obsidian's
   `MarkdownRenderer` (AD9) below the box, as a child of the **embed** (never inside the box, §2.3).
   It is sized to the box width by **pure CSS**: `.lie-caption { width: 0; min-width: 100% }` inside

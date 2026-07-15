@@ -86,6 +86,13 @@ function addCaption(img: HTMLImageElement): void {
 }
 
 function run(): void {
+  // Shim the Obsidian-only window globals the shared core references (`activeDocument` /
+  // `activeWindow`). Off-Obsidian they don't exist, so bind them to THIS page's document/window
+  // before the first hydrate — otherwise the first claimed image throws a ReferenceError (Bug 119).
+  // This is AD9's runtime exception: where the platform provides nothing, the runtime supplies the
+  // missing binding itself (as it supplies its own inline-Markdown renderer). It also pre-covers
+  // Feature 39's future `window` → `activeWindow` use in the shared core.
+  Object.assign(globalThis, { activeDocument: document, activeWindow: window });
   inject("lie-runtime-render-css", RENDER_CSS);
   inject("lie-runtime-css", RUNTIME_CSS);
   inject("lie-runtime-caption-css", CAPTION_CSS);
