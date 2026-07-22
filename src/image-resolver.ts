@@ -1,4 +1,5 @@
 import type { Editor } from "obsidian";
+import { splitWikiInner, isTableRow, allEmbedsInLine, stripLinkSubpath } from "./link-format";
 
 export interface ImageLocation {
   line: number;
@@ -6,29 +7,31 @@ export interface ImageLocation {
   headEnd: number;  // end of the embed head (the ]] or ) ), i.e. start of any {…} block
   end: number;      // end of the embed incl. a trailing {…} block
   isWikiLink: boolean;
-  filename: string; // path as written in the embed (preserved)
+  filename: string; // path as written in the embed (table-escaped `\|` unescaped)
   params: string;   // content of the {…} transform block, "" if none
-  // The raw alt/alias the embed carries: the Markdown alt (`![ALT](path)`) or the wikilink alias
-  // after the first pipe (`![[path|ALIAS]]`, "" if none). It mixes caption + native `|size`; the
-  // caption/size split is caption-logic's job. Surfaced so a "Replace image" swap can preserve it.
+  // The alt/alias the embed carries (table-escaped `\|` unescaped): the Markdown alt
+  // (`![ALT](path)`) or the wikilink alias after the first unescaped pipe (`![[path|ALIAS]]`,
+  // "" if none). It mixes caption + native `|size`; the caption/size split is caption-logic's
+  // job. Surfaced so a "Replace image" swap can preserve it.
   alt: string;
+  // The embed sits in a Markdown table row — a writer rebuilding it must escape its pipes.
+  inTable: boolean;
 }
 
 // Transforms are stored in a trailing {…} attribute block so the link itself —
 // caption (markdown alt) and native size (wikilink pipe) — stays untouched:
 //   ![caption](path){rotate=90}
 //   ![[image.png|300]]{rotate=90}
-// The first capture is the link payload (wikilink: `path|alias`; markdown: the alt — its `(path)`
-// follows separately), the third is the {…} block; the markdown path is its own group (group 1's
-// `(\([^)]+\))` is the `(path)`, group 2 the path).
-const WIKI_EMBED = /!\[\[([^\]]+?)\]\](\{([^}]*)\})?/g;
-const MD_EMBED = /!\[([^\]]*)\]\(([^)]+)\)(\{([^}]*)\})?/g;
+// Reading the embed itself (both link forms, the table-escaped `\|`, arbitrary-depth balanced
+// md-destination parens, …) is link-format's ONE scanner (Bug 120) — this module only maps its
+// result onto the DOM/editor-facing `ImageLocation` shape.
 
 // The comparable basename of a written link token (the wikilink inner text or the md path), used to
 // match a rendered image against its source embed — and to find every occurrence of the same target
-// for "Replace all" (Feature 3). For wikilinks the inner text may carry a |size/|alt suffix.
+// for "Replace all" (Feature 3). For wikilinks the inner text may carry a |size/|alt suffix, and a
+// `#`/`^` subpath belongs to resolution, not the filename (stripped here, ParsedEmbed.path keeps it).
 export function basename(path: string): string {
-  const file = path.split("|")[0] ?? path;
+  const file = stripLinkSubpath(splitWikiInner(path).path);
   try {
     return decodeURIComponent(file).split(/[/\\]/).pop() ?? file;
   } catch {
@@ -37,38 +40,20 @@ export function basename(path: string): string {
 }
 
 // Every embed on ONE line, in column order — the building block of the position-exact
-// source↔DOM map (AB3). The two link forms are disjoint (a wikilink has `]]`, a markdown
-// link `](…)`), so the union never double-counts; sorting by column gives true source order.
+// source↔DOM map (AB3), mapped from link-format's scanner onto the ImageLocation shape.
 function embedsInLine(line: string, lineNo: number): ImageLocation[] {
-  const out: ImageLocation[] = [];
-  // The group layouts differ: WIKI captures the `path|alias` payload in group 1 (its alias is the
-  // alt, after the first pipe) and the {…} block in group 2; MD captures the alt in group 1, the
-  // `(path)` in group 2 and the {…} block in group 3. `block` is the index of the `{…}` group.
-  for (const { regex, isWiki, block } of [
-    { regex: WIKI_EMBED, isWiki: true, block: 2 },
-    { regex: MD_EMBED, isWiki: false, block: 3 },
-  ]) {
-    regex.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(line)) !== null) {
-      const path = isWiki ? (m[1] ?? "") : (m[2] ?? "");
-      // WIKI alt = alias after the first pipe of the payload; MD alt = group 1.
-      const alt = isWiki ? (m[1]?.split("|").slice(1).join("|") ?? "") : (m[1] ?? "");
-      const blockText = m[block] ?? "";
-      const end = m.index + m[0].length;
-      out.push({
-        line: lineNo,
-        start: m.index,
-        headEnd: end - blockText.length,
-        end,
-        isWikiLink: isWiki,
-        filename: path,
-        params: m[block + 1] ?? "",
-        alt,
-      });
-    }
-  }
-  return out.sort((a, b) => a.start - b.start);
+  const inTable = isTableRow(line);
+  return allEmbedsInLine(line).map((e) => ({
+    line: lineNo,
+    start: e.start,
+    headEnd: e.headEnd,
+    end: e.end,
+    isWikiLink: e.format === "wiki",
+    filename: e.path,
+    params: e.block ? e.block.slice(1, -1) : "",
+    alt: e.alt,
+    inTable,
+  }));
 }
 
 export function findImageInSource(editor: Editor, img: HTMLImageElement): ImageLocation | null {

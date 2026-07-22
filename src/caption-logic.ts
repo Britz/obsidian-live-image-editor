@@ -6,22 +6,22 @@
 // the caption optionally `"…"`-delimited. Reusing that one parser keeps Replace, the
 // captions and the link-form conversion in perfect agreement.
 
-import { splitTail } from "./link-format";
+import { splitTail, parseEmbedLine } from "./link-format";
 
 /**
  * The caption text for an image embed: its alt text (Markdown `![CAPTION](path)`)
- * or the wikilink display (`![[path|CAPTION]]`).
+ * or the wikilink display (`![[path|CAPTION]]`). `embed` must be exactly ONE embed
+ * (optionally followed by whitespace, Bug 120 — link-format's ONE grammar scanner decides),
+ * else "".
  *
  * Obsidian's native size is NOT a caption — `![cap 300](p)` / `![cap|300](p)` → "cap",
  * `![[p|300]]` → "" (size only), `![[p|My caption]]` → "My caption". Returns "" when
  * there's no usable caption.
  */
 export function captionMarkdown(embed: string): string {
-  const wiki = embed.match(/^!\[\[[^\]|]+(?:\|([^\]]*))?\]\]\s*$/);
-  if (wiki) return captionFromAlt(wiki[1] ?? "");
-  const md = embed.match(/^!\[([^\]]*)\]\(/);
-  if (md) return captionFromAlt(md[1] ?? "");
-  return "";
+  const e = parseEmbedLine(embed);
+  if (!e || e.start !== 0 || !/^\s*$/.test(embed.slice(e.end))) return "";
+  return e.caption;
 }
 
 /**

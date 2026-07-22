@@ -10,21 +10,30 @@
 // wiki pipe across a conversion: on md→wiki / wiki→md the caption becomes the alias / alt
 // and the size is folded into the portable `{…}` block (F6/T2 — the size lives in the
 // block, never the pipe). See splitTail for the grammar.
+//
+// Bug 120 — the ONE grammar source: a hand-written SCANNER (scanEmbed) replaces every embed
+// regex in the project. READ accepts everything Obsidian's own parser reads within Markdown
+// syntax (verified live against metadataCache) — a wiki inner to the first `]]` (single
+// `[`/`]` legal), the table escape layer stripped, an md alt with CommonMark backslash-
+// escapes, an md destination bare with arbitrary-depth balanced/escaped parens or as an
+// `<…>` angle form, an optional discarded `"…"` title. WRITE emits only Obsidian's canonical
+// form (see buildEmbed). See docs/development/implementation-plan.md for the full grammar.
 
 export type LinkFormat = "wiki" | "md";
 
 export interface ParsedEmbed {
   format: LinkFormat;
   caption: string; // caption / alias text (BOTH link forms carry one — Bug 81)
-  path: string;    // link target exactly as written
+  path: string;    // link target exactly as written (a wiki `#`/`^` subpath included, T12)
   size: string;    // native size token, e.g. "300", "300x200", "autox200" ("" if none)
+  alt: string;     // the RAW tail (wiki alias / md alt), escapes resolved, UNSPLIT (caption+size
+                    // combined, "" if none) — surfaced for callers that must preserve it verbatim
+                    // (e.g. a "Replace image" swap); caption/size above are its split (Bug 81).
   block: string;   // trailing {…} incl. braces ("" if none)
   start: number;   // index of the embed within the line
+  headEnd: number; // index just past the embed HEAD (the ]] or the closing )), before any block
   end: number;     // index just past the embed (incl. block)
 }
-
-const WIKI = /!\[\[([^\]]+?)\]\](\{[^}]*\})?/;
-const MD = /!\[([^\]]*)\]\(([^)]+)\)(\{[^}]*\})?/;
 
 // A native size token, following the de-facto `obsidian_image_caption` grammar: a bare
 // width `<W>`, or `<W>x<H>`, where each dimension is digits OR the keyword `auto`
@@ -40,6 +49,44 @@ export function desiredFormat(useMarkdownLinks: boolean): LinkFormat {
 }
 
 const QUOTE = '"';
+
+// ---- Table-pipe escape ----------------------------------------------------------------
+// A Markdown table row adds exactly ONE context rule to inline content: `|` is the CELL
+// SEPARATOR, so a pipe belonging to the content is written `\|` (Obsidian's own writing —
+// in a wikilink `\|` IS the alias separator, never part of a filename). Read liberally:
+// strip the escape layer, then the normal grammar applies. Write conservatively: escape
+// every pipe emitted into a table row — a raw `|` would split the cell.
+
+const ESCAPED_PIPE = /\\\|/g;
+
+/** Strip the table escape layer: `\|` → `|`. */
+export function unescapeTablePipes(s: string): string {
+  return s.replace(ESCAPED_PIPE, "|");
+}
+
+/** A pipe-led line — the form Obsidian writes for every Markdown table row. */
+export function isTableRow(line: string): boolean {
+  return /^\s{0,3}\|/.test(line);
+}
+
+/**
+ * Split a wikilink inner (`path[|tail]`) at its first pipe, the table escape layer
+ * stripped first — the ONE split every consumer of the wiki payload rides.
+ */
+export function splitWikiInner(inner: string): { path: string; tail: string | null } {
+  const clean = unescapeTablePipes(inner);
+  const pipe = clean.indexOf("|");
+  if (pipe < 0) return { path: clean, tail: null };
+  return { path: clean.slice(0, pipe), tail: clean.slice(pipe + 1) };
+}
+
+/** Strip a `#`/`^` resolution subpath (first occurrence) off a wiki path — it addresses a
+ *  heading/block WITHIN the target, not the filename (`img.png#heading` resolves to img.png);
+ *  ParsedEmbed.path itself keeps it as written (T12), only a basename/resolve comparison strips it. */
+export function stripLinkSubpath(path: string): string {
+  const i = path.search(/[#^]/);
+  return i < 0 ? path : path.slice(0, i);
+}
 
 /**
  * Split a "tail" (the markdown alt, or the wikilink alias text after the first pipe) into a
@@ -98,7 +145,10 @@ export function splitTail(tail: string): { caption: string; size: string } {
  * Fold a native size token (`W`, `WxH`, `autox H`, `W xauto`, `auto`) into the trailing
  * `{…}` attribute block as bare `width=`/`height=` keys (F6/T2.3). A numeric dimension
  * becomes a unitless-px key; an `auto` (or absent) dimension emits no key for that axis
- * (it stays the derived / responsive value). `block` already carries its braces ("" = none).
+ * (it stays the derived / responsive value). For each axis the size sets, a same-name
+ * `width=`/`height=` key already in the block is REPLACED (the native size wins — never a
+ * duplicate key); every other token keeps its place. `block` already carries its braces
+ * ("" = none).
  */
 function foldSizeIntoBlock(size: string, block: string): string {
   if (!size) return block;
@@ -107,48 +157,210 @@ function foldSizeIntoBlock(size: string, block: string): string {
   if (w && w !== "auto" && /^\d+$/.test(w)) adds.push(`width=${w}`);
   if (h && h !== "auto" && /^\d+$/.test(h)) adds.push(`height=${h}`);
   if (adds.length === 0) return block;
-  const inner = block ? block.slice(1, -1).trim() : "";
+  let inner = block ? block.slice(1, -1).trim() : "";
+  for (const add of adds) inner = removeKeyToken(inner, add.slice(0, add.indexOf("=")));
   const merged = inner ? `${inner} ${adds.join(" ")}` : adds.join(" ");
   return `{${merged}}`;
 }
 
-export function parseEmbedLine(line: string): ParsedEmbed | null {
-  const wiki = WIKI.exec(line);
-  const md = MD.exec(line);
-  // Prefer whichever appears first in the line.
-  const wikiAt = wiki ? wiki.index : Infinity;
-  const mdAt = md ? md.index : Infinity;
-  if (wiki && wikiAt <= mdAt) {
-    // In a wikilink the text before the first pipe is the PATH; the alias after it carries
-    // BOTH a caption and a native size (Bug 81) — split exactly like the markdown alt.
-    const inner = wiki[1] ?? "";
-    const pipe = inner.indexOf("|");
-    const path = pipe >= 0 ? inner.slice(0, pipe) : inner;
-    const tail = pipe >= 0 ? inner.slice(pipe + 1) : "";
-    const { caption, size } = splitTail(tail);
-    return {
-      format: "wiki",
-      caption,
-      path,
-      size,
-      block: wiki[2] ?? "",
-      start: wiki.index,
-      end: wiki.index + wiki[0].length,
-    };
-  }
-  if (md) {
-    const { caption, size } = splitTail(md[1] ?? "");
-    return {
-      format: "md",
-      caption,
-      path: md[2] ?? "",
-      size,
-      block: md[3] ?? "",
-      start: md.index,
-      end: md.index + md[0].length,
-    };
+// A block-inner token: a whitespace-delimited run in which `"…"` / `'…'` quoted segments
+// (e.g. a `style="…; …"` value) count as one piece, never split on their inner spaces.
+const BLOCK_TOKEN = /(?:[^\s"']+|"[^"]*"|'[^']*')+/g;
+
+/** Drop every standalone `key=…` token from a block inner (quote-aware, order kept). */
+function removeKeyToken(inner: string, key: string): string {
+  const tokens = inner.match(BLOCK_TOKEN) ?? [];
+  const kept = tokens.filter((t) => !t.startsWith(`${key}=`));
+  return kept.length === tokens.length ? inner : kept.join(" ");
+}
+
+// ---- The scanner (Bug 120) — the ONE place that reads an embed off a line -------------------
+// A hand-written scanner, not a regex: a wiki inner needs lazy `]]` termination (single `[`/`]`
+// legal inside), an md alt needs escape-aware `]` termination, and an md destination needs
+// arbitrary-depth PARENTHESIS BALANCE plus an optional discarded `"…"` title — none of which a
+// regular expression can express. Every embed-reading call site in the project (link-format
+// itself, the resolver, live-preview) rides this one scanner; see implementation-plan.md.
+
+// CommonMark's escapable ASCII punctuation (used both to resolve an md alt's backslash escapes
+// on READ and, in reverse, to escape `]`/`[`/`\` back into an alt on WRITE).
+const ESCAPABLE = /\\([!"#$%&'()*+,\-./:;<=>?@[\]^_`{|}~\\])/g;
+
+/** Resolve CommonMark backslash-escapes (`\]`→`]`, `\\`→`\`, …) in a raw md alt. Also covers the
+ *  table-pipe layer (`|` is escapable ASCII punctuation), so no separate pass is needed there. */
+function resolveMdEscapes(s: string): string {
+  return s.replace(ESCAPABLE, "$1");
+}
+
+/** Escape `\`, `[`, `]` back into an md alt on write, so a caption containing them round-trips
+ *  (the alt would otherwise terminate early, or mis-nest, on re-read). Backslash FIRST, so a
+ *  caption's own literal backslash isn't double-escaped by the bracket passes. */
+function escapeMdAlt(caption: string): string {
+  return caption.replace(/\\/g, "\\\\").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
+}
+
+// Obsidian's own md-destination percent-encode set (verified against Obsidian's writer): space,
+// backslash, and the control characters 0x00/0x08/0x0B/0x0C/0x0E–0x1F. Parentheses and umlauts
+// stay RAW. A plain code-point check, not a regex — a literal control-character escape in a
+// regex trips the shipped lint's no-control-regex rule (T9: the linter stays exactly as shipped).
+function needsMdDestEncode(code: number): boolean {
+  return code === 0x20 || code === 0x5c || code === 0x00 || code === 0x08 || code === 0x0b || code === 0x0c
+    || (code >= 0x0e && code <= 0x1f);
+}
+
+// Idempotent — an already-encoded path has no raw space/backslash/control char left to touch.
+function encodeMdDest(path: string): string {
+  let out = "";
+  for (const ch of path) out += needsMdDestEncode(ch.codePointAt(0) ?? 0) ? encodeURIComponent(ch) : ch;
+  return out;
+}
+
+/** Find the closing `{…}` block starting exactly at `pos` ("" / unchanged `end` if none —
+ *  immediately adjacent only, no gap, matching the link head). */
+function scanBlock(line: string, pos: number): { block: string; end: number } {
+  if (line[pos] !== "{") return { block: "", end: pos };
+  const close = line.indexOf("}", pos + 1);
+  if (close === -1) return { block: "", end: pos };
+  return { block: line.slice(pos, close + 1), end: close + 1 };
+}
+
+/** The first UNESCAPED `]` from `start` (an md alt's terminator) — Obsidian's own alt grammar
+ *  runs to the first unescaped `]`, NOT CommonMark's balanced-bracket link text. */
+function scanAlt(line: string, start: number): { end: number } | null {
+  let k = start;
+  while (k < line.length) {
+    if (line[k] === "\\" && k + 1 < line.length) { k += 2; continue; }
+    if (line[k] === "]") return { end: k };
+    k++;
   }
   return null;
+}
+
+/** After a destination (bare or angle), consume optional whitespace, an optional discarded
+ *  `"…"` CommonMark title, optional whitespace, then require the closing `)` — returning its
+ *  index, or null if the tail doesn't balance (unterminated title / no closing paren). */
+function finishParen(line: string, from: number): number | null {
+  let k = from;
+  while (k < line.length && (line[k] === " " || line[k] === "\t")) k++;
+  if (line[k] === '"') {
+    k++;
+    let closed = false;
+    while (k < line.length) {
+      if (line[k] === "\\" && k + 1 < line.length) { k += 2; continue; }
+      if (line[k] === '"') { k++; closed = true; break; }
+      k++;
+    }
+    if (!closed) return null;
+    while (k < line.length && (line[k] === " " || line[k] === "\t")) k++;
+  }
+  return line[k] === ")" ? k : null;
+}
+
+/** A bare (non-angle) md destination: arbitrary-depth balanced parentheses, `\(`/`\)` counting as
+ *  literal (never open/close). Ends at the first depth-0 `)` or whitespace; unbalanced (runs off
+ *  the line without ever reaching depth 0) → null, exactly like Obsidian (not an embed here). */
+function scanBareDest(line: string, start: number): { destEnd: number; closeParen: number } | null {
+  let depth = 0;
+  let k = start;
+  while (k < line.length) {
+    const c = line[k];
+    if (c === "\\" && k + 1 < line.length) { k += 2; continue; }
+    if (c === "(") { depth++; k++; continue; }
+    if (c === ")") {
+      if (depth === 0) break;
+      depth--; k++; continue;
+    }
+    if (depth === 0 && (c === " " || c === "\t")) break;
+    k++;
+  }
+  if (k >= line.length || k === start) return null; // unterminated, or an empty destination
+  const closeParen = finishParen(line, k);
+  return closeParen === null ? null : { destEnd: k, closeParen };
+}
+
+/** The `<…>` angle destination form: runs to the first `>` (may contain spaces). */
+function scanAngleDest(line: string, start: number): { destEnd: number; closeParen: number } | null {
+  const gt = line.indexOf(">", start);
+  if (gt === -1) return null;
+  const closeParen = finishParen(line, gt + 1);
+  return closeParen === null ? null : { destEnd: gt, closeParen };
+}
+
+/** Try a wikilink embed (`![[inner]]{block}?`) anchored exactly at `i`. */
+function scanWikiAt(line: string, i: number): ParsedEmbed | null {
+  if (line[i + 1] !== "[" || line[i + 2] !== "[") return null;
+  const closeIdx = line.indexOf("]]", i + 3); // lazy — first `]]` wins; single `[`/`]` legal inside
+  if (closeIdx === -1) return null;
+  const inner = line.slice(i + 3, closeIdx);
+  const headEnd = closeIdx + 2;
+  const { path, tail } = splitWikiInner(inner);
+  const alt = tail ?? "";
+  const { caption, size } = splitTail(alt);
+  const blockScan = scanBlock(line, headEnd);
+  return { format: "wiki", caption, path, size, alt, block: blockScan.block, start: i, headEnd, end: blockScan.end };
+}
+
+/** Try a markdown embed (`![alt](dest){block}?`) anchored exactly at `i`. */
+function scanMdAt(line: string, i: number): ParsedEmbed | null {
+  if (line[i + 1] !== "[") return null;
+  const altScan = scanAlt(line, i + 2);
+  if (!altScan) return null;
+  const altRaw = line.slice(i + 2, altScan.end);
+  const afterAlt = altScan.end + 1;
+  if (line[afterAlt] !== "(") return null;
+
+  let destStart = afterAlt + 1;
+  while (line[destStart] === " " || line[destStart] === "\t") destStart++;
+
+  let pathRaw: string;
+  let closeParen: number;
+  if (line[destStart] === "<") {
+    const r = scanAngleDest(line, destStart + 1);
+    if (!r) return null;
+    pathRaw = line.slice(destStart + 1, r.destEnd);
+    closeParen = r.closeParen;
+  } else {
+    const r = scanBareDest(line, destStart);
+    if (!r) return null;
+    pathRaw = line.slice(destStart, r.destEnd);
+    closeParen = r.closeParen;
+  }
+
+  const headEnd = closeParen + 1;
+  const alt = resolveMdEscapes(altRaw);
+  const { caption, size } = splitTail(alt);
+  const blockScan = scanBlock(line, headEnd);
+  return { format: "md", caption, path: pathRaw, size, alt, block: blockScan.block, start: i, headEnd, end: blockScan.end };
+}
+
+/**
+ * Scan `line` for the next embed at or after `from` — the ONE core reader (Bug 120). Tries a
+ * wikilink then a markdown embed at each `!`, left to right, so "whichever appears first" falls
+ * out of the scan order itself (no separate index comparison needed).
+ */
+export function scanEmbed(line: string, from = 0): ParsedEmbed | null {
+  let i = line.indexOf("!", from);
+  while (i !== -1) {
+    const found = scanWikiAt(line, i) ?? scanMdAt(line, i);
+    if (found) return found;
+    i = line.indexOf("!", i + 1);
+  }
+  return null;
+}
+
+/** The first embed on a line, or null. */
+export function parseEmbedLine(line: string): ParsedEmbed | null {
+  return scanEmbed(line, 0);
+}
+
+/** Every embed on a line, in column (source) order. */
+export function allEmbedsInLine(line: string): ParsedEmbed[] {
+  const out: ParsedEmbed[] = [];
+  let e = scanEmbed(line, 0);
+  while (e) {
+    out.push(e);
+    e = scanEmbed(line, e.end);
+  }
+  return out;
 }
 
 /**
@@ -156,19 +368,34 @@ export function parseEmbedLine(line: string): ParsedEmbed | null {
  * in the natural slot of each form (the wiki alias / the markdown alt); a native size is
  * folded into the portable `{…}` block (NEVER the pipe — Bug 81/T2). A caption that contains
  * whitespace or a size-like token is quote-delimited so it round-trips unambiguously.
+ *
+ * WRITE emits only Obsidian's canonical form (Bug 120): an md destination is percent-encoded
+ * exactly Obsidian's own set (space/backslash/control — parens and umlauts stay raw, idempotent
+ * on an already-encoded path), the `<…>` angle form is never newly produced, and an md alt
+ * escapes `\`/`[`/`]` so it round-trips. Caller contract: a WIKI caption/alias must never
+ * contain `]]` — a wikilink has no escape for its own terminator, so `convertEmbedLine` refuses
+ * a conversion that would need one (never lose the link) and no other caller introduces a fresh
+ * `]]`-bearing caption into a wiki alias (every other caller only rebuilds within the SAME
+ * format, and a wiki-sourced caption can never itself contain `]]` — reading one would already
+ * have cut the inner short at the first occurrence, Bug 120).
  */
 export function buildEmbed(
   format: LinkFormat,
-  parts: { caption: string; path: string; size: string; block: string }
+  parts: { caption: string; path: string; size: string; block: string; escapePipe?: boolean }
 ): string {
-  const { caption, path, size } = parts;
+  const { caption, size } = parts;
   const block = foldSizeIntoBlock(size, parts.block);
-  const alias = delimitCaption(caption);
+  let embed: string;
   if (format === "wiki") {
-    const inner = alias ? `${path}|${alias}` : path;
-    return `![[${inner}]]${block}`;
+    const alias = delimitCaption(caption);
+    embed = `![[${alias ? `${parts.path}|${alias}` : parts.path}]]${block}`;
+  } else {
+    const path = encodeMdDest(parts.path);
+    const alias = delimitCaption(escapeMdAlt(caption));
+    embed = `![${alias}](${path})${block}`;
   }
-  return `![${alias}](${path})${block}`;
+  // Into a table row EVERY literal pipe goes out escaped — a raw `|` splits the cell.
+  return parts.escapePipe ? embed.replace(/\|/g, "\\|") : embed;
 }
 
 /**
@@ -184,10 +411,15 @@ function delimitCaption(caption: string): string {
 }
 
 /**
- * Convert the embed on a line to `desired` format, or return null if there is no embed or it
- * is already in the desired format. `pathFor` optionally supplies the correctly-formatted/
- * encoded path token for the target format (from Obsidian's fileManager.generateMarkdownLink);
- * when it returns null the existing path is kept (defensive — never lose the link, T12).
+ * Convert the embed on a line to `desired` format, or return null if there is no embed, it is
+ * already in the desired format, or the conversion would LOSE data. `pathFor` optionally
+ * supplies the correctly-formatted/encoded path token for the target format (from Obsidian's
+ * fileManager.generateMarkdownLink); when it returns null the existing path is kept (defensive
+ * — never lose the link, T12).
+ *
+ * The writer never emits a link the read grammar (or Obsidian) cannot read back losslessly —
+ * an embed whose caption cannot be represented in the target form (a wiki alias containing
+ * `]]`) keeps its current form instead of being converted (never lose the link).
  */
 export function convertEmbedLine(
   line: string,
@@ -196,12 +428,14 @@ export function convertEmbedLine(
 ): string | null {
   const embed = parseEmbedLine(line);
   if (!embed || embed.format === desired) return null;
+  if (desired === "wiki" && embed.caption.includes("]]")) return null;
   const path = pathFor?.(embed.path) ?? embed.path;
   const replacement = buildEmbed(desired, {
     caption: embed.caption,
     path,
     size: embed.size,
     block: embed.block,
+    escapePipe: isTableRow(line),
   });
   return line.slice(0, embed.start) + replacement + line.slice(embed.end);
 }

@@ -1,25 +1,25 @@
 import { parseAltText, serializeTransform, setWidthPx } from "./transforms";
-
-// A line that is exactly an image embed, with an OPTIONAL trailing {…} block —
-// so every standalone image gets the widget (toolbar/chrome), block or not.
-export const EMBED_LINE = /^(\s*)(!\[[^\]]*\]\([^)]+\)|!\[\[[^\]]+\]\])(\{[^}]*\})?\s*$/;
+import { allEmbedsInLine, scanEmbed } from "./link-format";
 
 // Token classes Obsidian gives the link URL — so the {…} is highlighted exactly
 // like (url) in SOURCE mode: braces are formatting, inside is the url string.
 export const URL_CLASS = "cm-string cm-url";
 export const URL_BRACE_CLASS = "cm-formatting cm-formatting-link-string cm-string cm-url";
 
-// An image embed that sits INSIDE a line of text (not a standalone image line) — e.g.
-// an `lie-inline` icon mid-sentence. These get an inline replace widget; without one
-// Obsidian renders its own (full-size) inline image and shows the `{…}` as text.
-const INLINE_EMBED = /(!\[[^\]]*\]\([^)]*\)|!\[\[[^\]]+\]\])(\{[^}]*\})?/g;
-
-// Every embed on a line that CARRIES a `{…}` attr list (the `{…}` is required, group 2) — used to
-// highlight the `{…}` as link syntax in SOURCE mode for EVERY embed, standalone AND inline (the
-// whole-line EMBED_LINE would skip an embed with text/char around it). Global; reset lastIndex per use.
-const EMBED_WITH_ATTR = /(!\[[^\]]*\]\([^)]+\)|!\[\[[^\]]+\]\])(\{[^}]*\})/g;
-
 export interface InlineEmbed { from: number; to: number; embed: string; params: string; }
+
+/**
+ * A line that is exactly ONE image embed, with an OPTIONAL trailing {…} block and optional
+ * surrounding whitespace — so every standalone image gets the widget (toolbar/chrome), block or
+ * not. Built on link-format's scanner (Bug 120): the embed must start exactly where the leading
+ * whitespace ends, and nothing but whitespace may follow it.
+ */
+function scanWholeLineEmbed(lineText: string): { lead: string; head: string; block: string } | null {
+  const lead = /^\s*/.exec(lineText)![0];
+  const e = scanEmbed(lineText, lead.length);
+  if (!e || e.start !== lead.length || !/^\s*$/.test(lineText.slice(e.end))) return null;
+  return { lead, head: lineText.slice(e.start, e.headEnd), block: e.block };
+}
 
 /**
  * Find image embeds embedded WITHIN a line of text (returns [] for a standalone image
@@ -27,19 +27,13 @@ export interface InlineEmbed { from: number; to: number; embed: string; params: 
  * attr content without braces (Lesson 9).
  */
 export function inlineEmbeds(lineText: string, lineFrom: number): InlineEmbed[] {
-  if (EMBED_LINE.test(lineText)) return [];
-  const out: InlineEmbed[] = [];
-  INLINE_EMBED.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = INLINE_EMBED.exec(lineText)) !== null) {
-    out.push({
-      from: lineFrom + m.index,
-      to: lineFrom + m.index + m[0].length,
-      embed: m[1] ?? "",
-      params: m[2] ? m[2].slice(1, -1) : "",
-    });
-  }
-  return out;
+  if (scanWholeLineEmbed(lineText)) return [];
+  return allEmbedsInLine(lineText).map((e) => ({
+    from: lineFrom + e.start,
+    to: lineFrom + e.end,
+    embed: lineText.slice(e.start, e.headEnd),
+    params: e.block ? e.block.slice(1, -1) : "",
+  }));
 }
 
 export type LineDecoration =
@@ -56,21 +50,20 @@ export type LineDecoration =
 export function lineDecorations(lineText: string, lineFrom: number, isLivePreview: boolean): LineDecoration[] {
   if (isLivePreview) {
     // LP: a STANDALONE embed line becomes one widget descriptor (the adapter chooses replace vs overlay).
-    const match = EMBED_LINE.exec(lineText);
-    if (!match) return [];
-    const block = match[3];
-    return [{ kind: "widget", from: lineFrom, to: lineFrom + lineText.length, embed: match[2] ?? "", params: block ? block.slice(1, -1) : "" }];
+    const m = scanWholeLineEmbed(lineText);
+    if (!m) return [];
+    return [{ kind: "widget", from: lineFrom, to: lineFrom + lineText.length, embed: m.head, params: m.block ? m.block.slice(1, -1) : "" }];
   }
 
   // SOURCE mode: highlight EVERY embed's {…} attr list as link syntax (braces = formatting, inside = url
-  // string). Scan the WHOLE line — standalone AND inline — because the whole-line EMBED_LINE would skip
-  // an embed that has text/a trailing char around it, leaving its {…} un-highlighted (the inline-source bug).
+  // string). Scan the WHOLE line — standalone AND inline — because the whole-line scanWholeLineEmbed
+  // would skip an embed that has text/a trailing char around it, leaving its {…} un-highlighted (the
+  // inline-source bug). Only an embed that CARRIES a `{…}` (mirrors the old EMBED_WITH_ATTR) is marked.
   const decorations: LineDecoration[] = [];
-  EMBED_WITH_ATTR.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = EMBED_WITH_ATTR.exec(lineText)) !== null) {
-    const start = lineFrom + m.index + (m[1]?.length ?? 0);
-    const end = start + (m[2]?.length ?? 0);
+  for (const e of allEmbedsInLine(lineText)) {
+    if (!e.block) continue;
+    const start = lineFrom + e.headEnd;
+    const end = start + e.block.length;
     decorations.push({ kind: "mark", from: start, to: start + 1, class: URL_BRACE_CLASS });
     if (end - 1 > start + 1) decorations.push({ kind: "mark", from: start + 1, to: end - 1, class: URL_CLASS });
     decorations.push({ kind: "mark", from: end - 1, to: end, class: URL_BRACE_CLASS });
@@ -80,13 +73,13 @@ export function lineDecorations(lineText: string, lineFrom: number, isLivePrevie
 
 /** Rewrite an embed line's {…} block with a new width (used by the resize handle). */
 export function rewriteWidth(lineText: string, width: number): string | null {
-  const match = EMBED_LINE.exec(lineText);
-  if (!match) return null;
-  const transform = parseAltText((match[3] ?? "").slice(1, -1));
+  const m = scanWholeLineEmbed(lineText);
+  if (!m) return null;
+  const transform = parseAltText(m.block.slice(1, -1));
   setWidthPx(transform, width);
   transform.height = undefined;
   const params = serializeTransform(transform);
-  return `${match[1] ?? ""}${match[2] ?? ""}${params ? `{${params}}` : ""}`;
+  return `${m.lead}${m.head}${params ? `{${params}}` : ""}`;
 }
 
 // ---- Raw-link reveal/dismiss state machine (F8) — pure, unit-testable (Lesson 6) --------------------

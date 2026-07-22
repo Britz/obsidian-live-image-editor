@@ -3,7 +3,7 @@ import { EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirr
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { syntaxTree, ensureSyntaxTree } from "@codemirror/language";
 import { parseAltText, getWidthPx, getHeightPx, applyNativeSize, ImageTransform } from "./transforms";
-import { parseEmbedLine } from "./link-format";
+import { parseEmbedLine, scanEmbed, allEmbedsInLine, stripLinkSubpath } from "./link-format";
 import { lineDecorations, rewriteWidth, reduceReveal, resolveLinkReveal, URL_CLASS, RevealMode } from "./live-preview-logic";
 import { estimatedBlockHeight } from "./renderer-logic";
 import { captionMarkdown, createCaption, CaptionHandle } from "./caption";
@@ -54,21 +54,28 @@ function highlightEmbed(embed: string): DocumentFragment {
     s.textContent = text;
     frag.appendChild(s);
   };
-  const wiki = embed.match(/^(!\[\[)([^\]]*)(\]\])$/);
-  if (wiki) {
-    span("cm-formatting cm-formatting-link cm-hmd-internal-link", wiki[1] ?? "");
-    span("cm-hmd-internal-link cm-link", wiki[2] ?? "");
-    span("cm-formatting cm-formatting-link cm-hmd-internal-link", wiki[3] ?? "");
+  // `embed` is always ALREADY a full, valid embed head (from collectEmbeds' scanner) — structural
+  // prefix/suffix checks suffice here (Bug 120: no char-class regex, so a bracket/paren-bearing
+  // filename still gets proper token spans instead of falling back to one plain span).
+  if (embed.startsWith("![[") && embed.endsWith("]]")) {
+    span("cm-formatting cm-formatting-link cm-hmd-internal-link", "![[");
+    span("cm-hmd-internal-link cm-link", embed.slice(3, -2));
+    span("cm-formatting cm-formatting-link cm-hmd-internal-link", "]]");
     return frag;
   }
-  const md = embed.match(/^(!\[)([^\]]*)(\]\()([^)]*)(\))$/);
-  if (md) {
-    span("cm-formatting cm-formatting-image cm-image cm-image-marker", md[1] ?? "");
-    span("cm-image cm-image-alt-text cm-link", md[2] ?? "");
-    span("cm-formatting cm-formatting-link-string cm-string cm-url", md[3] ?? "");
-    span("cm-string cm-url", md[4] ?? "");
-    span("cm-formatting cm-formatting-link-string cm-string cm-url", md[5] ?? "");
-    return frag;
+  if (embed.startsWith("![") && embed.endsWith(")")) {
+    // The alt runs to the first UNESCAPED `]` — mirrors link-format's scanAlt (Obsidian's own
+    // alt grammar, not CommonMark's balanced-bracket link text).
+    let k = 2;
+    while (k < embed.length && embed[k] !== "]") { if (embed[k] === "\\") k++; k++; }
+    if (embed[k] === "]" && embed[k + 1] === "(") {
+      span("cm-formatting cm-formatting-image cm-image cm-image-marker", "![");
+      span("cm-image cm-image-alt-text cm-link", embed.slice(2, k));
+      span("cm-formatting cm-formatting-link-string cm-string cm-url", "](");
+      span("cm-string cm-url", embed.slice(k + 2, -1));
+      span("cm-formatting cm-formatting-link-string cm-string cm-url", ")");
+      return frag;
+    }
   }
   span("cm-string cm-url", embed);
   return frag;
@@ -263,9 +270,9 @@ class EmbedWidget extends WidgetType {
   }
 
   private resolveFile(): TFile | null {
-    const md = this.embed.match(/^!\[[^\]]*\]\(([^)]+)\)$/);
-    const wiki = this.embed.match(/^!\[\[([^\]|]+)/);
-    const linkpath = decodeURIComponent(md?.[1] ?? wiki?.[1] ?? "");
+    const e = parseEmbedLine(this.embed);
+    if (!e) return null;
+    const linkpath = decodeURIComponent(stripLinkSubpath(e.path));
     if (!linkpath) return null;
     return this.app.metadataCache.getFirstLinkpathDest(linkpath, this.sourcePath);
   }
@@ -328,11 +335,11 @@ interface LivePreviewState {
 // `syntaxTree` (the parse), not found by a parallel regex. A markdown embed begins at an `image-marker`
 // node (the `!` of `![`), a wikilink embed at a `formatting-embed` node (the `![[`) — CDP-grounded
 // against Obsidian's real node names (probe-tree). A code-block `![](…)` carries NEITHER (only
-// `hmd-codeblock`), so it is excluded BY CONSTRUCTION — no separate code check. The regex below only
-// PARSES the span the parse located (the `![…](…)`/`![[…]]` body + the trailing `{…}` attr list, which
-// is plain text after the embed, not a markdown node). Placement (standalone / bare-block / inline) is
-// read from the line around the located span ("model from the parse, placement from reality").
-const EMBED_AT = /^(!\[[^\]]*\]\([^)]+\)|!\[\[[^\]]+\]\])(\{[^}]*\})?/;
+// `hmd-codeblock`), so it is excluded BY CONSTRUCTION — no separate code check. link-format's scanner
+// (Bug 120) only PARSES the span the parse located (the `![…](…)`/`![[…]]` body + the trailing `{…}`
+// attr list, which is plain text after the embed, not a markdown node) — anchored exactly at `from`
+// (rejected if the next embed the scanner finds starts any later). Placement (standalone / bare-block /
+// inline) is read from the line around the located span ("model from the parse, placement from reality").
 interface TreeEmbed { from: number; embedEnd: number; attrEnd: number; embed: string; params: string; mode: WidgetMode; }
 
 function collectEmbeds(state: EditorState, includeCode: boolean): TreeEmbed[] {
@@ -342,12 +349,13 @@ function collectEmbeds(state: EditorState, includeCode: boolean): TreeEmbed[] {
   const addAt = (from: number): void => {
     if (seen.has(from)) return;
     const line = doc.lineAt(from);
-    const m = EMBED_AT.exec(doc.sliceString(from, line.to));
-    if (!m) return;
+    const sliced = doc.sliceString(from, line.to);
+    const e = scanEmbed(sliced, 0);
+    if (!e || e.start !== 0) return;
     seen.add(from);
-    const embed = m[1] ?? "";
-    const embedEnd = from + embed.length;
-    const attr = m[2] ?? "";
+    const embed = sliced.slice(0, e.headEnd);
+    const embedEnd = from + e.headEnd;
+    const attr = e.block;
     const attrEnd = embedEnd + attr.length;
     const standalone = doc.sliceString(line.from, from).trim() === "" && doc.sliceString(attrEnd, line.to).trim() === "";
     const mode: WidgetMode = !standalone ? "inline" : attr ? "standalone" : "block";
@@ -358,19 +366,18 @@ function collectEmbeds(state: EditorState, includeCode: boolean): TreeEmbed[] {
     // ensureSyntaxTree forces the parse up to the END of the document (not just the incrementally-parsed
     // / viewport region), so embeds on lower lines are found in the SAME build — otherwise they'd only
     // appear on a later unrelated transaction. Null on timeout (huge doc) → fall back to syntaxTree +
-    // the regex scan below (fail-open).
+    // the scanner sweep below (fail-open).
     const full = ensureSyntaxTree(state, doc.length, 100);
     const cursor = (full ?? syntaxTree(state)).cursor();
     do { if (/image-marker|formatting-embed/.test(cursor.name)) addAt(cursor.from); } while (cursor.next());
     parsed = full !== null;
-  } catch { /* parse unavailable → regex fail-open below */ }
+  } catch { /* parse unavailable → scanner fail-open below */ }
   // F20 "render images in code blocks" re-includes the code-section embeds the parse excluded; and if
-  // the full parse was unavailable (timeout/error), fail OPEN via a regex scan so embeds never vanish.
+  // the full parse was unavailable (timeout/error), fail OPEN via a scanner sweep so embeds never vanish.
   if (includeCode || !parsed) {
-    const re = /!\[[^\]]*\]\([^)]+\)|!\[\[[^\]]+\]\]/g;
     for (let i = 1; i <= doc.lines; i++) {
-      const line = doc.line(i); re.lastIndex = 0; let mm: RegExpExecArray | null;
-      while ((mm = re.exec(line.text)) !== null) addAt(line.from + mm.index);
+      const line = doc.line(i);
+      for (const e of allEmbedsInLine(line.text)) addAt(line.from + e.start);
     }
   }
   out.sort((a, b) => a.from - b.from);

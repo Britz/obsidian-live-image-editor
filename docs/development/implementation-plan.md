@@ -390,14 +390,41 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
 - **`link-format.ts`** — `convertEmbedLine` rewrites the link form when `desiredFormat`
   (Obsidian's wikilink setting) differs, via Obsidian's `fileManager.generateMarkdownLink`,
   defensively (falls back to leaving the link as-is). It folds a Markdown native `|size` into
-  the block and leaves a wikilink's native size in place (F5, F6).
+  the block and leaves a wikilink's native size in place (F5, F6). The auto-normalizer's md
+  native-size fold (`main.ts` `normalizeNativeSizes`) rides this SAME `parseEmbedLine` →
+  `buildEmbed` round-trip — no second regex or escape knowledge outside this one grammar
+  source. On a fold, a `width=`/`height=` key already in the block is REPLACED for each axis
+  the native size sets (the native pipe size wins) — never appended as a duplicate key.
+  **Embed grammar (read ∩ write):** the READ grammar accepts everything Obsidian's own parser
+  reads within Markdown syntax; the WRITE side emits only Obsidian's canonical form. One
+  SCANNER at this source replaces every embed regex (the resolver's and live-preview-logic's
+  included) — parenthesis balance and escapes are beyond regular expressions. Read rules,
+  verified against Obsidian's live parser: a WIKI inner runs to the FIRST `]]` (lazy; single
+  `[`/`]` legal), the table escape layer strips first (`\|` ≙ `|` — in a wikilink `\|` IS the
+  alias separator, never part of a filename; `splitWikiInner` is the one shared split), the
+  alias splits at the first pipe, and a `#`/`^` subpath belongs to resolution, not the
+  filename. An MD alt resolves CommonMark backslash-escapes (`\]` …) plus the table layer; an
+  MD destination comes in three forms — bare with arbitrary-depth balanced or `\(\)`-escaped
+  parentheses (unbalanced → not an embed, exactly like Obsidian), the `<…>` angle form, and an
+  optional trailing `"…"` title that is recognized and DISCARDED (Obsidian keeps it nowhere);
+  `%`-decoding applies to comparisons, never to the stored path. WRITE: `buildEmbed` emits the
+  canonical Obsidian form — an md destination percent-encodes exactly Obsidian's own set
+  (space, backslash, control characters; parentheses and umlauts stay raw), the angle form is
+  never newly produced, a wiki inner stays raw, and into a table row every pipe goes out
+  escaped (`escapePipe`). Deliberate, documented limit: escapes outside these slots stay out
+  of the grammar. The writer never emits a link the read grammar (or Obsidian) cannot read back
+  losslessly — an embed whose caption cannot be represented in the target form (a wiki alias
+  containing `]]`) keeps its current form instead of being converted (never lose the link).
 - **`image-resolver.ts`** — maps a DOM `img` to its source `ImageLocation`. `findImageInLine`
   resolves the embed on ONE known line (the CM6 `posAtDOM` path — line-accurate even for a duplicated
   file); `findImageInText(text, src, occurrence)` resolves the **occurrence-th** embed of a basename
   for the reading-view render path (F2 — both halves position-exact, never first-basename-match);
   `findImageInSource` is the editor-scan fallback. The module is **pure** (`import type` Editor — so
   the resolvers are vitest-tested, `tests/unit/image-resolver.test.ts`); the rewrite goes through the
-  shared `writeSource` (below), scroll untouched, cursor on the image line (D11).
+  shared `writeSource` (below), scroll untouched, cursor on the image line (D11). The wiki
+  path/alias split rides link-format's `splitWikiInner` (the table-escaped `\|` handled in ONE
+  place), and `ImageLocation` carries `inTable` (from its line) so the writers escape pipes
+  when rebuilding an embed inside a table row.
 - **`source-writer.ts`** — `writeSource(view, changes, cursor?)` is the **single funnel** for every
   plugin edit to the document (AD1, edit direction): it dispatches the change as **one** CM transaction,
   isolated in history (`isolateHistory.of("full")`) and tagged `LIE_USER_EVENT`, so each plugin edit

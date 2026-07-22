@@ -25,7 +25,7 @@ import { captionFromAlt, createCaption, CaptionHandle } from "./caption";
 import { Prec } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { setLocale, detectLocale, t } from "./i18n";
-import { convertEmbedLine, desiredFormat, splitTail, buildEmbed, LinkFormat } from "./link-format";
+import { convertEmbedLine, desiredFormat, splitTail, buildEmbed, parseEmbedLine, isTableRow, LinkFormat } from "./link-format";
 import { replaceEmbedTarget, planReplaceAll } from "./replace-logic";
 import { ImagePickerModal } from "./replace-picker";
 import { writeSource } from "./source-writer";
@@ -322,39 +322,35 @@ export default class LiveImageEditorPlugin extends Plugin {
       const file = this.app.metadataCache.getFirstLinkpathDest(decodeURIComponent(path.split("|")[0] ?? path), sourcePath);
       if (!(file instanceof TFile)) return null;
       const link = this.app.fileManager.generateMarkdownLink(file, sourcePath); // never an alias arg (Lesson 5)
-      if (desired === "wiki") {
-        const m = link.match(/^!?\[\[([^\]|]+)/);
-        return m?.[1] ?? null;
-      }
-      const m = link.match(/\]\(([^)]+)\)/);
-      return m?.[1] ?? null;
+      // generateMarkdownLink writes an embed for any embeddable (image) file — parse it with the
+      // ONE grammar scanner (Bug 120) rather than a bespoke regex, so a path with parens/spaces
+      // (e.g. "Screenshot (1).png") comes back intact instead of truncated at the first `)`.
+      const e = parseEmbedLine(link);
+      return e && e.format === desired ? e.path : null;
     } catch {
       return null;
     }
   }
 
-  // Fold a Markdown native size ![alt|513](path) into the portable block (F6).
+  // Fold a Markdown native size ![alt|513](path) into the portable block (F6), riding the
+  // ONE grammar round-trip (parseEmbedLine → buildEmbed) — no second regex or escape
+  // knowledge here. A wikilink's native size stays in place by design (F5).
   private normalizeNativeSizes(): void {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     const editor = view?.editor;
     if (!editor) return;
 
     const cursorLine = editor.getCursor().line;
-    const re = /!\[([^\]|]*)\|(\d+)(?:x(\d+))?\]\(([^)]+)\)(\{[^}]*\})?/;
-
     for (let i = 0; i < editor.lineCount(); i++) {
       if (i === cursorLine) continue;
       const line = editor.getLine(i);
-      const m = re.exec(line);
-      if (!m) continue;
-
-      const transform = parseAltText(m[5] ? m[5].slice(1, -1) : "");
-      transform.width = `${parseInt(m[2] ?? "", 10)}px`;
-      if (m[3]) transform.height = `${parseInt(m[3], 10)}px`;
-
-      const params = serializeTransform(transform);
-      const replacement = `![${m[1] ?? ""}](${m[4] ?? ""})${params ? `{${params}}` : ""}`;
-      const newLine = line.slice(0, m.index) + replacement + line.slice(m.index + m[0].length);
+      const e = parseEmbedLine(line);
+      if (!e || e.format !== "md" || e.size === "") continue;
+      const replacement = buildEmbed("md", {
+        caption: e.caption, path: e.path, size: e.size, block: e.block,
+        escapePipe: isTableRow(line),
+      });
+      const newLine = line.slice(0, e.start) + replacement + line.slice(e.end);
       if (newLine !== line) editor.setLine(i, newLine);
     }
   }
@@ -1076,9 +1072,9 @@ export default class LiveImageEditorPlugin extends Plugin {
       // embed in canonical form so the size moves into the {…} block (already in `transform`,
       // seeded by locationTransform; empty on reset → size cleared) and is STRIPPED from the link
       // head, keeping the caption. Size lives in the block, never the link (F6/T2).
-      const path = location.isWikiLink ? (location.filename.split("|")[0] ?? location.filename) : location.filename;
       const embed = buildEmbed(location.isWikiLink ? "wiki" : "md", {
-        caption, path, size: "", block: params ? `{${params}}` : "",
+        caption, path: location.filename, size: "", block: params ? `{${params}}` : "",
+        escapePipe: location.inTable,
       });
       const from = editor.posToOffset({ line: location.line, ch: location.start });
       const to = editor.posToOffset({ line: location.line, ch: location.end });
@@ -1320,9 +1316,8 @@ export default class LiveImageEditorPlugin extends Plugin {
     const transform = parseAltText(location.params);
     try {
       const buffer = await renderTransformedImage(this.activeImage!, transform);
-      const rawLink = location.filename.split("|")[0] ?? location.filename;
-      let linkpath = rawLink;
-      try { linkpath = decodeURIComponent(rawLink); } catch { /* keep the raw link */ }
+      let linkpath = location.filename;
+      try { linkpath = decodeURIComponent(location.filename); } catch { /* keep the raw link */ }
       const file = this.app.metadataCache.getFirstLinkpathDest(
         linkpath, this.app.workspace.getActiveFile()?.path ?? ""
       );

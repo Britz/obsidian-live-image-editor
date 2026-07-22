@@ -77,6 +77,12 @@ describe("lineDecorations", () => {
     ]);
   });
 
+  it("handles a standalone embed whose path has balanced parentheses (Bug 120)", () => {
+    expect(lineDecorations("![a](Screenshot%20(1).png)", 0, true)).toEqual([
+      { kind: "widget", from: 0, to: 26, embed: "![a](Screenshot%20(1).png)", params: "" },
+    ]);
+  });
+
   it("marks MULTIPLE embeds' {…} on one inline line", () => {
     // "![a](b.png){.x} ![c](d.png){.y}" → two embeds, two {…}
     const decos = lineDecorations("![a](b.png){.x} ![c](d.png){.y}", 0, false);
@@ -110,6 +116,11 @@ describe("inlineEmbeds (mid-text images, e.g. lie-inline) — F17", () => {
     expect(got).toHaveLength(2);
     expect(got[0]?.from).toBe(100 + 2);
     expect(got[1]?.embed).toBe("![[y.png]]");
+  });
+  it("finds an embed whose path has balanced parentheses (Bug 120 — the scanner, not a char-class regex)", () => {
+    const got = inlineEmbeds("see ![](Screenshot%20(1).png) here", 0);
+    expect(got).toHaveLength(1);
+    expect(got[0]?.embed).toBe("![](Screenshot%20(1).png)");
   });
 });
 

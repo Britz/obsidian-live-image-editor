@@ -19,6 +19,7 @@ The sample images carry corner labels — **A** top-left, **B** top-right, **C**
 - [[05 — Layout, float & wrap]] — align left / right / center, text wrap around floats, inline icons.
 - [[06 — Captions]] — alt-text captions rendered as Markdown below the image.
 - [[07 — Classes & snippets]] — the bundled decoration classes (rounded, shadow, border, circle).
+- [[08 — Tables]] — images inside table cells: escaped-pipe sizes, transform blocks, combined.
 
 ## Two things to enable first
 

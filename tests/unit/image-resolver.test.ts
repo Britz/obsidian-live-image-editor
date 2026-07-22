@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { findImageInText, findImageInLine, firstEmbedInLine, allEmbedsInText, spansOverlappingRanges } from "../../src/image-resolver";
+import {
+  findImageInText, findImageInLine, firstEmbedInLine, allEmbedsInText, spansOverlappingRanges, basename,
+} from "../../src/image-resolver";
 
 // F2 / AB3 — the reading-view resolver must map the n-th rendered embed of a repeated file to
 // the n-th SOURCE embed, not merely the first basename match (the Bug-48 failure mode, here on
@@ -43,7 +45,7 @@ describe("findImageInText — position-exact duplicate resolution (F2/AB3)", () 
     const loc = findImageInLine("![[img/sample.png|300]]{flip=vertical}", 7, "sample.png");
     expect(loc?.params).toBe("flip=vertical");
     expect(loc?.isWikiLink).toBe(true);
-    expect(loc?.filename).toBe("img/sample.png|300");
+    expect(loc?.filename).toBe("img/sample.png");
   });
 });
 
@@ -77,13 +79,13 @@ describe("allEmbedsInText — page-scope enumeration", () => {
 
   it("returns every embed across all lines in source order", () => {
     const all = allEmbedsInText(src);
-    expect(all.map((e) => e.filename)).toEqual(["one.png", "two.png|300", "three.png"]);
+    expect(all.map((e) => e.filename)).toEqual(["one.png", "two.png", "three.png"]);
     expect(all.map((e) => e.line)).toEqual([0, 2, 2]);
   });
 
   it("flags which embeds carry a {…} transform block (params !== '')", () => {
     const edited = allEmbedsInText(src).filter((e) => e.params !== "");
-    expect(edited.map((e) => e.filename)).toEqual(["one.png", "two.png|300"]);
+    expect(edited.map((e) => e.filename)).toEqual(["one.png", "two.png"]);
   });
 
   it("exposes the {…} block range (headEnd→end) so a reset strips only the block", () => {
@@ -119,5 +121,27 @@ describe("spansOverlappingRanges — selection → target embeds", () => {
     // a caret/selection ending exactly at the embed start (10) must not grab the next embed [20,30)
     expect(spansOverlappingRanges(spans, [[10, 20]])).toEqual([]);
     expect(spansOverlappingRanges(spans, [[0, 0]])).toEqual([]); // empty range selects nothing
+  });
+});
+
+// basename — a `#`/`^` resolution subpath belongs to resolution, not the filename (Bug 120):
+// `img.png#heading` must still match a rendered `img.png`.
+describe("basename — strips a #/^ subpath before comparing (Bug 120)", () => {
+  it("strips a # heading subpath", () => {
+    expect(basename("img.png#heading")).toBe("img.png");
+  });
+
+  it("strips a ^ block-ref subpath", () => {
+    expect(basename("folder/img.png^blockref")).toBe("img.png");
+  });
+
+  it("a wiki embed with a #subpath still resolves by basename", () => {
+    const loc = findImageInLine("![[img.png#heading]]{rotate=90}", 0, "img.png");
+    expect(loc?.params).toBe("rotate=90");
+    expect(loc?.filename).toBe("img.png#heading"); // ImageLocation.filename keeps it as written
+  });
+
+  it("a %-encoded md path decodes for the basename comparison", () => {
+    expect(basename("images/a%20b.png")).toBe("a b.png");
   });
 });
