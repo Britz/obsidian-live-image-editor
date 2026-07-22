@@ -275,6 +275,17 @@ current code and are restated here as architecture, not invented anew.
   reveal **pin** (AB16b), the `<>` dismiss **auto-clear** (which fires only on full
   **dis**engagement), and the toolbar's greyed/active state — reads this **one** predicate, never a
   per-surface ad-hoc check.
+- **AD13 — Prefer Obsidian's machinery; self-built behaviour is verified against Obsidian and never
+  writes below its own read level.** Wherever the plugin can ride an Obsidian API (link generation &
+  resolution, vault I/O, rendering hosts), it does — an upstream fix then reaches the plugin for
+  free. Where a capability must be self-built (the pure logic modules and the embed grammar — forced
+  by unit-testability, the off-Obsidian runtime and synchronous per-line parsing in Live Preview),
+  its behaviour is verified empirically against Obsidian's live parser/renderer, and the write side
+  keeps the invariant **write ⊆ read**, two-levelled: everything the plugin emits reads back
+  losslessly in the plugin's **own** grammar, and every structure a foreign reader **does**
+  understand stays intact — Obsidian-level markup (links, tables) is never broken by an emission,
+  while the plugin's own additive syntax (the trailing `{…}` block, T2) degrades to inert text for
+  readers that don't know it, never corrupting anything around it.
 
 ---
 

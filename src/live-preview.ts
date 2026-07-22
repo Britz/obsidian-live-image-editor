@@ -511,7 +511,7 @@ export function createLivePreviewExtension(
   const reparseRebuild = EditorView.updateListener.of((update) => {
     if (!update.state.field(editorLivePreviewField)) return;
     if (syntaxTree(update.state).length > syntaxTree(update.startState).length) {
-      Promise.resolve().then(() => { try { update.view.dispatch({ effects: refreshDecorations.of() }); } catch { /* view gone */ } });
+      void Promise.resolve().then(() => { try { update.view.dispatch({ effects: refreshDecorations.of() }); } catch { /* view gone */ } });
     }
   });
 

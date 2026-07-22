@@ -22,7 +22,7 @@ describe("runtime shims Obsidian's window globals before hydrate (Bug 119)", () 
   });
 
   it("sets the shim before the first hydrate", () => {
-    const shim = code.search(/Object\.assign\(\s*globalThis/);
+    const shim = code.search(/Object\.assign\(\s*(?:window|globalThis)/);
     const hydrate = code.indexOf("hydrate(document)");
     expect(shim).toBeGreaterThanOrEqual(0);
     expect(hydrate).toBeGreaterThan(shim);

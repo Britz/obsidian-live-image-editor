@@ -4,6 +4,12 @@ import {
 } from "../../src/replace-logic";
 import { findImageInLine, allEmbedsInText, basename } from "../../src/image-resolver";
 
+// Replace now rides link-format's ONE writer (`buildEmbed`) instead of a hand-rolled string, so its
+// output matches the SAME canonicalization every other writer already applies (Bug 94 precedent):
+// a native size already on the embed folds into the `{…}` block (never re-emitted as a raw pipe
+// suffix), and a caption containing whitespace is quote-delimited the same way `convertEmbedLine`
+// already does. Expectations below reflect that — see docs/development/implementation-plan.md.
+
 describe("buildReplacementEmbed", () => {
   it("builds a markdown embed with the new path + kept block", () => {
     expect(buildReplacementEmbed("img/new.png", "{rotate=90}", false, ""))
@@ -15,29 +21,42 @@ describe("buildReplacementEmbed", () => {
       .toBe("![[img/new.png]]{rotate=90}");
   });
 
-  it("carries the native size across (wikilink |size, markdown |size)", () => {
-    expect(buildReplacementEmbed("new.png", "", true, "300")).toBe("![[new.png|300]]");
-    expect(buildReplacementEmbed("new.png", "", false, "300")).toBe("![|300](new.png)");
+  it("folds a native size into the block (canonical writer — Bug 94/F6/T2)", () => {
+    expect(buildReplacementEmbed("new.png", "", true, "300")).toBe("![[new.png]]{width=300}");
+    expect(buildReplacementEmbed("new.png", "", false, "300")).toBe("![](new.png){width=300}");
   });
 
   it("KEEPS the caption on a file swap (a replacement is the same subject visually)", () => {
-    // The caption still describes the new image, so it is preserved, not dropped.
+    // The caption still describes the new image, so it is preserved, not dropped — quoted because
+    // it contains whitespace (canonical writer, same as convertEmbedLine).
     expect(buildReplacementEmbed("new.png", "{.rounded}", false, "", "My caption"))
-      .toBe("![My caption](new.png){.rounded}");
+      .toBe('!["My caption"](new.png){.rounded}');
   });
 
-  it("keeps caption + size together in markdown (caption|size)", () => {
+  it("keeps the caption and folds the size into the block (markdown)", () => {
     expect(buildReplacementEmbed("new.png", "", false, "300", "My caption"))
-      .toBe("![My caption|300](new.png)");
+      .toBe('!["My caption"](new.png){width=300}');
   });
 
-  it("prefers the caption over the size for a wikilink (single suffix)", () => {
-    // A wikilink alias is ONE slot, so the caption wins and the size is dropped when both are set.
+  it("keeps the caption as the wiki alias and folds the size into the block", () => {
+    // A wikilink alias carries the caption; the native size is never folded back into the pipe.
     expect(buildReplacementEmbed("new.png", "", true, "300", "My caption"))
-      .toBe("![[new.png|My caption]]");
-    // With only a caption it becomes the alias; with only a size the size is kept verbatim.
-    expect(buildReplacementEmbed("new.png", "", true, "", "My caption")).toBe("![[new.png|My caption]]");
-    expect(buildReplacementEmbed("new.png", "", true, "300", "")).toBe("![[new.png|300]]");
+      .toBe('![[new.png|"My caption"]]{width=300}');
+    expect(buildReplacementEmbed("new.png", "", true, "", "My caption"))
+      .toBe('![[new.png|"My caption"]]');
+    expect(buildReplacementEmbed("new.png", "", true, "300", "")).toBe("![[new.png]]{width=300}");
+  });
+
+  it("keeps the embed in its EXISTING form when the desired wiki alias cannot hold the caption", () => {
+    // A `]]`-bearing caption can only come from an existing markdown embed (a wiki-sourced caption
+    // can never itself contain `]]`, Bug 120) — never lose the link: only the path swaps.
+    expect(buildReplacementEmbed("new.png", "{rotate=90}", true, "", "cap]]weird"))
+      .toBe("![cap\\]\\]weird](new.png){rotate=90}");
+  });
+
+  it("escapes a table row's pipes (escapePipe / ImageLocation.inTable)", () => {
+    expect(buildReplacementEmbed("new.png", "", true, "", "My cap", true))
+      .toBe('![[new.png\\|"My cap"]]');
   });
 });
 
@@ -46,62 +65,63 @@ describe("replaceEmbedTarget — single occurrence, block + caption preserved", 
     const src = "intro\n![old caption](img/old.png){rotate=90 width=300}\noutro";
     const loc = findImageInLine(src.split("\n")[1]!, 1, "old.png")!;
     const out = replaceEmbedTarget(src, loc, "img/new.png", false);
-    expect(out).toBe("intro\n![old caption](img/new.png){rotate=90 width=300}\noutro");
+    expect(out).toBe('intro\n!["old caption"](img/new.png){rotate=90 width=300}\noutro');
   });
 
-  it("md: keeps caption + native size together (![cap|300] → ![cap|300])", () => {
+  it("md: keeps the caption and folds the native size into the block (![cap|300] → […]{width=300})", () => {
     const src = "![A cat|300](img/old.png){.rounded}";
     const loc = findImageInLine(src, 0, "old.png")!;
     expect(replaceEmbedTarget(src, loc, "img/new.png", false))
-      .toBe("![A cat|300](img/new.png){.rounded}");
+      .toBe('!["A cat"](img/new.png){.rounded width=300}');
   });
 
-  it("md: keeps a size-only alt (no caption) (![|300] → ![|300])", () => {
+  it("md: keeps a size-only alt (no caption), folded into the block (![|300] → […]{width=300})", () => {
     const src = "![|300](img/old.png)";
     const loc = findImageInLine(src, 0, "old.png")!;
-    expect(replaceEmbedTarget(src, loc, "img/new.png", false)).toBe("![|300](img/new.png)");
+    expect(replaceEmbedTarget(src, loc, "img/new.png", false)).toBe("![](img/new.png){width=300}");
   });
 
-  it("swaps the target of a wikilink embed, keeping the block + native size", () => {
+  it("swaps the target of a wikilink embed, folding the native size into the block", () => {
     const src = "![[img/old.png|300]]{flip=horizontal}";
     const loc = findImageInLine(src, 0, "old.png")!;
     const out = replaceEmbedTarget(src, loc, "img/new.png", true);
-    expect(out).toBe("![[img/new.png|300]]{flip=horizontal}");
+    expect(out).toBe("![[img/new.png]]{flip=horizontal width=300}");
   });
 
-  it("wiki: preserves a caption alias verbatim (![[old|cap]] → ![[new|cap]])", () => {
+  it("wiki: preserves a caption alias (quoted — it contains whitespace)", () => {
     const src = "![[img/old.png|My caption]]{.rounded}";
     const loc = findImageInLine(src, 0, "old.png")!;
     expect(replaceEmbedTarget(src, loc, "img/new.png", true))
-      .toBe("![[img/new.png|My caption]]{.rounded}");
+      .toBe('![[img/new.png|"My caption"]]{.rounded}');
   });
 
-  it("wiki: preserves a size alias verbatim (![[old|300]] → ![[new|300]])", () => {
+  it("wiki: a size-only alias folds into the block, the pipe drops", () => {
     const src = "![[img/old.png|300]]";
     const loc = findImageInLine(src, 0, "old.png")!;
-    expect(replaceEmbedTarget(src, loc, "img/new.png", true)).toBe("![[img/new.png|300]]");
+    expect(replaceEmbedTarget(src, loc, "img/new.png", true)).toBe("![[img/new.png]]{width=300}");
   });
 
   it("cross-form: carries the caption md → wiki", () => {
     const src = "![A cat](img/old.png){rotate=90}";
     const loc = findImageInLine(src, 0, "old.png")!;
     expect(replaceEmbedTarget(src, loc, "img/new.png", true))
-      .toBe("![[img/new.png|A cat]]{rotate=90}");
+      .toBe('![[img/new.png|"A cat"]]{rotate=90}');
   });
 
-  it("Bug 81 grammar: parses a wiki alias's size+quoted caption (caption preferred for the new alias)", () => {
+  it("Bug 81 grammar: a wiki alias's size+quoted caption BOTH survive (size folds into the block)", () => {
     const src = '![[img/old.png|50x50 "My caption"]]{.rounded}';
     const loc = findImageInLine(src, 0, "old.png")!;
-    // A wikilink alias is one slot, so the caption wins; the new embed keeps its {…} block.
+    // Previously the single-suffix wiki policy silently DROPPED the size when a caption was also
+    // present — buildEmbed folds it into the block instead, so nothing is lost.
     expect(replaceEmbedTarget(src, loc, "img/new.png", true))
-      .toBe("![[img/new.png|My caption]]{.rounded}");
+      .toBe('![[img/new.png|"My caption"]]{.rounded width=50 height=50}');
   });
 
-  it("Bug 81 grammar: carries an `auto` native size md → md (caption|size in the alt)", () => {
+  it("Bug 81 grammar: carries an `auto` native size md → md (folded into the block)", () => {
     const src = '!["A caption" autox200](img/old.png)';
     const loc = findImageInLine(src, 0, "old.png")!;
     expect(replaceEmbedTarget(src, loc, "img/new.png", false))
-      .toBe("![A caption|autox200](img/new.png)");
+      .toBe('!["A caption"](img/new.png){height=200}');
   });
 
   it("leaves surrounding text + OTHER embeds on the line untouched", () => {
@@ -123,6 +143,21 @@ describe("replaceEmbedTarget — single occurrence, block + caption preserved", 
     const src = "![[old.png]]";
     const loc = { ...findImageInLine(src, 0, "old.png")!, line: 99 };
     expect(replaceEmbedTarget(src, loc, "new.png", true)).toBe(src);
+  });
+
+  it("table row: escapes the wiki alias pipe (never a raw `|` splitting the cell)", () => {
+    const src = "| ![[img/old.png\\|My cap]] | x |";
+    const loc = findImageInLine(src, 0, "old.png")!;
+    expect(loc.inTable).toBe(true);
+    expect(replaceEmbedTarget(src, loc, "img/new.png", true))
+      .toBe('| ![[img/new.png\\|"My cap"]] | x |');
+  });
+
+  it("keeps the embed in its EXISTING (markdown) form when the desired wiki alias can't hold a `]]` caption", () => {
+    const src = "![cap\\]\\]weird](img/old.png){rotate=90}";
+    const loc = findImageInLine(src, 0, "old.png")!;
+    expect(replaceEmbedTarget(src, loc, "img/new.png", true))
+      .toBe("![cap\\]\\]weird](img/new.png){rotate=90}");
   });
 });
 
@@ -147,9 +182,10 @@ describe("planReplaceAll — every occurrence of one source, each block + captio
       allEmbedsInText(src), "old.png", "img/new.png", true, basename, offsetOf(src),
     );
     expect(changes).toHaveLength(2);
-    // First (wikilink form chosen): keeps size + its own block.
-    expect(changes[0]!.insert).toBe("![[img/new.png|300]]{rotate=90}");
-    // Third embed (also old.png, md `![old]`): caption "old" carried to the wikilink alias slot.
+    // First (wikilink form chosen): the native size folds into its own block.
+    expect(changes[0]!.insert).toBe("![[img/new.png]]{rotate=90 width=300}");
+    // Third embed (also old.png, md `![old]`): caption "old" carried to the wikilink alias slot
+    // (bare — a single-word, non-size caption needs no quoting).
     expect(changes[1]!.insert).toBe("![[img/new.png|old]]{.rounded}");
   });
 
@@ -162,8 +198,8 @@ describe("planReplaceAll — every occurrence of one source, each block + captio
       allEmbedsInText(src), "old.png", "img/new.png", false, basename, offsetOf(src),
     );
     expect(changes).toHaveLength(2);
-    expect(changes[0]!.insert).toBe("![First cat](img/new.png){rotate=90}");
-    expect(changes[1]!.insert).toBe("![Second cat|300](img/new.png){.rounded}");
+    expect(changes[0]!.insert).toBe('!["First cat"](img/new.png){rotate=90}');
+    expect(changes[1]!.insert).toBe('!["Second cat"](img/new.png){.rounded width=300}');
   });
 
   it("skips embeds whose target is a different file", () => {
@@ -191,5 +227,15 @@ describe("planReplaceAll — every occurrence of one source, each block + captio
     const src = "![[a.png]]{rotate=90}";
     expect(planReplaceAll(allEmbedsInText(src), "missing.png", "z.png", true, basename, offsetOf(src)))
       .toHaveLength(0);
+  });
+
+  it("escapes table-row pipes for every planned change (escapePipe / ImageLocation.inTable)", () => {
+    const src = "| ![[img/old.png\\|cap]] | x |\n| ![[img/old.png]] |";
+    const changes = planReplaceAll(
+      allEmbedsInText(src), "old.png", "img/new.png", true, basename, offsetOf(src),
+    );
+    expect(changes).toHaveLength(2);
+    expect(changes[0]!.insert).toBe("![[img/new.png\\|cap]]");
+    expect(changes[1]!.insert).toBe("![[img/new.png]]");
   });
 });

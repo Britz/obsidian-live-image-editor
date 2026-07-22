@@ -1,4 +1,4 @@
-import { Plugin, MarkdownView, MarkdownPostProcessorContext, Notice, Editor, TFile, addIcon } from "obsidian";
+import { Plugin, MarkdownView, Notice, Editor, TFile, addIcon } from "obsidian";
 import {
   ImageTransform, Layout, FilterData, parseAltText, serializeTransform,
   getRotation, setRotation, toggleFlipH, toggleFlipV, getFilter, setFilter,
@@ -31,6 +31,7 @@ import { ImagePickerModal } from "./replace-picker";
 import { writeSource } from "./source-writer";
 import { clickDismissesToolbar, isEngaged } from "./toolbar-region-logic";
 import { ensureEditingToolbarButtons } from "./editing-toolbar-integration";
+import { isHiddenHostCopy } from "./attach-logic";
 
 // Shared transform modifiers — used by BOTH the single-image toolbar/command path and the
 // multi-image (selection) command path, so the two never drift (R0). Rotate/flip/inline are
@@ -72,7 +73,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.applyButtonOutlines();
 
     this.addSettingTab(new LieSettingTab(this.app, this));
-    this.registerMarkdownPostProcessor((el, ctx) => this.postProcessor(el, ctx));
+    this.registerMarkdownPostProcessor((el) => this.postProcessor(el));
     this.registerImageSelectionHandler();
     this.registerToolbarDismissHandlers();
     this.registerCommands();
@@ -206,21 +207,25 @@ export default class LiveImageEditorPlugin extends Plugin {
     setLocale(detectLocale());
   }
 
-  private postProcessor(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
+  private postProcessor(el: HTMLElement): void {
     // The live-preview CM6 widget owns the editor (AD5 overlay); never box the native
     // (CSS-suppressed) embed images inside the editor.
     if (el.closest(".cm-editor")) return;
-    const sourcePath = ctx.sourcePath || this.app.workspace.getActiveFile()?.path || "";
     for (const embed of Array.from(el.querySelectorAll(".internal-embed"))) {
-      this.processBlock(embed as HTMLElement, () => embed.querySelector("img"), sourcePath);
+      this.processBlock(embed as HTMLElement, () => embed.querySelector("img"));
     }
     for (const img of Array.from(el.querySelectorAll("img"))) {
       if (img.closest(".internal-embed")) continue;
-      this.processBlock(img, () => img, sourcePath);
+      this.processBlock(img, () => img);
     }
+    // The caption (F22) rides the SAME position-exact resolver reconcileFromSource already uses —
+    // `ctx.getSectionInfo` returns null for a post-processor host nested inside a table cell (Obsidian
+    // does not track section info at that granularity), so it cannot be resolved here. Schedule the
+    // one shared, document-wide reconcile pass instead of duplicating occurrence-tracking (Bug 121).
+    this.scheduleReconcile();
   }
 
-  private processBlock(anchor: HTMLElement, getImg: () => HTMLImageElement | null, sourcePath: string): void {
+  private processBlock(anchor: HTMLElement, getImg: () => HTMLImageElement | null): void {
     const textNode = this.findBlockTextNode(anchor);
     const match = textNode ? (textNode.textContent ?? "").match(/^\s*\{([^}]*)\}/) : null;
     const transform = match ? parseAltText(match[1] ?? "") : null;
@@ -233,6 +238,10 @@ export default class LiveImageEditorPlugin extends Plugin {
     const apply = (): boolean => {
       const img = getImg();
       if (!img) return false;
+      // A host copy Obsidian has already superseded and hidden (e.g. a table cell's static render
+      // once its row's own live cell editor takes over) is left alone — attach stays idempotent per
+      // host copy, never re-decorating a retired one (Bug 122).
+      if (isHiddenHostCopy(anchor)) return true;
       // Fold the native wikilink/markdown size (e.g. `![[img|160]]`) into the {…} transform on READ
       // so a raw native size still renders at its size; the explicit {…} block always wins (Bug 94).
       // Re-derived per call — idempotent.
@@ -240,16 +249,27 @@ export default class LiveImageEditorPlugin extends Plugin {
         ? { ...transform, classes: [...transform.classes] }
         : { classes: [] };
       this.foldNativeSize(merged, img);
-      if (this.hasTransforms(merged)) applyTransformToImage(img, merged);
+      // A post-processor host nested inside live preview's `.cm-content` sits where the uniform
+      // native-suppression CSS (AD5) hides the native image unconditionally — so THAT host always
+      // needs its replacement box, even a plain/untransformed one: suppression never fires without a
+      // replacement (Bug 124). A true reading-view host has no such suppression and stays a bare
+      // native img when there is nothing to render (unchanged — no wasted DOM).
+      if (this.hasTransforms(merged) || img.closest(".cm-content")) applyTransformToImage(img, merged);
       else this.clearStaleTransform(img);
-      this.applyReadingCaption(img, sourcePath);
       // Shrink-wrap the reading-view host that DIRECTLY holds our box (caption/column sizing). We set
       // the `.lie-embed` class on it ourselves — a direct selector, not `:has(> .lie-image-area)`
       // (Decision 28). LP doesn't need it (its box sits under `.lie-box`, which shrink-wraps itself).
       img.closest(`.${BOX_CLASS}`)?.parentElement?.classList.add("lie-embed");
       return true;
     };
-    if (apply()) return;
+    if (apply()) {
+      // A post-processor section may still be DETACHED at this synchronous call (Obsidian builds it
+      // off-screen before mounting), so the `.cm-content` check above can miss an ancestor that only
+      // exists once mounted. Re-validate one frame later; idempotent (buildLayers/ensureLayers reuse
+      // the existing box), so re-running is always safe.
+      window.requestAnimationFrame(() => apply());
+      return;
+    }
 
     const observer = new MutationObserver(() => { if (apply()) observer.disconnect(); });
     observer.observe(anchor, { childList: true, subtree: true });
@@ -257,13 +277,21 @@ export default class LiveImageEditorPlugin extends Plugin {
     window.setTimeout(() => observer.disconnect(), 5000);
   }
 
+  private reconcileTimer = 0;
+  private scheduleReconcile(): void {
+    window.clearTimeout(this.reconcileTimer);
+    this.reconcileTimer = window.setTimeout(() => this.reconcileFromSource(), 50);
+  }
+
   private readingCaptions = new WeakMap<HTMLImageElement, CaptionHandle>();
   private readingCaptionText = new WeakMap<HTMLImageElement, string>();
 
-  // Reading-view caption (F22): render the alt text as a Markdown caption below the
-  // box, as a child of the embed (sized to the box by pure CSS, AB7). Idempotent.
-  private applyReadingCaption(img: HTMLImageElement, sourcePath: string): void {
-    const want = this.settings.showCaptions ? captionFromAlt(img.alt) : "";
+  // Reading-view caption (F22): render the alt text as a Markdown caption below the box, as a child
+  // of the embed (sized to the box by pure CSS, AB7). Idempotent. `sourceAlt` is the AUTHOR's alt —
+  // resolved by the caller from the source text (position-exact), never the rendered `alt` attribute
+  // (Obsidian defaults that to the bare filename for an un-aliased embed, Bug 121).
+  private applyReadingCaption(img: HTMLImageElement, sourcePath: string, sourceAlt: string): void {
+    const want = this.settings.showCaptions ? captionFromAlt(sourceAlt) : "";
     const prev = this.readingCaptions.get(img);
     if (prev && want && this.readingCaptionText.get(img) === want) return;
 
@@ -380,20 +408,34 @@ export default class LiveImageEditorPlugin extends Plugin {
         if (!file) continue;
         const occurrence = seen.get(file) ?? 0;
         seen.set(file, occurrence + 1);
-        // The LP overlay owns its own images; the editor's native embed images are
-        // CSS-suppressed and must be left untouched (AD5 — no double render). An image being
-        // CROPPED in place (`.lie-cropping` on its area/host) must also be skipped — a re-render
-        // (buildLayers → resetLieState) mid-session would wipe the editor's transient geometry.
-        if (img.closest(".lie-wrapper, .cm-editor, .lie-cropping")) continue;
+        // The LP overlay owns its own images; skip untouched (AD5 — no double render). Likewise
+        // Obsidian's own CM6-native embed, wherever one lands (the main editor, or a post-processor
+        // host's own live cell editor once the cursor enters it) — recognisable by the `.lie-wrapper`
+        // the live-preview pass ALWAYS draws right next to it, never by `.cm-editor` alone (a
+        // post-processor host — a table cell, a callout, a footnote — sits inside `.cm-editor` too,
+        // and IS this pass's job, Bug 121/124). An image being CROPPED in place (`.lie-cropping` on
+        // its area/host) is also skipped — a re-render mid-session would wipe the transient geometry.
+        // A host copy Obsidian has already superseded and hidden (a table cell's static render once
+        // its row's own live cell editor takes over) is left alone too — idempotent per copy (Bug 122).
+        if (img.closest(".lie-wrapper, .lie-cropping")) continue;
+        if (isHiddenHostCopy(img)) continue;
+        const embedHost = img.closest(".internal-embed");
+        if (embedHost?.previousElementSibling?.classList.contains("lie-wrapper")) continue;
+        if (embedHost?.nextElementSibling?.classList.contains("lie-wrapper")) continue;
         const loc = findImageInText(source, file, occurrence);
         const transform = loc ? parseAltText(loc.params) : { classes: [] };
         // Fold the native wikilink/markdown size into the transform on READ (the {…} block wins);
         // a raw `![[img|160]]` with no block still renders at its size (Bug 94). The raw source
         // alias (loc.alt) is authoritative for every pipe variant.
         this.foldNativeSize(transform, img, loc?.alt);
-        if (this.hasTransforms(transform)) applyTransformToImage(img, transform);
+        // A post-processor host nested inside live preview's `.cm-content` needs its replacement box
+        // even with no transform — the uniform native-suppression CSS would otherwise hide it with
+        // nothing to show (Bug 124); mirrors the same decision processBlock's own attach makes.
+        if (this.hasTransforms(transform) || img.closest(".cm-content")) applyTransformToImage(img, transform);
         else this.clearStaleTransform(img);
-        this.applyReadingCaption(img, sourcePath);
+        // Same source-derived alt the post-processor path relies on (F22 / Bug 121) — `loc.alt` is the
+        // author's text, never the rendered `alt` attribute (Obsidian defaults that to the filename).
+        this.applyReadingCaption(img, sourcePath, loc?.alt ?? "");
       }
     };
     run();
@@ -522,6 +564,21 @@ export default class LiveImageEditorPlugin extends Plugin {
           this.onImageSelected(img);
           this.hoverShown = true;
           this.bindFloatRegion(floatWrap);
+        }
+        return;
+      }
+      // Post-processor-hosted embeds (reading view, and post-processor-rendered hosts nested inside
+      // live preview — a table cell, a callout, a footnote popover) have no `.lie-wrapper` at all, so
+      // the branch above never matches them — they only got the floating bar on CLICK (Bug 123). Open
+      // it on hover too, host-agnostic: the SAME region-hover pattern, keyed off `.lie-embed` (the
+      // marker attach sets on a host it actually decorated) so only a decorated host is hover-eligible.
+      const embedHost = target.closest<HTMLElement>(".internal-embed.image-embed.lie-embed");
+      if (embedHost) {
+        const img = embedHost.querySelector("img");
+        if (img && this.settings.showToolbar && this.toolbar.getActiveImage() !== img) {
+          this.onImageSelected(img);
+          this.hoverShown = true;
+          this.bindFloatRegion(embedHost);
         }
       }
     });

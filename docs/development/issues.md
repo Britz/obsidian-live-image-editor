@@ -137,7 +137,7 @@ requirement + the storage/permission implications) before any code.
 
 ### Known open bugs (Bug)
 
-_**124 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
+_**125 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
 
 > **Bugs 95–104 — a regression batch from the layout rework (`ba2dfa4`, "decouple size from layout"),
 > found in a CLEAN store install (v0.6.6).** The dev vault MASKED most of them: its `styles.css` was a
@@ -249,45 +249,6 @@ _**124 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       Bug 86) that consumes the interaction, or a guard in `crop()` (`locateActiveImage` / panel
       teardown) aborts the open on that click. DISTINCT from the reveal/dismiss engagement bug — even
       if co-triggered, the definitive defect is the dead button. (2026-06-27, user+CDP.)
-- [ ] **Bug 121 — Filename rendered as CAPTION for every plain wiki embed in reading view and in LP
-      table cells (alt-based caption path).** Obsidian sets `alt=<filename>` on wiki embeds without an
-      alias in the reading/post-processor render (table cells included). `applyReadingCaption` takes
-      `captionFromAlt(img.alt)` at face value ([main.ts:266](../../src/main.ts#L266)) → with captions ON,
-      every such embed shows its FILENAME as caption (the reported "Caption immer da, dann der
-      Dateiname"). _Confirmed (CDP, 2026-07-22):_ reading view shows filename captions for the
-      control embeds AND all table rows; LP outside tables is clean because the widget path derives
-      the caption from the SOURCE text (`captionMarkdown`), not the alt. _Fix sketch:_ treat
-      Obsidian's default alt (alt === embed filename) as "no caption" in the alt path — or derive
-      from source there too, uniform with LP (AD3 spirit). NOT table-specific — the whole reading
-      view is affected. (2026-07-22, user + CDP.)
-- [ ] **Bug 122 — Cursor into a table row DUPLICATES the embed render (4 `<img>` per cell) — the
-      "raw link shows twice" report.** Placing the cursor in a table row activates Obsidian's cell
-      editor; the cell then holds the hidden `.table-cell-wrapper` render PLUS the cell-editor
-      render, and the plugin decorates BOTH copies (native + our render in each) → 4 `<img>` in the
-      cell (1 before), visible duplication/flicker, and the raw link can appear twice. _Confirmed
-      (CDP, 2026-07-22):_ td img-count 1 → 4 on cursor placement. _Diagnose within Cluster 2 (the
-      host-agnostic render pass): attach/suppress must be idempotent per HOST copy and must not
-      decorate the hidden wrapper copy._ (2026-07-22, user + CDP.)
-- [ ] **Bug 123 — No HOVER toolbar on table embeds (post-processor-hosted) — toolbar only appears on
-      CLICK.** The hover path only opens for `.lie-wrapper.lie-float` hosts (delegated mouseover,
-      [main.ts:518](../../src/main.ts#L518)) and the in-chrome bar lives in the LP widget wrapper — a
-      table-cell render has NEITHER, so hovering a table image shows nothing; clicking it shows the
-      floating bar (confirmed 2026-07-22, CDP; explains "die Toolbar erscheint" only sometimes).
-      Violates F7's hover reveal in every post-processor host — check callouts/footnotes for the same
-      gap. _Fix in Cluster 2:_ give post-processor-hosted images the same hover→floating-bar path
-      (extend the delegated mouseover beyond `.lie-float`), or mount the region binder on the box
-      uniformly. (2026-07-22, user + CDP.)
-- [ ] **Bug 124 — Plain embed in a table cell renders INVISIBLE: the uniform native-suppression CSS
-      hides the img, but no replacement render attaches.** In a table cell a parameterless embed
-      (`![[x.png]]` / `![](x.png)`) is hit by the uniform native suppression (styles.css,
-      `.cm-content .internal-embed.image-embed > img … display:none`) yet the post-processor attach
-      that builds the `lie-embed`/`lie-image-area` replacement skips it → 0 visible images (the img
-      is loaded, `display:none`, cell HTML holds only the bare `internal-embed` span). Embeds WITH a
-      `{…}` block or size in the SAME table render fine; plain embeds outside tables render via the
-      LP widget path. Confirmed (CDP, 2026-07-22) in BOTH link formats, after a clean reload.
-      _Fix belongs to the Cluster-2 host-agnostic pass: suppression and replacement must be ONE
-      decision — never suppress without attaching the replacement (AD5/AD3)._ (2026-07-22, CDP;
-      likely part of the user-reported "kein Bild in Tabellen".)
 ---
 
 ## Meta level

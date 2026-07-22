@@ -23,6 +23,7 @@ One file per building block where possible; pure decision logic split into a sib
 | `src/transforms.ts` | AB1 Transform model | `ImageTransform` *(classes/inline; orientation: rotate/flipH/flipV → inner-frame; content: transform/filter → img; footprint: width/height/aspectRatio/box → outer)*<br>`FilterData`<br>`parseAltText` *(bare keys + legacy `style=` back-compat)*<br>`serializeTransform` *(bare keys)*<br>`getRotation`/`setRotation` *(the orientation field)*<br>`toggleFlipH`/`toggleFlipV`/`getFlipH`/`getFlipV` *(fields)*<br>`isCrop`<br>`getFilter`/`setFilter`/`filterToCss`/`parseFilterCss`/`nonDefaultFilter` *(the shared "≠ default" predicate)*<br>`getWidthPx`/`getHeightPx`/`setWidthPx`/`setHeightPx`<br>`PRESET_KEYS`/`PresetKey`<br>`MARKER_CLASS` *(backward-compat parse-skip only — never written)*<br>`INLINE_CLASS` |
 | `src/link-format.ts` | AB2 Link form & native-size normalization | `parseEmbedLine`<br>`buildEmbed`<br>`convertEmbedLine`<br>`desiredFormat` |
 | `src/image-resolver.ts` | AB3 Source↔DOM mapping (pure — `import type` Editor) | `findImageInSource`<br>`findImageInText` *(occurrence-aware — F2)*<br>`findImageInLine` *(one line, the posAtDOM-disambiguated resolver)*<br>`getImageFilename`<br>`ImageLocation` |
+| `src/replace-logic.ts` | AB2/AB3 — "Change image source" (F26, pure) | `buildReplacementEmbed`<br>`replaceEmbedTarget`<br>`planReplaceAll` — build the replacement embed through link-format's ONE writer (`buildEmbed`) rather than a hand-rolled string: table-pipe escaping (`ImageLocation.inTable`) and the write ⊆ read invariant now cover Replace too. A native size already on the embed folds into the `{…}` block like any other active edit (Bug-94 precedent, F6/T2 — never re-emitted as a raw pipe suffix). A caption the desired form cannot represent (a wiki alias containing `]]`) makes the embed keep its EXISTING form — only the path swaps, never lose the link |
 | `src/source-writer.ts` | AB3 / AD1 edit writer (shared) | `writeSource` *(one isolated CM transaction per edit)*<br>`LIE_USER_EVENT` |
 | `src/snippet-scanner.ts` | AB4 Snippet class discovery | `scanSnippets` *(flat, enabled-only — toolbar)*<br>`scanSnippetFiles` *(per-file grouped + our-file status — settings)*<br>`SnippetClass`/`SnippetFile`<br>`installBundledSnippet`<br>`resetBundledSnippet`<br>`restoreBundledClass`<br>`isBundledSnippetInstalled` |
 | `src/snippet-classify.ts` | AB4 (pure logic) | `parseImgRules`<br>`classifyBundledFile` *(unchanged/changed/deleted vs shipped)*<br>`restoreClassInCss`<br>`findCollisions`<br>`ClassEntry`/`ClassStatus` |
@@ -326,11 +327,17 @@ there is no second crop/rotate/scale implementation. (This collapses the old dup
   `.lie-wrapper` overlay container in live preview / Obsidian's `.image-embed` in reading view) via
   `:has(img.lie-left)` — never on the `img` (flex child) or the `.lie-image-area` (inside the
   embed). *(Pitfall §4.)*
-- **Native-suppression (live preview)** — static, **UNIFORM** rules hide Obsidian's native image in
-  **every** embed: `.cm-content .internal-embed.image-embed > img` and `> .image-wrapper` (covering
-  both the Markdown `> img` and the wikilink `.image-wrapper`), plus the native `> .edit-block-button`
-  (so the native `<>` icon never leaks, Bug 31). The rules **never** hit the plugin's own
-  `.lie-wrapper`. The `{…}` block (real document text) is hidden when the image is rendered and shown —
+- **Native-suppression (live preview)** — static, **unconditional** rules hide Obsidian's native image
+  in every embed: `.cm-content .internal-embed.image-embed > img` and `> .image-wrapper` (covering both
+  the Markdown `> img` and the wikilink `.image-wrapper`), plus the native `> .edit-block-button` (so
+  the native `<>` icon never leaks). The rules stay unconditional (AD5) — the invariant that
+  suppression never fires without a replacement is upheld on the ATTACH side, not by narrowing the
+  selector: wherever a host sits where this suppression applies, attach always builds the plugin's
+  replacement box, even for a normal, transform-less image, which moves the native `<img>` out of the
+  direct-child position the selector targets — a host the plugin has not (yet, or ever) attached to
+  simply never reaches that position, so its native rendering stays exactly as Obsidian drew it. The
+  rules **never** hit the plugin's own `.lie-wrapper`. The `{…}` block (real document text) is hidden when
+  the image is rendered and shown —
   **as one whole with the body** (D17) — when the link reveals, keyed on the **parse-derived reveal
   class** the StateField sets in-transaction (AB16b), **not** the retired `.cm-line:has(> .cm-formatting)`
   DOM guess.
@@ -492,7 +499,22 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
 
 - **Reading view** — `registerMarkdownPostProcessor` runs on rendered sections, calls the render
   core, attaches chrome. Its reconcile skips images already owned by the live-preview pass (the
-  plugin's own `.lie-wrapper` overlay) so the two passes never compete (AD5, AD6).
+  plugin's own `.lie-wrapper` overlay) so the two passes never compete (AD5, AD6). The SAME
+  post-processor path also renders post-processor-hosted embeds nested INSIDE live preview (a table
+  cell, a callout, a footnote popover) — there is no separate table/callout code path: for every
+  rendered host copy the adapter makes ONE attach decision, and suppression, the replacement render,
+  the caption and the hover region all follow from it, never handled piecemeal per host kind. The box
+  is built (even for a normal, transform-less image) whenever the host sits where the live-preview
+  native-suppression CSS could otherwise hide it with nothing to show in its place — a suppressed host
+  always gets its replacement, never the reverse. A host copy Obsidian itself has superseded and hidden
+  (e.g. a table cell's static render once its row's own live cell editor takes over) is left alone, not
+  attached a second time — attach stays idempotent per copy, and a hidden copy's stale chrome is never
+  what the user sees. The caption text is derived the same way the live-preview widget already does:
+  from the SOURCE text via the position-exact resolver, not from the rendered `alt` attribute (which
+  Obsidian defaults to the bare filename for an un-aliased embed) — one caption source for both
+  adapters. The hover region binds to the host copy the plugin actually decorated, the same
+  region-hover pattern the floating toolbar already uses, so hover opens the toolbar there exactly as
+  it does everywhere else.
 - **`live-preview.ts`** — `createLivePreviewExtension` is a CM6 `StateField` that, for each embed,
   draws an `EmbedWidget` carrying the plugin's own transformed image (the uniform `.lie-wrapper`,
   R0/AD3) in one of **three modes** (`WidgetMode`), the **same uniform chrome** in each — only the

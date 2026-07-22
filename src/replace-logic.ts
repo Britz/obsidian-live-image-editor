@@ -1,12 +1,22 @@
-// Pure logic for "Replace image" / "Replace all" (Feature 3): swap the TARGET of an image embed for
-// another file while keeping its trailing `{…}` transform block, its caption (markdown alt) and any
-// native `|size` intact — the edits survive, the user can Reset. DOM/Obsidian-free so it's unit-
+// Pure logic for "Replace image" / "Replace all" (Feature 3 / F26): swap the TARGET of an image
+// embed for another file while keeping its trailing `{…}` transform block, its caption and any
+// native size intact — the edits survive, the user can Reset. DOM/Obsidian-free so it's unit-
 // testable (Lesson 6); the plugin resolves the actual occurrence by DOM position (image-resolver),
 // the same way crop/export do — NEVER a basename scan (Bug 33). The link FORM (wikilink vs markdown)
 // follows Obsidian's central "Use [[Wikilinks]]" setting, exactly like the rest of the plugin.
+//
+// The replacement embed is built through link-format's ONE grammar writer (`buildEmbed`, Bug 120)
+// rather than a hand-rolled string, so Replace gets the SAME guarantees as every other writer: a
+// table row's pipes are escaped (`escapePipe`/`ImageLocation.inTable`), an md destination is
+// percent-encoded, an md caption's `\`/`[`/`]` are escaped, and a native size already on the embed
+// folds into the `{…}` block — the same normalization an active transform edit already applies
+// (Bug 94 precedent, F6/T2: size lives in the block, never re-emitted as a raw pipe suffix). The
+// write ⊆ read invariant applies too (never lose the link): a caption the desired form cannot
+// represent — a wiki alias containing `]]`, which a wikilink has no escape for — keeps the embed in
+// its EXISTING form; only the path swaps.
 
 import { ImageLocation } from "./image-resolver";
-import { splitTail } from "./link-format";
+import { buildEmbed, LinkFormat, splitTail } from "./link-format";
 
 // Split a raw alt/alias string (the markdown alt, or the wikilink alias after the first pipe) into
 // its caption text and its native size token. Both come from the SAME string: e.g. `cap 300`
@@ -18,33 +28,27 @@ const splitAlt = splitTail;
 
 /**
  * Build the replacement embed string for ONE occurrence: the new `path` in the desired link form,
- * carrying the existing `{…}` block across. `useWikilinks` picks the form; `newPath` is the link
- * token already formatted for that form (typically from Obsidian's `fileManager.generateMarkdownLink`,
- * stripped to its inner path) — the function does no path encoding itself. The original `caption` and
- * native `size` are PRESERVED on the swap: a replacement is the same subject visually, so its caption
- * still applies. Markdown can carry both as `caption|size`. A WIKILINK carries only ONE suffix (the
- * native alias / size pipe — Obsidian wikilinks have no separate caption+size slot), so the caption is
- * preferred and the size dropped when both are present; with no caption the size is kept verbatim.
+ * carrying the existing `{…}` block, caption and native size across via `buildEmbed` — the ONE
+ * grammar writer (never a second hand-rolled serialization, Bug 120). `useWikilinks` picks the
+ * desired form UNLESS `caption` contains `]]`: a wikilink alias has no escape for its own `]]`
+ * terminator, so that occurrence keeps its current markdown form instead (never lose the link) —
+ * this can only happen for a caption read from an existing MARKDOWN embed (a wiki-sourced caption
+ * can never itself contain `]]`, Bug 120). `escapePipe` is table-row context (`ImageLocation.inTable`).
  */
 export function buildReplacementEmbed(
-  newPath: string, block: string, useWikilinks: boolean, size: string, caption = ""
+  newPath: string, block: string, useWikilinks: boolean, size: string, caption = "", escapePipe = false
 ): string {
-  if (useWikilinks) {
-    // Single-suffix limitation: a wikilink alias is one slot, so prefer the caption, else the size.
-    const suffix = caption || size;
-    const inner = suffix ? `${newPath}|${suffix}` : newPath;
-    return `![[${inner}]]${block}`;
-  }
-  // Markdown alt can carry both: `caption|size` (caption-only → `caption`, size-only → `|size`).
-  const alt = size ? `${caption}|${size}` : caption;
-  return `![${alt}](${newPath})${block}`;
+  const desired: LinkFormat = useWikilinks ? "wiki" : "md";
+  const format: LinkFormat = desired === "wiki" && caption.includes("]]") ? "md" : desired;
+  return buildEmbed(format, { caption, path: newPath, size, block, escapePipe });
 }
 
 /**
  * Rewrite the embed at `location` in `source` so it targets `newPath` (already formatted for the
  * chosen link form), keeping its `{…}` block. Returns the full new source text. The original embed's
- * caption and native `|size` are carried across. Only the targeted occurrence is touched — duplicates
- * of the same file elsewhere are left alone (that's what "Replace all" is for).
+ * caption and native size are carried across (via `buildEmbed`, folding a native size into the block
+ * — see the file header). Only the targeted occurrence is touched — duplicates of the same file
+ * elsewhere are left alone (that's what "Replace all" is for).
  */
 export function replaceEmbedTarget(
   source: string,
@@ -57,7 +61,7 @@ export function replaceEmbedTarget(
   if (line === undefined) return source;
   const block = location.params ? `{${location.params}}` : "";
   const { caption, size } = splitAlt(location.alt);
-  const replacement = buildReplacementEmbed(newPath, block, useWikilinks, size, caption);
+  const replacement = buildReplacementEmbed(newPath, block, useWikilinks, size, caption, location.inTable);
   lines[location.line] = line.slice(0, location.start) + replacement + line.slice(location.end);
   return lines.join("\n");
 }
@@ -92,7 +96,7 @@ export function planReplaceAll(
     if (basenameOf(loc.filename) !== targetBasename) continue;
     const block = loc.params ? `{${loc.params}}` : "";
     const { caption, size } = splitAlt(loc.alt);
-    const insert = buildReplacementEmbed(newPath, block, useWikilinks, size, caption);
+    const insert = buildReplacementEmbed(newPath, block, useWikilinks, size, caption, loc.inTable);
     changes.push({
       from: posToOffset(loc.line, loc.start),
       to: posToOffset(loc.line, loc.end),
