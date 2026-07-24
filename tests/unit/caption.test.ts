@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { captionMarkdown, captionFromAlt } from "../../src/caption-logic";
+import { captionMarkdown, captionFromAlt, captionFromAltGuarded } from "../../src/caption-logic";
 
 describe("captionMarkdown (alt text → caption, from an embed string)", () => {
   it("uses the markdown alt text", () => {
@@ -88,5 +88,26 @@ describe("captionFromAlt (reading view: img.alt → caption)", () => {
     expect(captionFromAlt("A photo 640x480")).toBe("A photo");
     expect(captionFromAlt("autox200")).toBe("");
     expect(captionFromAlt("50xauto")).toBe("");
+  });
+});
+
+describe("captionFromAltGuarded (runtime: rejects alt == the image's own filename)", () => {
+  it("returns '' when the caption is exactly the source's basename", () => {
+    expect(captionFromAltGuarded("cat.png", "cat.png")).toBe("");
+    expect(captionFromAltGuarded("cat.png", "/vault/images/cat.png")).toBe("");
+    expect(captionFromAltGuarded("cat.png", "https://example.com/images/cat.png?v=2")).toBe("");
+  });
+  it("decodes a %20-escaped basename before comparing", () => {
+    expect(captionFromAltGuarded("my cat.png", "images/my%20cat.png")).toBe("");
+  });
+  it("keeps a real caption that merely contains the filename", () => {
+    expect(captionFromAltGuarded("cat.png is cute", "cat.png")).toBe("cat.png is cute");
+  });
+  it("keeps a real caption unrelated to the filename", () => {
+    expect(captionFromAltGuarded("A photo of a cat", "cat.png")).toBe("A photo of a cat");
+  });
+  it("passes through a size-only / empty alt unchanged (still '')", () => {
+    expect(captionFromAltGuarded("300", "cat.png")).toBe("");
+    expect(captionFromAltGuarded("", "cat.png")).toBe("");
   });
 });

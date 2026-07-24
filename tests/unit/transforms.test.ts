@@ -4,6 +4,7 @@ import {
   getRotation, setRotation, getFlipH, getFlipV, toggleFlipH, toggleFlipV, isCrop,
   getFilter, setFilter, filterToCss, parseFilterCss,
   getWidthPx, setWidthPx, applyNativeSize,
+  parseFlipTokens, lengthValue, parseFns,
 } from "../../src/transforms";
 import { toCropResult } from "../../src/crop-editor-logic";
 
@@ -380,5 +381,50 @@ describe("per-operation persistence (§2.8 — Bug 56 guard)", () => {
     // a cut that keeps the original ratio stores NO aspect-ratio (derived).
     const square = toCropResult({ x: 0, y: 0 }, { w: 200, h: 200 }, 0, 1, 200, 1);
     expect(square.aspectRatio).toBeUndefined();
+  });
+});
+
+describe("parseFlipTokens (shared by parseAltText's flip= and render-core's readTransform)", () => {
+  it("parses h/horizontal and v/vertical", () => {
+    expect(parseFlipTokens("h")).toEqual({ flipH: true, flipV: false });
+    expect(parseFlipTokens("horizontal")).toEqual({ flipH: true, flipV: false });
+    expect(parseFlipTokens("v")).toEqual({ flipH: false, flipV: true });
+    expect(parseFlipTokens("vertical")).toEqual({ flipH: false, flipV: true });
+  });
+  it("parses both / comma+space separated tokens", () => {
+    expect(parseFlipTokens("both")).toEqual({ flipH: true, flipV: true });
+    expect(parseFlipTokens("h, v")).toEqual({ flipH: true, flipV: true });
+    expect(parseFlipTokens("horizontal vertical")).toEqual({ flipH: true, flipV: true });
+  });
+  it("ignores unknown tokens and empty input", () => {
+    expect(parseFlipTokens("")).toEqual({ flipH: false, flipV: false });
+    expect(parseFlipTokens("bogus")).toEqual({ flipH: false, flipV: false });
+  });
+});
+
+describe("lengthValue (shared by serializeTransform's width/height and render-core's readTransform)", () => {
+  it("appends px to a bare number", () => {
+    expect(lengthValue("300")).toBe("300px");
+    expect(lengthValue("1.5")).toBe("1.5px");
+    expect(lengthValue("  200  ")).toBe("200px");
+  });
+  it("passes an already-unit'd or var() value through verbatim", () => {
+    expect(lengthValue("300px")).toBe("300px");
+    expect(lengthValue("1.4em")).toBe("1.4em");
+    expect(lengthValue("var(--x)")).toBe("var(--x)");
+  });
+});
+
+describe("parseFns (shared by isCrop, export.ts's canvas replay, crop-editor-logic's parsePlacement)", () => {
+  it("parses ordered name(args) functions, args as one trimmed string", () => {
+    expect(parseFns("translate(10%, 5%) rotate(30deg) scale(1.5, 2)")).toEqual([
+      { name: "translate", args: "10%, 5%" },
+      { name: "rotate", args: "30deg" },
+      { name: "scale", args: "1.5, 2" },
+    ]);
+  });
+  it("returns [] for undefined/empty", () => {
+    expect(parseFns(undefined)).toEqual([]);
+    expect(parseFns("")).toEqual([]);
   });
 });

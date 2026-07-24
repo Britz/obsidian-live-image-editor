@@ -124,29 +124,42 @@ describe("inlineEmbeds (mid-text images, e.g. lie-inline) — F17", () => {
   });
 });
 
-describe("rewriteWidth (a resize is a minimal source edit — AD1/D11)", () => {
+describe("rewriteWidth (the resize handle's ordered edit — canonical per F5/F6)", () => {
+  // Identity write context: the line's own form is the desired one, the path verifies as-is.
+  const md = (line: string, w: number) => rewriteWidth(line, w, "md", (p) => p);
+
   it("returns null for a line that is not an image embed", () => {
-    expect(rewriteWidth("just text", 300)).toBeNull();
+    expect(md("just text", 300)).toBeNull();
   });
   it("creates a {…} block for an embed that has none (resize on a plain image)", () => {
-    expect(rewriteWidth("![a](b.png)", 300)).toBe("![a](b.png){width=300}");
+    expect(md("![a](b.png)", 300)).toBe("![a](b.png){width=300}");
   });
   it("adds a width, re-emitting a legacy orientation as the new bare key (back-compat read, new write)", () => {
-    expect(rewriteWidth('![a](b.png){.lie-img style="transform: rotate(90deg)"}', 300)).toBe(
+    expect(md('![a](b.png){.lie-img style="transform: rotate(90deg)"}', 300)).toBe(
       "![a](b.png){rotate=90 width=300}"
     );
   });
   it("re-emits a legacy alignment class as the bare align= key when writing width", () => {
-    expect(rewriteWidth('![a](b.png){.lie-left}', 300)).toBe("![a](b.png){align=left width=300}");
+    expect(md("![a](b.png){.lie-left}", 300)).toBe("![a](b.png){align=left width=300}");
   });
   it("replaces an existing width", () => {
-    expect(rewriteWidth('![a](b.png){.lie-img style="width: 100px"}', 250)).toBe(
+    expect(md('![a](b.png){.lie-img style="width: 100px"}', 250)).toBe(
       "![a](b.png){width=250}"
     );
   });
   it("keeps snippet classes when writing width (legacy marker dropped)", () => {
-    expect(rewriteWidth("![a](b.png){.lie-img .rounded}", 200)).toBe(
+    expect(md("![a](b.png){.lie-img .rounded}", 200)).toBe(
       "![a](b.png){.rounded width=200}"
     );
+  });
+  it("writes the DESIRED form with the supplied token (canonical, F5) — caption kept, size folded", () => {
+    expect(rewriteWidth("![[cat.png|90]]", 300, "md", () => "images/cat.png"))
+      .toBe("![](images/cat.png){width=300}");
+    expect(rewriteWidth("![a](b.png)", 300, "wiki", () => "b.png"))
+      .toBe("![[b.png|a]]{width=300}");
+  });
+  it("keeps the SOURCE form and path when no token can be produced (never lose the link)", () => {
+    expect(rewriteWidth("![[missing.png]]", 300, "md", () => null))
+      .toBe("![[missing.png]]{width=300}");
   });
 });

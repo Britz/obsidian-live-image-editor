@@ -121,6 +121,20 @@ export async function connectOptical() {
   const hover = async (x, y) => {
     await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(x), y: Math.round(y), buttons: 0 });
   };
+  // A REAL key press (down + up via the Input domain).
+  const press = async (key) => {
+    const info = key === "Escape" ? { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 } : { key, code: key };
+    await send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...info });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", ...info });
+  };
+  // A REAL left click (move + press + release via the Input domain) — needed where a synthetic
+  // `el.click()` does not take (e.g. opening a table cell's live editor rides real mouse events).
+  const click = async (x, y) => {
+    const px = Math.round(x), py = Math.round(y);
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: px, y: py, buttons: 0 });
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x: px, y: py, button: "left", buttons: 1, clickCount: 1 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: px, y: py, button: "left", buttons: 0, clickCount: 1 });
+  };
   // Capture a viewport region (CSS px, getBoundingClientRect coords) at 1:1 and decode to RGBA.
   const screenshot = async (clip) => {
     const r = await send("Page.captureScreenshot", {
@@ -139,7 +153,7 @@ export async function connectOptical() {
   };
   const close = () => { try { ws.close(); } catch { /* ignore */ } };
 
-  return { evaluate, hover, screenshot, focusEmulation, close };
+  return { evaluate, hover, click, press, screenshot, focusEmulation, close };
 }
 
 // ---- minimal PNG decoder (8-bit, colorType 2/6, non-interlaced — what Chrome screenshots emit) ----

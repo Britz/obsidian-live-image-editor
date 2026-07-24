@@ -72,6 +72,9 @@ const EVAL_RUN = `(async () => {
     op("rotateCcw", () => plugin.rotateCcw());
 
     // Bug 56 dup guard: rotate the SECOND landscape (line 10); the SECOND must change, the FIRST (line 7) must not.
+    // CM renders widgets for the viewport only — bring line 10 into view first (re-query after scroll).
+    cm.dispatch({ selection: { anchor: cm.state.doc.line(10).from }, scrollIntoView: true });
+    await new Promise((r) => setTimeout(r, 700));
     const dup = {};
     const second = at(10); const img2 = second && second.querySelector("img");
     if (img2) {

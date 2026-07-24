@@ -1,19 +1,12 @@
 import { App, Modal, Setting, Vault, normalizePath } from "obsidian";
-import { ImageTransform, getRotation, getFlipH, getFlipV, isCrop, getWidthPx, getHeightPx } from "./transforms";
+import { ImageTransform, getRotation, getFlipH, getFlipV, isCrop, getWidthPx, getHeightPx, parseFns } from "./transforms";
 import { rotatedAabb } from "./renderer-logic";
 
 interface Fn { name: string; args: string[]; }
 
-// Parse a native CSS transform string into ordered functions with numeric+unit args.
+/** Parses a transform string into ordered functions, args split into an array. */
 function parseTransformFns(s?: string): Fn[] {
-  const out: Fn[] = [];
-  if (!s) return out;
-  const re = /([a-zA-Z][\w-]*)\(([^)]*)\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(s)) !== null) {
-    out.push({ name: m[1] ?? "", args: (m[2] ?? "").split(",").map((a) => a.trim()) });
-  }
-  return out;
+  return parseFns(s).map((f) => ({ name: f.name, args: f.args.split(",").map((a) => a.trim()) }));
 }
 
 const numOf = (a: string | undefined): number => parseFloat(a ?? "") || 0;

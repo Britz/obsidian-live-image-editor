@@ -1,5 +1,5 @@
-import { parseAltText, serializeTransform, setWidthPx } from "./transforms";
-import { allEmbedsInLine, scanEmbed } from "./link-format";
+import { parseAltText, serializeTransform, setWidthPx, applyNativeSize } from "./transforms";
+import { allEmbedsInLine, scanEmbed, parseEmbedLine, buildEmbed, canonicalTarget, LinkFormat } from "./link-format";
 
 // Token classes Obsidian gives the link URL — so the {…} is highlighted exactly
 // like (url) in SOURCE mode: braces are formatting, inside is the url string.
@@ -71,15 +71,27 @@ export function lineDecorations(lineText: string, lineFrom: number, isLivePrevie
   return decorations;
 }
 
-/** Rewrite an embed line's {…} block with a new width (used by the resize handle). */
-export function rewriteWidth(lineText: string, width: number): string | null {
-  const m = scanWholeLineEmbed(lineText);
-  if (!m) return null;
-  const transform = parseAltText(m.block.slice(1, -1));
+/** Rewrite a standalone embed line with a new width, canonically (`desired` form via `pathFor`;
+ *  source form on a null token). Null when the line is no standalone embed. */
+export function rewriteWidth(
+  lineText: string,
+  width: number,
+  desired: LinkFormat,
+  pathFor: (path: string) => string | null
+): string | null {
+  if (!scanWholeLineEmbed(lineText)) return null;
+  const e = parseEmbedLine(lineText)!;
+  const lead = lineText.slice(0, e.start);
+  const transform = parseAltText(e.block ? e.block.slice(1, -1) : "");
+  applyNativeSize(transform, e.size);
   setWidthPx(transform, width);
   transform.height = undefined;
   const params = serializeTransform(transform);
-  return `${m.lead}${m.head}${params ? `{${params}}` : ""}`;
+  const target = canonicalTarget(e.format, e.path, desired, e.caption, pathFor(e.path));
+  const embed = buildEmbed(target.format, {
+    caption: e.caption, path: target.path, size: "", block: params ? `{${params}}` : "",
+  });
+  return `${lead}${embed}`;
 }
 
 // ---- Raw-link reveal/dismiss state machine (F8) — pure, unit-testable (Lesson 6) --------------------

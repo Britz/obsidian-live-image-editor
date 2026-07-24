@@ -20,16 +20,16 @@ One file per building block where possible; pure decision logic split into a sib
 | File | Building block (arch §4) | Key exports |
 |---|---|---|
 | `src/main.ts` | AB17 Lifecycle | `Plugin` subclass |
-| `src/transforms.ts` | AB1 Transform model | `ImageTransform` *(classes/inline; orientation: rotate/flipH/flipV → inner-frame; content: transform/filter → img; footprint: width/height/aspectRatio/box → outer)*<br>`FilterData`<br>`parseAltText` *(bare keys + legacy `style=` back-compat)*<br>`serializeTransform` *(bare keys)*<br>`getRotation`/`setRotation` *(the orientation field)*<br>`toggleFlipH`/`toggleFlipV`/`getFlipH`/`getFlipV` *(fields)*<br>`isCrop`<br>`getFilter`/`setFilter`/`filterToCss`/`parseFilterCss`/`nonDefaultFilter` *(the shared "≠ default" predicate)*<br>`getWidthPx`/`getHeightPx`/`setWidthPx`/`setHeightPx`<br>`PRESET_KEYS`/`PresetKey`<br>`MARKER_CLASS` *(backward-compat parse-skip only — never written)*<br>`INLINE_CLASS` |
-| `src/link-format.ts` | AB2 Link form & native-size normalization | `parseEmbedLine`<br>`buildEmbed`<br>`convertEmbedLine`<br>`desiredFormat` |
+| `src/transforms.ts` | AB1 Transform model | `ImageTransform` *(classes/inline; orientation: rotate/flipH/flipV → inner-frame; content: transform/filter → img; footprint: width/height/aspectRatio/box → outer)*<br>`FilterData`<br>`parseAltText` *(bare keys + legacy `style=` back-compat)*<br>`serializeTransform` *(bare keys)*<br>`getRotation`/`setRotation` *(the orientation field)*<br>`toggleFlipH`/`toggleFlipV`/`getFlipH`/`getFlipV` *(fields)*<br>`isCrop`<br>`getFilter`/`setFilter`/`filterToCss`/`parseFilterCss`/`nonDefaultFilter` *(the shared "≠ default" predicate)*<br>`getWidthPx`/`getHeightPx`/`setWidthPx`/`setHeightPx`<br>`PRESET_KEYS`/`PresetKey`<br>`MARKER_CLASS` *(backward-compat parse-skip only — never written)*<br>`INLINE_CLASS`<br>`parseFlipTokens` *(flip= token vocabulary, shared with render-core's `readTransform`)*<br>`lengthValue` *(bare-number → px, shared with `readTransform`)*<br>`parseFns`/`Fn` *(CSS-function-string parse, shared with `export.ts` and `crop-editor-logic.ts`)* |
+| `src/link-format.ts` | AB2 Link form & native-size normalization | `parseEmbedLine`<br>`buildEmbed`<br>`pathFromGeneratedLink`<br>`desiredFormat` |
 | `src/image-resolver.ts` | AB3 Source↔DOM mapping (pure — `import type` Editor) | `findImageInSource`<br>`findImageInText` *(occurrence-aware — F2)*<br>`findImageInLine` *(one line, the posAtDOM-disambiguated resolver)*<br>`getImageFilename`<br>`ImageLocation` |
 | `src/replace-logic.ts` | AB2/AB3 — "Change image source" (F26, pure) | `buildReplacementEmbed`<br>`replaceEmbedTarget`<br>`planReplaceAll` — build the replacement embed through link-format's ONE writer (`buildEmbed`) rather than a hand-rolled string: table-pipe escaping (`ImageLocation.inTable`) and the write ⊆ read invariant now cover Replace too. A native size already on the embed folds into the `{…}` block like any other active edit (Bug-94 precedent, F6/T2 — never re-emitted as a raw pipe suffix). A caption the desired form cannot represent (a wiki alias containing `]]`) makes the embed keep its EXISTING form — only the path swaps, never lose the link |
 | `src/source-writer.ts` | AB3 / AD1 edit writer (shared) | `writeSource` *(one isolated CM transaction per edit)*<br>`LIE_USER_EVENT` |
 | `src/snippet-scanner.ts` | AB4 Snippet class discovery | `scanSnippets` *(flat, enabled-only — toolbar)*<br>`scanSnippetFiles` *(per-file grouped + our-file status — settings)*<br>`SnippetClass`/`SnippetFile`<br>`installBundledSnippet`<br>`resetBundledSnippet`<br>`restoreBundledClass`<br>`isBundledSnippetInstalled` |
 | `src/snippet-classify.ts` | AB4 (pure logic) | `parseImgRules`<br>`classifyBundledFile` *(unchanged/changed/deleted vs shipped)*<br>`restoreClassInCss`<br>`findCollisions`<br>`ClassEntry`/`ClassStatus` |
 | `src/renderer-logic.ts` | AB5 Geometry (pure) | `boxAspectRatio`<br>`innerImageSize`<br>`rotatedAabb`<br>`estimatedBlockHeight`<br>`isTallFloat`<br>`TALL_FLOAT_THRESHOLD_PX` |
-| `src/render-core.ts` | AB6 Uniform 3-layer box + AB7a core (Obsidian-FREE) | `buildLayers` *(the 3-layer builder, shared by plugin + runtime)*<br>`applyFilterPreview`<br>`unwrapBox`<br>`BOX_CLASS` *(outer)*<br>`FRAME_CLASS` *(inner-frame)*<br>`RENDER_CSS` *(structural layer CSS, the single injected source)*<br>`CLAIM_SELECTOR`/`readTransform` *(identification + attrs→model)* |
-| `src/caption-logic.ts` | AB7 Caption (text, pure) | `captionMarkdown`<br>`captionFromAlt` |
+| `src/render-core.ts` | AB6 Uniform 3-layer box + AB7a core (Obsidian-FREE) | `buildLayers` *(the 3-layer builder, shared by plugin + runtime)*<br>`applyFilterPreview`<br>`unwrapBox`<br>`BOX_CLASS` *(outer)*<br>`FRAME_CLASS` *(inner-frame)*<br>`RENDER_CSS` *(structural layer CSS, the single injected source)*<br>`CLAIM_SELECTOR`/`readTransform` *(identification + attrs→model)*<br>`orientationTransform` *(pure frame-orientation string builder, shared with `crop-editor.ts`'s chrome)* |
+| `src/caption-logic.ts` | AB7 Caption (text, pure) | `captionMarkdown`<br>`captionFromAlt`<br>`captionFromAltGuarded` *(runtime-only: rejects an alt that equals the image's own filename, Bug 121's off-Obsidian counterpart)* |
 | `src/caption.ts` | AB7 Caption (DOM) | `createCaption`<br>`CaptionHandle` |
 | `src/live-preview-logic.ts` | AB9 LP line→decoration (pure) | `lineDecorations`<br>`inlineEmbeds`<br>`rewriteWidth`<br>`EMBED_LINE` / `INLINE_EMBED` *(span text-parsers, not the detection gate — AD10)*<br>`reduceReveal` *(pure reveal-state reducer: mode + engaged + dismiss + cursor-vs-spans → show? + auto-clear?)* |
 | `src/live-preview.ts` | AB9 Live-preview adapter (+ AB16 widget + CSS native-suppression) | `createLivePreviewExtension`<br>`refreshDecorations`<br>`toggleEmbedReveal` *(the `<>` dismiss action, shared by both toolbar presentations — resolves the editor via `EditorView.findFromDOM`, keys the toggle on `e.attrEnd`)*<br>*(internal: `WidgetMode = block\|inline\|standalone`, `RevealMode = native\|auto\|always`)* |
@@ -305,6 +305,12 @@ clip exactly like `overflow:hidden`. So export is literally *"render the box, as
 there is no second crop/rotate/scale implementation. (This collapses the old duplication where
 `render-core.ts` and `export.ts` each carried their own crop math.)
 
+The same one-geometry rule now also covers the smaller-grain string/regex formulas underneath
+it: the frame-orientation transform string (`render-core.ts`'s `orientationTransform`, reused
+by the crop editor's chrome) and the CSS-function-string parse (`transforms.ts`'s `parseFns`,
+reused by `export.ts` and `crop-editor-logic.ts`) are each written once, not re-derived per
+caller.
+
 ### 2.4 The CSS contract (`styles.css`)
 
 - **Transforms are native** — `style=` carries `transform` / `filter` directly, so no injected
@@ -394,14 +400,22 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   bare-key set is the change. The old `filterToVars` / `FILTER_VAR_NAMES` → `--lie-*` composing
   layer is gone — `filter` is the final CSS.)* Round-trip and edge cases unit-tested
   (`tests/unit/transforms.test.ts`).
-- **`link-format.ts`** — `convertEmbedLine` rewrites the link form when `desiredFormat`
-  (Obsidian's wikilink setting) differs, via Obsidian's `fileManager.generateMarkdownLink`,
-  defensively (falls back to leaving the link as-is). It folds a Markdown native `|size` into
-  the block and leaves a wikilink's native size in place (F5, F6). The auto-normalizer's md
-  native-size fold (`main.ts` `normalizeNativeSizes`) rides this SAME `parseEmbedLine` →
-  `buildEmbed` round-trip — no second regex or escape knowledge outside this one grammar
-  source. On a fold, a `width=`/`height=` key already in the block is REPLACED for each axis
-  the native size sets (the native pipe size wins) — never appended as a duplicate key.
+- **`link-format.ts`** — there is **no passive rewriting** (F27): no background normalizer, and a
+  change of Obsidian's wikilink setting triggers nothing. An ordered edit that changes nothing
+  writes nothing (a semantic no-op guard — an unchanged panel close adds no undo step and no
+  canonicalisation-only rewrite). Every ordered plugin edit that DOES change something
+  (`main.ts` `writeTransform`, the resize handle's `rewriteWidth`, Replace) rewrites its one embed
+  **canonically**: the form `desiredFormat` (Obsidian's wikilink setting) dictates, the native
+  `|size` folded into the block (F5, F6), tail and block in canonical grammar — all through the ONE
+  `parseEmbedLine` → `buildEmbed` round-trip. The canonical path token comes from Obsidian's
+  `fileManager.generateMarkdownLink`; the generator returns a plain *link* (no embed `!`), so the
+  token is extracted by normalizing that shape and parsing it with the ONE grammar scanner
+  (`pathFromGeneratedLink`) — never a bespoke regex, so parenthesis-bearing filenames survive. A
+  `#`/`^` resolution subpath is stripped before resolving and re-attached as written after (T12).
+  When no verified token can be produced (target unresolvable, generator output unparseable) the
+  embed keeps its **source form and path** — an edit never ships an unverified path (write ⊆ read,
+  never lose the link). On a fold, a `width=`/`height=` key already in the block is REPLACED for
+  each axis the native size sets (the native pipe size wins) — never appended as a duplicate key.
   **Embed grammar (read ∩ write):** the READ grammar accepts everything Obsidian's own parser
   reads within Markdown syntax; the WRITE side emits only Obsidian's canonical form. One
   SCANNER at this source replaces every embed regex (the resolver's and live-preview-logic's
@@ -472,9 +486,12 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   `.lie-tall` (via `isTallFloat`, §2.4 cap) and adds `lie-inline` for an inline icon. `ensureLayers`
   upgrades a reused legacy 2-layer DOM; `unwrapBox` tears the layers down. It also exports `RENDER_CSS`
   (the structural layer rules, injected by the plugin AND the runtime — one source, R0) and the
-  identification (`CLAIM_SELECTOR` + `readTransform`). The plugin renderer and the runtime are **two
-  callers of this one builder** (R0); the reading-view adapter (the post-processor wiring) lives in
-  `main.ts`. **Pitfall — Obsidian-only globals in the runtime closure:** the shared core (and
+  identification (`CLAIM_SELECTOR` + `readTransform`). `readTransform` (the foreign-page attribute
+  reader) shares its flip-token vocabulary and bare-number-to-px rule with `transforms.ts`'s
+  `parseAltText`/`applyKey` via `parseFlipTokens`/`lengthValue`, so the two `{…}`-block readers
+  (in-Obsidian vs. foreign-page) stay byte-for-byte the same grammar rather than two hand-kept
+  copies. The plugin renderer and the runtime are **two callers of this one builder** (R0); the
+  reading-view adapter (the post-processor wiring) lives in `main.ts`. **Pitfall — Obsidian-only globals in the runtime closure:** the shared core (and
   `caption-dom.ts`) reference Obsidian's window-aware globals `activeDocument` / `activeWindow`, which
   do NOT exist off-Obsidian — so the first hydrate threw a ReferenceError until fixed (Bug 119, a
   Change 40 sweep regression). Rather than thread a Document through the shared core, the runtime ENTRY
@@ -493,7 +510,10 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   (axis-aligned, explicit), this holds for rotated/cropped too — dropping the old JS width-sync +
   `ResizeObserver` + polling (the Lesson 10 hazard). *(Re-confirm against the implemented new
   structure.)* `captionMarkdown` / `captionFromAlt` strip the native `|size` and are tested
-  (`tests/unit/caption.test.ts`).
+  (`tests/unit/caption.test.ts`). The runtime path (`runtime.ts`'s `addCaption`) calls
+  `captionFromAltGuarded` instead of `captionFromAlt`, since off-Obsidian there is no source text
+  to resolve the caption from (the plugin's own Bug 121 fix) and the DOM `alt` must be guarded
+  directly against the filename-as-alt default some tools (and Obsidian itself) apply.
 
 ### 3.3 View adapters
 
@@ -506,10 +526,32 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   the caption and the hover region all follow from it, never handled piecemeal per host kind. The box
   is built (even for a normal, transform-less image) whenever the host sits where the live-preview
   native-suppression CSS could otherwise hide it with nothing to show in its place — a suppressed host
-  always gets its replacement, never the reverse. A host copy Obsidian itself has superseded and hidden
-  (e.g. a table cell's static render once its row's own live cell editor takes over) is left alone, not
-  attached a second time — attach stays idempotent per copy, and a hidden copy's stale chrome is never
-  what the user sees. The caption text is derived the same way the live-preview widget already does:
+  always gets its replacement, never the reverse. Attach work runs ONLY as part of a real change or a
+  real render operation (F27: rendering is pure display; hover, toolbar chrome and other UI
+  interaction trigger no render/attach work — no observers, no polling, no standing timers): a
+  post-processor section is built DETACHED and only its mount point decides whether the suppression
+  applies, so the attach decision rides Obsidian's own render lifecycle
+  (`MarkdownPostProcessorContext.addChild` → `MarkdownRenderChild.onload` = the section's mount) —
+  never concluded early on a detached host, never re-evaluated outside a render. A render that
+  produces a host copy decorates THAT copy — hidden or not: a copy rendered `display:none` (a table
+  cell's static render rebuilt while its row's live cell editor is open) is the very copy Obsidian
+  re-shows when the editor closes, and closing is not a render — the decoration must already be
+  there. Visibility (D6 "one visible image per copy set") is CSS's business: a hidden copy's
+  decoration shows nothing until Obsidian itself unhides the copy. Because a copy re-shown at cell-
+  editor close can verifiably arrive undecorated/unstripped (Obsidian may swap in a cached render
+  with no post-processor call), the CM6 **editor lifecycle** is a second deterministic signal: the
+  live-preview extension runs in every EditorView (the cell editor included), so its ViewPlugin
+  create/destroy — a real editor teardown, never hover/UI — schedules the same reconcile; the close
+  covers the re-shown static copy. The reconcile pass also strips a leftover `{…}` text node right
+  after an owned embed host (the same strip the post-processor applies — one shared helper), so the
+  block is never shown as text (F3) on such a copy. The post-processor also schedules
+  the document-wide reconcile as part of its own render op (captions/occurrences, and the
+  already-mounted-inside-the-editor bail).
+  The reconcile skips what the live-preview widget pass owns, structurally: any image inside
+  `.cm-content` that is NOT inside a `.markdown-rendered` render block — that covers cm-line natives
+  AND block-promoted bare natives, while post-processor hosts (table cells, callouts, reading view)
+  always render inside a `.markdown-rendered` container. Never guess by adjacent-sibling
+  `.lie-wrapper` (CM inserts widget buffers between the two, so adjacency does not hold). The caption text is derived the same way the live-preview widget already does:
   from the SOURCE text via the position-exact resolver, not from the rendered `alt` attribute (which
   Obsidian defaults to the bare filename for an un-aliased embed) — one caption source for both
   adapters. The hover region binds to the host copy the plugin actually decorated, the same
@@ -689,7 +731,9 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   rotate), the cut window + box fixed, the **result image staying clipped in-host** (no
   `contain:paint` lift) while a **body portal** carries the whole crop overlay for the crop duration.
   `snapTranslate` / `snapAngle` / `snapScale` quantize live (F12); `parsePlacement` is the pure
-  round-trip inverse; auto-persist on leave.
+  round-trip inverse; auto-persist on leave. The frame orientation transform string is no longer a
+  private duplicate but `render-core.ts`'s exported `orientationTransform`, called directly with
+  the editor's live (uncommitted) rotation degree plus the existing transform's flip flags.
   *Crop overlay portal:* with the host's `contain:paint` honoured, **anything** that must extend past
   the cut window is clipped in-host — so the portal carries BOTH the dimmed surround AND the handle
   chrome (handles + rotate knob); in-host keeps only the `.lie-frame` cut clip + the result `<img>`
@@ -769,7 +813,9 @@ The standalone bundle that delivers T3 portability. **Built.**
 - **Shared logic.** It imports the **same** model parse/serialize (`transforms.ts`'s
   `parseAltText` / `serializeTransform`) and the geometry (`renderer-logic.ts`) via the
   Obsidian-free core (`render-core.ts`) — one format, three consumers (AB7a). No reimplementation
-  of the grammar or the box math.
+  of the grammar or the box math. The runtime's caption call is the one place it does NOT reuse
+  the plugin's caption function verbatim — it uses the guarded variant, `captionFromAltGuarded`,
+  since off-Obsidian there is no source text to resolve the caption from.
 - **DOM builder.** A single `buildLayers(img, transform)` (in `render-core.ts`) constructs the
   **3-layer** structure (outer / inner-frame / `<img>`) around a claimed `<img>` and routes each
   datum to its layer (the same routing table as §2.3): `align`/`width`/`aspect-ratio`/`style`/`.class`

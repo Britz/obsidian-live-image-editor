@@ -1,6 +1,6 @@
 import { ImageTransform, isCrop, getRotation, getFlipH, getFlipV } from "./transforms";
 import { snapAngle, snapScale, snapTranslate, toCropResult, parsePlacement, applyRotateGesture, CropResult } from "./crop-editor-logic";
-import { BOX_CLASS, FRAME_CLASS, buildLayers } from "./render-core";
+import { BOX_CLASS, FRAME_CLASS, buildLayers, orientationTransform } from "./render-core";
 import { AnchoredSubmenu } from "./anchored-submenu";
 import { textButton } from "./ui";
 import { t } from "./i18n";
@@ -182,7 +182,7 @@ export class CropEditor {
     // centre pivot — identical to render-core's crop branch, so the live img reads back == it renders.
     this.styleAsCropImg(this.img);
 
-    const orient = this.orientationTransform();
+    const orient = orientationTransform(this.orientDeg, getFlipH(this.existing), getFlipV(this.existing));
 
     // The body PORTAL: a 0×0 fixed anchor pinned (reposition) to the in-host frame's rect centre. Its
     // frame-box children resolve top/left:50% against the 0×0 box → they centre on the same point as
@@ -314,16 +314,6 @@ export class CropEditor {
     // out-specifies `.lie-frame > img` so it also reshapes the LIVE img during crop. The per-image
     // placement transform stays inline. Removed off the live img in exitCropMode.
     img.classList.add("lie-crop-img");
-  }
-
-  // The frame orientation (rotate + flip about the centre) — the SAME string render-core writes,
-  // so the chrome/ghost overlay the live oriented frame. The editor never EDITS it (Bug 50).
-  private orientationTransform(): string {
-    const parts = ["translate(-50%, -50%)"];
-    if (this.orientDeg) parts.push(`rotate(${this.orientDeg}deg)`);
-    if (getFlipH(this.existing)) parts.push("scaleX(-1)");
-    if (getFlipV(this.existing)) parts.push("scaleY(-1)");
-    return parts.join(" ");
   }
 
   private imgDisplayH(): number {

@@ -14,7 +14,7 @@
 // unsupported (the plain original shows) — documented, out of scope.
 
 import { buildLayers, readTransform, RENDER_CSS, CAPTION_CSS, CLAIM_SELECTOR } from "./render-core";
-import { captionFromAlt } from "./caption-logic";
+import { captionFromAltGuarded } from "./caption-logic";
 import { mountCaption } from "./caption-dom";
 import { renderInlineMarkdown } from "./runtime-markdown";
 import { BUNDLED_SNIPPET_CSS } from "./bundled-snippet";
@@ -67,15 +67,12 @@ function hydrate(root: Node): void {
   }
 }
 
-// Caption (D9, off-Obsidian): when a claimed image carries alt text, render it as a caption below
-// the image — reusing the plugin's caption-TEXT logic (`captionFromAlt`, which strips a native size
-// token) and the shared caption host builder (`mountCaption`). Then upgrade the plain text with the
-// runtime's own minimal inline-Markdown renderer (AD9: no platform renderer off-Obsidian, so this
-// is not a parallel reimplementation; runtime-only). Fidelity is bounded by the lossy alt attribute.
+/** Renders a claimed image's alt text as a caption below it, upgraded with inline Markdown. */
 function addCaption(img: HTMLImageElement): void {
   const outer = img.closest<HTMLElement>(".lie-image-area");
   if (!outer) return;
-  const caption = mountCaption(outer, captionFromAlt(img.getAttribute("alt") ?? ""));
+  const src = img.getAttribute("src") ?? img.src;
+  const caption = mountCaption(outer, captionFromAltGuarded(img.getAttribute("alt") ?? "", src));
   if (!caption) return;
   // `renderInlineMarkdown` yields a SAFE HTML string (alt is escaped + hrefs sanitised). Parse it to
   // DOM nodes via DOMParser and graft them in, rather than assigning `innerHTML` — the Obsidian

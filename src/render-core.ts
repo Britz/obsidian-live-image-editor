@@ -1,6 +1,6 @@
 import {
   ImageTransform, FilterData, MARKER_CLASS, INLINE_CLASS, ALIGN_TO_LAYOUT, LEGACY_ALIGN_CLASS,
-  getRotation, isCrop, filterToCss, getWidthPx, getHeightPx,
+  getRotation, isCrop, filterToCss, getWidthPx, getHeightPx, parseFlipTokens, lengthValue,
 } from "./transforms";
 import { boxAspectRatio, innerImageSize, rotatedAabb, nativeBoxWidth, isTallFloat, rotatedFootprint } from "./renderer-logic";
 
@@ -95,12 +95,17 @@ function routeBoxStyle(outer: HTMLElement, t: ImageTransform): void {
 // centred with a STRUCTURAL `translate(-50%,-50%)` (plugin-generated, NOT a user value — the
 // crop placement on the <img> stays a clean verbatim string, AD2), then rotated/flipped about
 // the centre (transform-origin:center in CSS). flip ∘ rotate reaches all eight orientations.
-function applyOrientation(frame: HTMLElement, t: ImageTransform): void {
+/** Builds the frame orientation transform string from rotate degrees + flipH/flipV. */
+export function orientationTransform(deg: number, flipH: boolean, flipV: boolean): string {
   const parts = ["translate(-50%, -50%)"];
-  if (t.rotate) parts.push(`rotate(${t.rotate}deg)`);
-  if (t.flipH) parts.push("scaleX(-1)");
-  if (t.flipV) parts.push("scaleY(-1)");
-  frame.style.transform = parts.join(" ");
+  if (deg) parts.push(`rotate(${deg}deg)`);
+  if (flipH) parts.push("scaleX(-1)");
+  if (flipV) parts.push("scaleY(-1)");
+  return parts.join(" ");
+}
+
+function applyOrientation(frame: HTMLElement, t: ImageTransform): void {
+  frame.style.transform = orientationTransform(t.rotate ?? 0, !!t.flipH, !!t.flipV);
 }
 
 // Size the frame (the base shape rotated, as a % of the outer) and the outer's derived
@@ -433,18 +438,18 @@ export function readTransform(el: HTMLElement): ImageTransform {
   const rotate = attr(el, "rotate");
   if (rotate != null) { const d = parseFloat(rotate); if (!Number.isNaN(d)) t.rotate = d; }
   const flip = attr(el, "flip");
-  if (flip) for (const f of flip.split(/[\s,]+/).filter(Boolean)) {
-    if (f === "horizontal" || f === "h") t.flipH = true;
-    else if (f === "vertical" || f === "v") t.flipV = true;
-    else if (f === "both") { t.flipH = true; t.flipV = true; }
+  if (flip) {
+    const f = parseFlipTokens(flip);
+    if (f.flipH) t.flipH = true;
+    if (f.flipV) t.flipV = true;
   }
   const transform = attr(el, "transform"); if (transform) t.transform = transform;
   const filter = attr(el, "filter"); if (filter) t.filter = filter;
   const ar = attr(el, "aspect-ratio"); if (ar) t.aspectRatio = ar;
   const width = el.getAttribute("width") ?? el.getAttribute("data-width");
-  if (width) t.width = /^\d+(?:\.\d+)?$/.test(width.trim()) ? `${width.trim()}px` : width.trim();
+  if (width) t.width = lengthValue(width);
   const height = el.getAttribute("height") ?? el.getAttribute("data-height");
-  if (height) t.height = /^\d+(?:\.\d+)?$/.test(height.trim()) ? `${height.trim()}px` : height.trim();
+  if (height) t.height = lengthValue(height);
   const align = el.getAttribute("align") ?? el.getAttribute("data-align");
   if (align) { const l = ALIGN_TO_LAYOUT[align]; if (l) t.layout = l; }
 

@@ -33,3 +33,17 @@ export function captionMarkdown(embed: string): string {
 export function captionFromAlt(alt: string): string {
   return splitTail(alt ?? "").caption;
 }
+
+/** Basename of a URL/path: query/hash stripped, decodeURIComponent'd, last path segment. */
+function basenameOfSrc(srcOrFilename: string): string {
+  const noQuery = srcOrFilename.split(/[?#]/)[0] ?? srcOrFilename;
+  let decoded = noQuery;
+  try { decoded = decodeURIComponent(noQuery); } catch { /* malformed escape: keep as-is */ }
+  return decoded.split("/").pop() ?? decoded;
+}
+
+/** Like captionFromAlt, but returns "" when the caption equals the image's own basename. */
+export function captionFromAltGuarded(alt: string, srcOrFilename: string): string {
+  const caption = captionFromAlt(alt);
+  return caption && caption === basenameOfSrc(srcOrFilename) ? "" : caption;
+}

@@ -373,11 +373,10 @@ export function allEmbedsInLine(line: string): ParsedEmbed[] {
  * exactly Obsidian's own set (space/backslash/control — parens and umlauts stay raw, idempotent
  * on an already-encoded path), the `<…>` angle form is never newly produced, and an md alt
  * escapes `\`/`[`/`]` so it round-trips. Caller contract: a WIKI caption/alias must never
- * contain `]]` — a wikilink has no escape for its own terminator, so `convertEmbedLine` refuses
- * a conversion that would need one (never lose the link) and no other caller introduces a fresh
- * `]]`-bearing caption into a wiki alias (every other caller only rebuilds within the SAME
- * format, and a wiki-sourced caption can never itself contain `]]` — reading one would already
- * have cut the inner short at the first occurrence, Bug 120).
+ * contain `]]` — a wikilink has no escape for its own terminator; the ordered-edit writers
+ * route through `canonicalTarget`, which keeps the source form for such a caption (never lose
+ * the link), and a wiki-sourced caption can never itself contain `]]` (reading one would
+ * already have cut the inner short at the first occurrence, Bug 120).
  */
 export function buildEmbed(
   format: LinkFormat,
@@ -410,32 +409,19 @@ function delimitCaption(caption: string): string {
   return needsQuotes ? `${QUOTE}${caption}${QUOTE}` : caption;
 }
 
-/**
- * Convert the embed on a line to `desired` format, or return null if there is no embed, it is
- * already in the desired format, or the conversion would LOSE data. `pathFor` optionally
- * supplies the correctly-formatted/encoded path token for the target format (from Obsidian's
- * fileManager.generateMarkdownLink); when it returns null the existing path is kept (defensive
- * — never lose the link, T12).
- *
- * The writer never emits a link the read grammar (or Obsidian) cannot read back losslessly —
- * an embed whose caption cannot be represented in the target form (a wiki alias containing
- * `]]`) keeps its current form instead of being converted (never lose the link).
- */
-export function convertEmbedLine(
-  line: string,
-  desired: LinkFormat,
-  pathFor?: (path: string) => string | null
-): string | null {
-  const embed = parseEmbedLine(line);
-  if (!embed || embed.format === desired) return null;
-  if (desired === "wiki" && embed.caption.includes("]]")) return null;
-  const path = pathFor?.(embed.path) ?? embed.path;
-  const replacement = buildEmbed(desired, {
-    caption: embed.caption,
-    path,
-    size: embed.size,
-    block: embed.block,
-    escapePipe: isTableRow(line),
-  });
-  return line.slice(0, embed.start) + replacement + line.slice(embed.end);
+/** Path token from a `generateMarkdownLink` result (a plain link, normalized to embed shape and
+ *  parsed by the one scanner); null when it does not parse as `desired`. */
+export function pathFromGeneratedLink(link: string, desired: LinkFormat): string | null {
+  const e = parseEmbedLine(link.startsWith("!") ? link : `!${link}`);
+  return e && e.format === desired && e.start === 0 ? e.path : null;
 }
+
+/** Form + path an ordered edit writes: `desired` with the verified `token`; the source form and
+ *  path when no token exists or a wiki alias would have to carry `]]`. */
+export function canonicalTarget(
+  source: LinkFormat, sourcePathToken: string, desired: LinkFormat, caption: string, token: string | null
+): { format: LinkFormat; path: string } {
+  const usable = token !== null && !(desired === "wiki" && caption.includes("]]"));
+  return usable ? { format: desired, path: token } : { format: source, path: sourcePathToken };
+}
+

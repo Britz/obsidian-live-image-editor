@@ -97,6 +97,16 @@ try {
   await mode("always"); await cur(W.off); await cdp.hover(2, 2); rec("wikilink always off-line (stand-in)", "shown", await src(".lie-fake-link-block"));
   await mode("auto"); await cur(W.off); await hoverImg(".lie-wrapper-block"); rec("wikilink auto real-hover (stand-in)", "shown", await src(".lie-fake-link-block"));
   await teardown();
+
+  // ===== TABLE CELL editor (real click) — the reveal shows like a standalone under edit =====
+  await setup("# T\n\n| a | b |\n| --- | --- |\n| x | ![](images/sample-square.png){width=80} |\n");
+  await mode("native"); await cur(0);
+  await cdp.evaluate('(() => { const img = [...document.querySelectorAll(".cm-table-widget table img")].find((i) => i.offsetWidth > 0); img?.scrollIntoView({ block: "center" }); return true; })()');
+  await wait(450);
+  const cellPt = await cdp.evaluate('(() => { const img = [...document.querySelectorAll(".cm-table-widget table img")].find((i) => i.offsetWidth > 0); if (!img) return null; const r = img.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()');
+  if (cellPt) { await cdp.click(cellPt.x, cellPt.y); await wait(900); }
+  rec("table cell-editor real click (source revealed like standalone under edit)", "shown", await src());
+  await teardown();
 } catch (e) {
   console.log("FATAL: " + (e && e.stack || e));
   await cdp.focusEmulation(false).catch(() => {});

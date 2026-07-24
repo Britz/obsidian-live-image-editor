@@ -28,16 +28,10 @@ no language or link-format setting of its own.
   is consumed by the renderer and never displayed as literal text beside the image.
 - **F4 — Both views.** Every transform renders identically in reading view and in live
   preview.
-- **F5 — Link form follows Obsidian.** Whether a Markdown or a wiki link is used follows
-  Obsidian's central "Use [[Wikilinks]]" setting; switching it converts the link while
-  keeping the transform block intact and correct.
-- **F6 — Native size folded into the block.** When an image **was** resized via Obsidian's
-  native handle — which writes a `|size` into a **Markdown** link (e.g. `![alt|513](path)`) —
-  that size is folded into the portable attribute block. This covers a size **already present**
-  in the source (written before the plugin took over the image, or by another editor): while
-  the plugin is active it owns resizing, so no *new* native size is written. A **wikilink**'s
-  native `|size` (e.g. `![[path|513]]`) is left as written, since it is already the
-  conventional Obsidian form.
+- **F5 — Link form follows Obsidian.** Any link the plugin writes uses the link form
+  Obsidian's central "Use [[Wikilinks]]" setting dictates.
+- **F6 — Native size folded on the plugin's own edit.** A native `|size` (either link form)
+  is folded into the portable attribute block when the plugin actively edits that image.
 - **F7 — Toolbar activation.** The editing chrome appears for an image that is **selected**
   (tap or click — on any platform, mobile or desktop) and on **hover** wherever the
   environment supports hovering (a desktop pointer, or a pen that reports hover). There is no
@@ -174,6 +168,11 @@ no language or link-format setting of its own.
   "replace all images" means BAKING every image to its displayed result and stripping the `{…}` — that is
   the flatten path (**Feature 31**), not this requirement. The previous link-swap `Replace all` command
   is a defect → **Bug 105**.
+- **F27 — Writes only on explicit user action.** Every write into a document must trace back
+  to an explicit user action — a click, typing, Enter, a confirmation (toolbar, modal,
+  command) — or to an explicitly **confirmed** prompt; there is no unasked writing, no
+  background restructuring, no automatisms. Rendering — including any visibility change — is
+  pure display and never triggers a document change.
 
 ---
 
@@ -366,3 +365,8 @@ no language or link-format setting of its own.
   non-derivable user intent** — a *deliberate aspect change*: a distorting resize, a width+height
   set via the modal, or a crop frame whose shape differs from the original. Every stored value has
   a sensible fallback to the ground truth (a missing aspect → the original, un-distorted).
+- **T12 — Javadoc-only code comments.** A code comment states only *what* the code does —
+  purpose, parameters, return value — tersely, and only where not self-explanatory. It never
+  carries design history, bug-number narratives, why-prose, or cross-reference essays; that
+  rationale belongs in `CHANGELOG.md` or the requirements / architecture / plan documents
+  (one source of truth per altitude, R0).

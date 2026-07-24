@@ -3,7 +3,7 @@ import { EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirr
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { syntaxTree, ensureSyntaxTree } from "@codemirror/language";
 import { parseAltText, getWidthPx, getHeightPx, applyNativeSize, ImageTransform } from "./transforms";
-import { parseEmbedLine, scanEmbed, allEmbedsInLine, stripLinkSubpath } from "./link-format";
+import { parseEmbedLine, scanEmbed, allEmbedsInLine, stripLinkSubpath, LinkFormat } from "./link-format";
 import { lineDecorations, rewriteWidth, reduceReveal, resolveLinkReveal, URL_CLASS, RevealMode } from "./live-preview-logic";
 import { estimatedBlockHeight } from "./renderer-logic";
 import { captionMarkdown, createCaption, CaptionHandle } from "./caption";
@@ -121,7 +121,9 @@ class EmbedWidget extends WidgetType {
     private showStandIn: boolean,
     private reserveStandIn: boolean,
     private showCaptions: boolean,
-    private dismissed: boolean
+    private dismissed: boolean,
+    // Write context for the resize handle (not in eq()).
+    private getWriteCtx: () => { desired: LinkFormat; pathFor: (path: string) => string | null }
   ) {
     super();
   }
@@ -310,7 +312,8 @@ class EmbedWidget extends WidgetType {
         activeDocument.removeEventListener("pointerup", onUp);
         if (!dragged) return; // a plain click already moved the caret on pointerdown; nothing to resize
         const line = view.state.doc.lineAt(view.posAtDOM(wrapper));
-        const replacement = rewriteWidth(line.text, widthAt(ev));
+        const ctx = this.getWriteCtx();
+        const replacement = rewriteWidth(line.text, widthAt(ev), ctx.desired, ctx.pathFor);
         if (replacement === null) return;
         // Move the cursor onto the resized image's line (D11): the resize handle is reachable on
         // HOVER without first clicking the image, so the caret may sit anywhere (offset 0). Pass
@@ -391,7 +394,9 @@ export function createLivePreviewExtension(
   getShowCaptions: () => boolean,
   getRevealMode: () => RevealMode,
   getRenderInCodeBlocks: () => boolean,
-  getEngagedPos: () => number | null
+  getEngagedPos: () => number | null,
+  // Write context for the resize handle's canonical rewrite.
+  getWriteCtx: () => { desired: LinkFormat; pathFor: (path: string) => string | null }
 ) {
   const build = (
     state: import("@codemirror/state").EditorState,
@@ -441,7 +446,7 @@ export function createLivePreviewExtension(
         // (3) The plugin's own transformed image (native image CSS-suppressed). A bare embed (no `{…}`) is
         //     block-promoted by Obsidian → a `block:true` widget that HOSTS the stand-in; the reveal flip is
         //     applied via `updateDOM` (in place) so the image + caption are never rebuilt (no flicker / 1c).
-        const w = new EmbedWidget(app, e.embed, e.params, sourcePath, getActions, e.mode, e.mode === "block" ? reveal.showStandIn : false, e.mode === "block" ? reveal.reserveStandIn : false, showCaptions, isDismissed);
+        const w = new EmbedWidget(app, e.embed, e.params, sourcePath, getActions, e.mode, e.mode === "block" ? reveal.showStandIn : false, e.mode === "block" ? reveal.reserveStandIn : false, showCaptions, isDismissed, getWriteCtx);
         builder.add(e.attrEnd, e.attrEnd, e.mode === "block" ? Decoration.widget({ widget: w, block: true, side: 1 }) : Decoration.widget({ widget: w, side: 1 }));
       }
     } else {

@@ -315,6 +315,11 @@ body {
 .cm-content .internal-embed.image-embed > .edit-block-button { display: none; }
 .cm-content .internal-embed.image-embed > img,
 .cm-content .internal-embed.image-embed > .image-wrapper { display: none; }
+/* The suppression covers the WHOLE native render — a reading caption riding a re-used (cached)
+   native embed included; render blocks (`.markdown-rendered` — table cells etc.) re-allow theirs
+   via the cascade. */
+.cm-content .internal-embed.image-embed > .lie-caption { display: none; }
+.cm-content .markdown-rendered .internal-embed.image-embed > .lie-caption { display: block; }
 
 /* The plugin's image container — its own transformed image + chrome, drawn by the widget.
    The embed line is NOT replaced: Obsidian renders its native embed (image CSS-suppressed)

@@ -130,6 +130,18 @@ export function parseAltText(attrs: string): ImageTransform {
   return result;
 }
 
+/** Parses space/comma-separated flip tokens (h/horizontal/v/vertical/both) into flipH/flipV. */
+export function parseFlipTokens(v: string): { flipH: boolean; flipV: boolean } {
+  let flipH = false;
+  let flipV = false;
+  for (const f of v.split(/[\s,]+/).filter(Boolean)) {
+    if (f === "horizontal" || f === "h") flipH = true;
+    else if (f === "vertical" || f === "v") flipV = true;
+    else if (f === "both") { flipH = true; flipV = true; }
+  }
+  return { flipH, flipV };
+}
+
 // Route one key=value into the model. The bare keys are the target format (T2.3); `style=`
 // is the legacy / power-user escape, routed by CSS property name.
 function applyKey(key: string, val: string, result: ImageTransform): void {
@@ -139,13 +151,12 @@ function applyKey(key: string, val: string, result: ImageTransform): void {
     case "transform": result.transform = v || undefined; break;
     case "filter": result.filter = v || undefined; break;
     case "rotate": { const d = parseFloat(v); if (!Number.isNaN(d)) result.rotate = d; break; }
-    case "flip":
-      for (const f of v.split(/[\s,]+/).filter(Boolean)) {
-        if (f === "horizontal" || f === "h") result.flipH = true;
-        else if (f === "vertical" || f === "v") result.flipV = true;
-        else if (f === "both") { result.flipH = true; result.flipV = true; }
-      }
+    case "flip": {
+      const f = parseFlipTokens(v);
+      if (f.flipH) result.flipH = true;
+      if (f.flipV) result.flipV = true;
       break;
+    }
     case "width": result.width = lengthValue(v); break;
     case "height": result.height = lengthValue(v); break;
     case "aspect-ratio": result.aspectRatio = v || undefined; break;
@@ -260,9 +271,8 @@ function bareLength(v: string): string {
   return /^\d+(?:\.\d+)?px$/.test(v) ? v.slice(0, -2) : v;
 }
 
-// A bare numeric value becomes a px length; an already-unit'd / var() value passes
-// through (graceful with hand-edited source, T11).
-function lengthValue(v: string): string {
+/** Bare number -> px length; an already-unit'd/var() value passes through unchanged. */
+export function lengthValue(v: string): string {
   return /^\d+(\.\d+)?$/.test(v.trim()) ? `${v.trim()}px` : v.trim();
 }
 
@@ -274,9 +284,10 @@ function lengthValue(v: string): string {
 // legacy decompose, the crop editor's own reader).
 // ---------------------------------------------------------------------------
 
-interface Fn { name: string; args: string; }
+export interface Fn { name: string; args: string; }
 
-function parseFns(s?: string): Fn[] {
+/** Parses a CSS transform string into ordered `name(args)` functions (args as one trimmed string). */
+export function parseFns(s?: string): Fn[] {
   const out: Fn[] = [];
   if (!s) return out;
   const re = /([a-zA-Z][\w-]*)\(([^)]*)\)/g;

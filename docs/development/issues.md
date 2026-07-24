@@ -12,7 +12,7 @@
 >    manual submission checklist live in the top-level [README → Release compliance](https://github.com/Britz/obsidian-live-image-editor/blob/main/README.md#release-compliance).
 > 2. **Meta level — below OPEN.** Process & quality work that never becomes a changelog entry —
 >    **verifications**, **refactoring**, **housekeeping** — plus the hard-won **Lessons**
->    (**Lesson 1–17**), each a bug-class + the rule that prevents it. All unnumbered.
+>    (**Lesson …**), each a bug-class + the rule that prevents it. All unnumbered.
 >
 > The resolved **Bug**, **Feature**, **Change** and **Decision** entries (each with its cause + fix)
 > live in [`CHANGELOG.md`](../../CHANGELOG.md), numbered per category and split across the version each
@@ -137,7 +137,7 @@ requirement + the storage/permission implications) before any code.
 
 ### Known open bugs (Bug)
 
-_**125 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
+_**133 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
 
 > **Bugs 95–104 — a regression batch from the layout rework (`ba2dfa4`, "decouple size from layout"),
 > found in a CLEAN store install (v0.6.6).** The dev vault MASKED most of them: its `styles.css` was a
@@ -249,6 +249,30 @@ _**125 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       Bug 86) that consumes the interaction, or a guard in `crop()` (`locateActiveImage` / panel
       teardown) aborts the open on that click. DISTINCT from the reveal/dismiss engagement bug — even
       if co-triggered, the definitive defect is the dead button. (2026-06-27, user+CDP.)
+- [ ] **Bug 131 — A table-cell edit can write the WRONG embed when the same file also appears
+      earlier in the document.** The reading-adapter resolution walks ALL container `<img>`s counting
+      occurrences per basename — but in live preview that walk also counts the plugin's own widget
+      copies, suppressed natives and hidden static copies, so the n-th visible copy no longer maps to
+      the n-th source embed. _Live evidence (CDP, 2026-07-24):_ in the `verify-table-host` cell
+      journey, a width commit on the FIRST table-cell image wrote the standalone control line (same
+      file, earlier in the doc) instead of the row — the guard now uses a table-only fixture and this
+      registry item tracks the defect. _Fix sketch:_ resolve post-processor hosts position-exact from
+      their own host context (never a global img walk): count occurrences only among hosts this pass
+      OWNS, or map a cell host to its source row/column via the table widget's own position data.
+- [ ] **Bug 132 — The table cell editor can LINGER open after a click-away (the raw source stays
+      revealed beside/behind the image).** Observed repeatedly under CDP focus emulation
+      (2026-07-24): after interacting with a cell image, real clicks on a paragraph outside the table
+      (and a real Escape) did not always close the row's cell editor; the cell then permanently shows
+      the revealed source — matching the user's original "block stays visible" report. _To verify:_
+      whether this reproduces WITHOUT focus emulation (a real focused window); if it does, check
+      whether the plugin's click/dismiss path or caret handling keeps the selection inside the cell
+      editor. (`verify-table-host` reports it as a WARN, not gated.)
+- [ ] **Bug 133 — The post-processor `{…}` model is a bespoke single-brace regex, not the ONE
+      grammar.** `stripBlockText` ([main.ts](../../src/main.ts)) matches `^\s*\{([^}]*)\}` against
+      the text node after the embed — it cannot handle a quoted `}` inside the block and duplicates
+      block knowledge outside link-format (Bug 120's insight). _Fix sketch:_ the reconcile/attach
+      already knows the embed's SOURCE location (`findImageInText` → `loc.params`); strip exactly the
+      source-derived block text via the one grammar instead of re-parsing the DOM text node.
 ---
 
 ## Meta level
@@ -341,6 +365,14 @@ elements right before each action (never a stale captured ref), a retry-on-churn
 `run-all` harness that reloads to a clean state between guards and prefers `CDP_PORT=9223` direct.
 The symptom is recorded in Lesson 16; this is the fix.
 
+_Addendum (2026-07-24):_ the suite is also **window-geometry sensitive** — at a small window
+(~756×474) table/solo targets fall outside CM's render viewport or the click x overflows the
+viewport, and at 1440×949 `verify-optical-render`'s measure eval can stall past its 25s timeout —
+reproduced IDENTICALLY on the release (HEAD) build, so it is environmental, not a code regression.
+Batch runs also cross-contaminate (a script's leftover state flips another's optical checks that
+pass standalone after a reload). Guards should self-normalize the window bounds (Electron
+`setBounds` via CDP) before measuring, and the runner should reload between scripts.
+
 #### R0 + Obsidian-lint analysis (weighed equally, 2026-06-27)
 
 _A full pass under the **R0** lens (think-first / ground-up / elegance, served by DRY & KISS) with Obsidian-lint weighed equally — it **supersedes the former "Reduce the community-review warnings" item** (its unique repo-split strategy is preserved in the detail note below). **No AD3/R0 structural violations** — the yield is small DRY/elegance wins. Kept as a table, not a checklist: Housekeeping entries are not individually tickable work; a row becomes a `- [ ]` Change once it leaves Housekeeping into real work. `act` = recommend doing · `leave` = **forced** (Obsidian forbids it, or it is simply impossible) · `user-decision` = your call — possible but a trade; my recommendation is noted. The `:has`/`!important` triage keeps its own item under Refactoring above._
@@ -371,7 +403,7 @@ _Detail behind rows 13–16 — community-review reduction (researched 2026-06-1
 _(The release-requirement housekeeping items RC1/R20, RC8/R27, RC9/R28 and RC10/R29 are DONE in
 v0.4.2 — see Change 25 in the changelog.)_
 
-### Hard-won lessons (Lesson 1–17) — must never be re-broken
+### Hard-won lessons (Lesson …) — must never be re-broken
 
 These were tagged `[LEARNED]` / `T-Ln`. Each is a _bug class_ + the rule that prevents it; the
 architecture encodes most in its decisions (`AD…`).
@@ -514,6 +546,14 @@ architecture encodes most in its decisions (`AD…`).
   genuinely means "the review won't fail." _Corollary:_ "documented as a false positive" is NOT a fix
   if the bot still errors on it — only fixing the source, or proving the bot reports it as a warning,
   clears the review. (Decision 29 / Change 37.)
+- **Lesson 19 — A fix is only DONE when a REPEATABLE optical guard covers the affected host's
+  variant matrix — a one-off verification is not enough.** The table-host defect class (Bug 126) had
+  been "CDP-verified live" more than once, yet the user kept hitting it: each verification checked
+  ONE variant in ONE state, while the failure lived in the matrix (link form × size/block variant ×
+  cursor state × view mode) and in the interaction JOURNEY (edit → rewrite → cursor out). The bar:
+  a permanent `verify-*.mjs` that drives the full variant matrix AND the real user journey of the
+  affected host, red before the fix, green after — kept in the suite so the class stays covered.
+  (`verify-table-host.mjs`, 2026-07-24.)
 
 ---
 

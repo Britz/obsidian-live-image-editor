@@ -5,6 +5,8 @@
 // (Lesson 6). The committed result is the img's NATIVE transform (translate% + rotate +
 // scale, box-relative → responsive, AD2) plus the cut-frame box width/height.
 
+import { parseFns } from "./transforms";
+
 export interface Point {
   x: number;
   y: number;
@@ -41,18 +43,16 @@ export function parsePlacement(s: string | undefined, frameW: number, intrinsicR
   const out: Placement = { tx: 0, ty: 0, rotate: 0, scaleX: 1, scaleY: 1 };
   if (!s) return out;
   const imgH = frameW / (intrinsicRatio > 0 ? intrinsicRatio : 1);
-  const re = /([a-zA-Z][\w-]*)\(([^)]*)\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(s)) !== null) {
-    const args = (m[2] ?? "").split(",").map((a) => a.trim());
+  for (const fn of parseFns(s)) {
+    const args = fn.args.split(",").map((a) => a.trim());
     const n0 = parseFloat(args[0] ?? "");
-    if (m[1] === "translate") {
+    if (fn.name === "translate") {
       out.tx = ((n0 || 0) / 100) * frameW;
       out.ty = ((parseFloat(args[1] ?? "") || 0) / 100) * imgH;
-    } else if (m[1] === "rotate") out.rotate = n0 || 0;
-    else if (m[1] === "scale") { out.scaleX = n0 || 1; out.scaleY = (parseFloat(args[1] ?? "") || n0) || 1; }
-    else if (m[1] === "scaleX") out.scaleX = n0 || 1;
-    else if (m[1] === "scaleY") out.scaleY = n0 || 1;
+    } else if (fn.name === "rotate") out.rotate = n0 || 0;
+    else if (fn.name === "scale") { out.scaleX = n0 || 1; out.scaleY = (parseFloat(args[1] ?? "") || n0) || 1; }
+    else if (fn.name === "scaleX") out.scaleX = n0 || 1;
+    else if (fn.name === "scaleY") out.scaleY = n0 || 1;
   }
   return out;
 }

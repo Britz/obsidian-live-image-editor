@@ -44,7 +44,7 @@ describe("Bug 51 G — a width edit preserves the crop (both write paths keep tr
   const cropped = `![a](b.png){transform="translate(10%, 5%) rotate(0deg) scale(1.2)" aspect-ratio=4/3 width=200}`;
 
   it("the LP resize handle (rewriteWidth) keeps the crop placement + cut shape", () => {
-    const out = rewriteWidth(cropped, 320);
+    const out = rewriteWidth(cropped, 320, "md", (p) => p);
     expect(out).not.toBeNull();
     const t = parseAltText((out!.match(/\{([^}]*)\}/)?.[1]) ?? "");
     expect(t.transform).toBe("translate(10%, 5%) rotate(0deg) scale(1.2)"); // crop placement intact

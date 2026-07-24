@@ -1,8 +1,22 @@
 import { describe, it, expect } from "vitest";
 import {
-  parseEmbedLine, buildEmbed, convertEmbedLine, desiredFormat, splitTail, splitWikiInner, isTableRow,
-  scanEmbed, allEmbedsInLine, stripLinkSubpath,
+  parseEmbedLine, buildEmbed, canonicalTarget, desiredFormat, splitTail, splitWikiInner, isTableRow,
+  scanEmbed, allEmbedsInLine, stripLinkSubpath, pathFromGeneratedLink, LinkFormat,
 } from "../../src/link-format";
+
+// The ordered-edit writer pipeline (F5): parse → canonicalTarget → buildEmbed — exactly what
+// writeTransform / rewriteWidth ride. The passive line converter was REMOVED (F27); these tests
+// keep the grammar coverage on the pipeline itself.
+const canonicalRewrite = (
+  line: string, desired: LinkFormat, pathFor: (p: string) => string | null = (p) => p
+): string => {
+  const e = parseEmbedLine(line)!;
+  const target = canonicalTarget(e.format, e.path, desired, e.caption, pathFor(e.path));
+  const embed = buildEmbed(target.format, {
+    caption: e.caption, path: target.path, size: e.size, block: e.block, escapePipe: isTableRow(line),
+  });
+  return line.slice(0, e.start) + embed + line.slice(e.end);
+};
 
 describe("desiredFormat", () => {
   it("maps the central useMarkdownLinks config to a format", () => {
@@ -167,84 +181,75 @@ describe("buildEmbed — caption in the slot, size folded into the block (Bug 81
   });
 });
 
-describe("convertEmbedLine", () => {
+describe("the ordered-edit writer pipeline (canonicalTarget + buildEmbed — F5)", () => {
   it("folding the native size replaces a conflicting width= already in the block", () => {
-    expect(convertEmbedLine("![[p.png|513]]{width=200}", "md")).toBe("![](p.png){width=513}");
+    expect(canonicalRewrite("![[p.png|513]]{width=200}", "md")).toBe("![](p.png){width=513}");
   });
 
   it("wiki -> md: caption → alt, size → block (Bug 81)", () => {
-    const out = convertEmbedLine('![[cat.png|300]]{style="--lie-rotate: 90deg;"}', "md");
-    expect(out).toBe('![](cat.png){style="--lie-rotate: 90deg;" width=300}');
+    expect(canonicalRewrite('![[cat.png|300]]{style="--lie-rotate: 90deg;"}', "md"))
+      .toBe('![](cat.png){style="--lie-rotate: 90deg;" width=300}');
   });
 
-  it("wiki -> md: a real alias caption is PRESERVED (was dropped before)", () => {
-    const out = convertEmbedLine('![[cat.png|My caption]]', "md");
-    expect(out).toBe('!["My caption"](cat.png)');
+  it("wiki -> md: a real alias caption is PRESERVED", () => {
+    expect(canonicalRewrite("![[cat.png|My caption]]", "md")).toBe('!["My caption"](cat.png)');
   });
 
   it("wiki -> md: size + caption both survive (caption→alt, size→block)", () => {
-    const out = convertEmbedLine('![[cat.png|50x50 "My cap"]]{.rounded}', "md");
-    expect(out).toBe('!["My cap"](cat.png){.rounded width=50 height=50}');
+    expect(canonicalRewrite('![[cat.png|50x50 "My cap"]]{.rounded}', "md"))
+      .toBe('!["My cap"](cat.png){.rounded width=50 height=50}');
   });
 
   it("md -> wiki: caption → alias, size → block (Bug 81)", () => {
-    const out = convertEmbedLine('!["My cap" 300](cat.png){style="--lie-rotate: 90deg;"}', "wiki");
-    expect(out).toBe('![[cat.png|"My cap"]]{style="--lie-rotate: 90deg;" width=300}');
+    expect(canonicalRewrite('!["My cap" 300](cat.png){style="--lie-rotate: 90deg;"}', "wiki"))
+      .toBe('![[cat.png|"My cap"]]{style="--lie-rotate: 90deg;" width=300}');
   });
 
-  it("md -> wiki: keeps the transform block intact, no caption/size", () => {
-    const out = convertEmbedLine('![](cat.png){style="--lie-rotate: 90deg;"}', "wiki");
-    expect(out).toBe('![[cat.png]]{style="--lie-rotate: 90deg;"}');
+  it("already in the desired format: the rewrite is canonical-idempotent", () => {
+    expect(canonicalRewrite("![](cat.png)", "md")).toBe("![](cat.png)");
+    expect(canonicalRewrite("![[cat.png]]", "wiki")).toBe("![[cat.png]]");
   });
 
-  it("returns null when already in the desired format (no rewrite churn)", () => {
-    expect(convertEmbedLine("![](cat.png)", "md")).toBeNull();
-    expect(convertEmbedLine("![[cat.png]]", "wiki")).toBeNull();
+  it("uses the supplied canonical path token but keeps caption/size/block", () => {
+    expect(canonicalRewrite("![[cat.png|300]]{.lie-img}", "md", () => "images/cat.png"))
+      .toBe("![](images/cat.png){.lie-img width=300}");
   });
 
-  it("uses the supplied path token but keeps caption/size/block", () => {
-    const out = convertEmbedLine("![[cat.png|300]]{.lie-img}", "md", () => "images/cat.png");
-    expect(out).toBe("![](images/cat.png){.lie-img width=300}");
+  it("keeps the SOURCE form and path when no token can be produced (never lose the link)", () => {
+    expect(canonicalTarget("wiki", "cat.png", "md", "", null)).toEqual({ format: "wiki", path: "cat.png" });
+    expect(canonicalTarget("md", "cat.png", "wiki", "", null)).toEqual({ format: "md", path: "cat.png" });
   });
 
-  it("falls back to the original path when the resolver returns null (T12)", () => {
-    const out = convertEmbedLine("![[cat.png]]{.lie-img}", "md", () => null);
-    expect(out).toBe("![](cat.png){.lie-img}");
+  it("keeps the source form for a `]]`-bearing caption headed into a wiki alias", () => {
+    expect(canonicalTarget("md", "cat.png", "wiki", "a]]b", "cat.png")).toEqual({ format: "md", path: "cat.png" });
+    expect(canonicalTarget("md", "cat.png", "md", "a]]b", "cat.png")).toEqual({ format: "md", path: "cat.png" });
   });
 
   it("preserves surrounding text on the line", () => {
-    expect(convertEmbedLine("see ![[cat.png]] here", "md")).toBe("see ![](cat.png) here");
+    expect(canonicalRewrite("see ![[cat.png]] here", "md")).toBe("see ![](cat.png) here");
   });
 });
 
 describe("round-trips (md → wiki → md preserves caption AND size-in-block) — Bug 81", () => {
-  const roundTrip = (line: string): string => {
-    const wiki = convertEmbedLine(line, "wiki") ?? line;
-    return convertEmbedLine(wiki, "md") ?? wiki;
-  };
-
   it("md caption + size round-trips (size lands in the block, caption preserved)", () => {
-    // After the first conversion the native size lives in the block, so the alt no longer
-    // carries it; the caption survives verbatim and the width=… block is stable.
     const start = '!["I can caption anything!" 100x150](url)';
-    const once = convertEmbedLine(start, "wiki");
+    const once = canonicalRewrite(start, "wiki");
     expect(once).toBe('![[url|"I can caption anything!"]]{width=100 height=150}');
-    const back = convertEmbedLine(once!, "md");
+    const back = canonicalRewrite(once, "md");
     expect(back).toBe('!["I can caption anything!"](url){width=100 height=150}');
     // Idempotent thereafter (no more native size to fold).
-    expect(roundTrip(back!)).toBe('!["I can caption anything!"](url){width=100 height=150}');
+    expect(canonicalRewrite(canonicalRewrite(back, "wiki"), "md")).toBe(back);
   });
 
   it("caption-only round-trips unchanged in content", () => {
-    const start = "![A caption](url)";
-    const wiki = convertEmbedLine(start, "wiki");
+    const wiki = canonicalRewrite("![A caption](url)", "wiki");
     expect(wiki).toBe('![[url|"A caption"]]'); // quoted because it has whitespace
-    expect(convertEmbedLine(wiki!, "md")).toBe('!["A caption"](url)');
+    expect(canonicalRewrite(wiki, "md")).toBe('!["A caption"](url)');
   });
 
   it("single-word caption stays bare both ways", () => {
-    expect(convertEmbedLine("![cat](url)", "wiki")).toBe("![[url|cat]]");
-    expect(convertEmbedLine("![[url|cat]]", "md")).toBe("![cat](url)");
+    expect(canonicalRewrite("![cat](url)", "wiki")).toBe("![[url|cat]]");
+    expect(canonicalRewrite("![[url|cat]]", "md")).toBe("![cat](url)");
   });
 });
 
@@ -280,13 +285,13 @@ describe("table-pipe escape (`\\|` grammar — table rows)", () => {
       .toBe("![[img.png|cat]]");
   });
 
-  it("convertEmbedLine in a table row: never writes a raw pipe into the cell", () => {
+  it("the writer pipeline in a table row: never writes a raw pipe into the cell", () => {
     // md → wiki with a caption inside a table row — the alias pipe must come out escaped.
     const row = "| a | ![cat](img.png) | b |";
-    expect(convertEmbedLine(row, "wiki")).toBe("| a | ![[img.png\\|cat]] | b |");
+    expect(canonicalRewrite(row, "wiki")).toBe("| a | ![[img.png\\|cat]] | b |");
     // wiki (escaped size) → md folds the size into the block, link stays intact.
     const sized = "| a | ![[img.png\\|90]] | b |";
-    expect(convertEmbedLine(sized, "md")).toBe("| a | ![](img.png){width=90} | b |");
+    expect(canonicalRewrite(sized, "md")).toBe("| a | ![](img.png){width=90} | b |");
   });
 });
 
@@ -397,17 +402,55 @@ describe("the scanner (Bug 120) — read ∩ write grammar", () => {
 });
 
 describe("writer invariant (user decision) — never emit a link the read grammar can't read back", () => {
-  it("convertEmbedLine refuses md→wiki when the given source isn't itself a parseable embed " +
-     "(a raw, unescaped `]]` in the alt already cuts Obsidian's own alt scan short)", () => {
-    expect(convertEmbedLine('!["a]]b"](img.png)', "wiki")).toBeNull();
-  });
-
-  it("the REACHABLE case: an md caption containing `]]` (only reachable via escaped brackets, " +
-     "since a raw `]]` can't parse as shown above) blocks the md→wiki conversion — a wiki alias " +
-     "has no escape for its own `]]` terminator", () => {
+  it("an md caption containing `]]` (only reachable via escaped brackets — a raw `]]` cuts " +
+     "Obsidian's own alt scan short) keeps the md form on a canonical rewrite towards wiki — " +
+     "a wiki alias has no escape for its own `]]` terminator", () => {
     const src = "![a\\]\\]b](img.png)";
     expect(parseEmbedLine(src)?.caption).toBe("a]]b"); // sanity: this DOES parse
-    expect(convertEmbedLine(src, "wiki")).toBeNull();
-    // the line is left untouched by the caller (main.ts's normalizeLinkFormat treats null as "no rewrite")
+    expect(canonicalRewrite(src, "wiki")).toBe(src);
+  });
+});
+
+describe("pathFromGeneratedLink", () => {
+  it("extracts an md destination from the generator's plain-link shape (no embed `!`)", () => {
+    expect(pathFromGeneratedLink("[](sample-portrait.png)", "md")).toBe("sample-portrait.png");
+    expect(pathFromGeneratedLink("[](images/sample-portrait.png)", "md")).toBe("images/sample-portrait.png");
+  });
+
+  it("accepts an already embed-shaped result too", () => {
+    expect(pathFromGeneratedLink("![](images/cat.png)", "md")).toBe("images/cat.png");
+    expect(pathFromGeneratedLink("![[cat.png]]", "wiki")).toBe("cat.png");
+  });
+
+  it("keeps a parenthesis-bearing md destination intact (no truncation at the first `)`)", () => {
+    expect(pathFromGeneratedLink("[](Screenshot%20(1).png)", "md")).toBe("Screenshot%20(1).png");
+    expect(pathFromGeneratedLink("[](pics/Shot%20(v2)%20(final).png)", "md")).toBe("pics/Shot%20(v2)%20(final).png");
+  });
+
+  it("extracts a wiki inner with parens", () => {
+    expect(pathFromGeneratedLink("[[Note (v2)]]", "wiki")).toBe("Note (v2)");
+  });
+
+  it("drops a CommonMark title from the destination", () => {
+    expect(pathFromGeneratedLink('[](cat.png "title")', "md")).toBe("cat.png");
+  });
+
+  it("returns null on a format mismatch or an unparseable result", () => {
+    expect(pathFromGeneratedLink("[[cat.png]]", "md")).toBeNull();
+    expect(pathFromGeneratedLink("[](cat.png)", "wiki")).toBeNull();
+    expect(pathFromGeneratedLink("not a link", "md")).toBeNull();
+    expect(pathFromGeneratedLink("", "md")).toBeNull();
+  });
+});
+
+describe("the writer pipeline in a table row (path token supplied)", () => {
+  it("rewrites inside a table row, folding the escaped-pipe size into the block and re-escaping pipes", () => {
+    const row = "| a | ![[cat.png\\|90]] | b |";
+    expect(canonicalRewrite(row, "md", () => "cat.png")).toBe("| a | ![](cat.png){width=90} | b |");
+  });
+
+  it("keeps the source form and path (still canonical grammar) when the path cannot be verified", () => {
+    const row = "| a | ![[missing.png\\|90]] | b |";
+    expect(canonicalRewrite(row, "md", () => null)).toBe("| a | ![[missing.png]]{width=90} | b |");
   });
 });

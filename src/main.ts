@@ -1,4 +1,4 @@
-import { Plugin, MarkdownView, Notice, Editor, TFile, addIcon } from "obsidian";
+import { Plugin, MarkdownView, MarkdownRenderChild, MarkdownPostProcessorContext, Notice, Editor, TFile, addIcon } from "obsidian";
 import {
   ImageTransform, Layout, FilterData, parseAltText, serializeTransform,
   getRotation, setRotation, toggleFlipH, toggleFlipV, getFilter, setFilter,
@@ -23,9 +23,9 @@ import { LieSettings, DEFAULT_SETTINGS, LieSettingTab } from "./settings";
 import { createLivePreviewExtension, refreshDecorations, toggleEmbedReveal } from "./live-preview";
 import { captionFromAlt, createCaption, CaptionHandle } from "./caption";
 import { Prec } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorView, ViewPlugin } from "@codemirror/view";
 import { setLocale, detectLocale, t } from "./i18n";
-import { convertEmbedLine, desiredFormat, splitTail, buildEmbed, parseEmbedLine, isTableRow, LinkFormat } from "./link-format";
+import { desiredFormat, splitTail, buildEmbed, stripLinkSubpath, pathFromGeneratedLink, canonicalTarget, LinkFormat } from "./link-format";
 import { replaceEmbedTarget, planReplaceAll } from "./replace-logic";
 import { ImagePickerModal } from "./replace-picker";
 import { writeSource } from "./source-writer";
@@ -73,13 +73,21 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.applyButtonOutlines();
 
     this.addSettingTab(new LieSettingTab(this.app, this));
-    this.registerMarkdownPostProcessor((el) => this.postProcessor(el));
+    this.registerMarkdownPostProcessor((el, ctx) => this.postProcessor(el, ctx));
     this.registerImageSelectionHandler();
     this.registerToolbarDismissHandlers();
     this.registerCommands();
 
     this.registerEvent(this.app.workspace.on("layout-change", () => this.reconcileFromSource()));
     this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.reconcileFromSource()));
+
+    // An EditorView's create/destroy is a real render-lifecycle op (the LP extension runs in every
+    // editor, the table cell editor included) — the close re-shows the static copy, which may
+    // arrive from cache undecorated; never fires on hover/UI.
+    this.registerEditorExtension(ViewPlugin.define(() => {
+      this.scheduleReconcile();
+      return { destroy: () => this.scheduleReconcile() };
+    }));
 
     this.registerEditorExtension(
       Prec.highest(
@@ -90,12 +98,15 @@ export default class LiveImageEditorPlugin extends Plugin {
           () => this.settings.showCaptions,
           () => this.settings.defaultRevealState,
           () => this.settings.renderImagesInCodeBlocks,
-          () => this.engagedImagePos()
+          () => this.engagedImagePos(),
+          () => {
+            const desired = desiredFormat(this.useMarkdownLinks());
+            const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
+            return { desired, pathFor: (p: string) => this.canonicalPathToken(p, sourcePath, desired) };
+          }
         )
       )
     );
-
-    this.registerEvent(this.app.workspace.on("editor-change", () => this.scheduleNormalize()));
 
     this.app.workspace.onLayoutReady(async () => {
       // The two are INDEPENDENT: a failing snippet scan must not skip the editing-toolbar migration.
@@ -207,70 +218,59 @@ export default class LiveImageEditorPlugin extends Plugin {
     setLocale(detectLocale());
   }
 
-  private postProcessor(el: HTMLElement): void {
-    // The live-preview CM6 widget owns the editor (AD5 overlay); never box the native
-    // (CSS-suppressed) embed images inside the editor.
-    if (el.closest(".cm-editor")) return;
-    for (const embed of Array.from(el.querySelectorAll(".internal-embed"))) {
-      this.processBlock(embed as HTMLElement, () => embed.querySelector("img"));
-    }
-    for (const img of Array.from(el.querySelectorAll("img"))) {
-      if (img.closest(".internal-embed")) continue;
-      this.processBlock(img, () => img);
-    }
-    // The caption (F22) rides the SAME position-exact resolver reconcileFromSource already uses —
-    // `ctx.getSectionInfo` returns null for a post-processor host nested inside a table cell (Obsidian
-    // does not track section info at that granularity), so it cannot be resolved here. Schedule the
-    // one shared, document-wide reconcile pass instead of duplicating occurrence-tracking (Bug 121).
+  private postProcessor(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
+    // Mounted-inside-editor host: the reconcile pass owns it.
+    if (el.closest(".cm-editor")) { this.scheduleReconcile(); return; }
+    // Attach at the section's mount (`onload`); a section is built detached.
+    const child = new MarkdownRenderChild(el);
+    child.onload = () => {
+      for (const embed of Array.from(el.querySelectorAll(".internal-embed"))) {
+        this.processBlock(embed as HTMLElement, () => embed.querySelector("img"));
+      }
+      for (const img of Array.from(el.querySelectorAll("img"))) {
+        if (img.closest(".internal-embed")) continue;
+        this.processBlock(img, () => img);
+      }
+    };
+    ctx.addChild(child);
+    // Captions/occurrences ride the document-wide reconcile pass.
     this.scheduleReconcile();
   }
 
-  private processBlock(anchor: HTMLElement, getImg: () => HTMLImageElement | null): void {
+  /** Strip a leading `{…}` off the text node right after `anchor` (F3 — the block is never shown
+   *  as text); returns its parsed transform. Shared by the post-processor attach and reconcile. */
+  private stripBlockText(anchor: HTMLElement): ImageTransform | null {
     const textNode = this.findBlockTextNode(anchor);
     const match = textNode ? (textNode.textContent ?? "").match(/^\s*\{([^}]*)\}/) : null;
     const transform = match ? parseAltText(match[1] ?? "") : null;
-    const hasTransform = !!(transform && this.hasTransforms(transform));
-
-    if (hasTransform && textNode && match) {
+    if (transform && this.hasTransforms(transform) && textNode && match) {
       textNode.textContent = (textNode.textContent ?? "").slice(match[0].length);
     }
+    return transform;
+  }
 
+  private processBlock(anchor: HTMLElement, getImg: () => HTMLImageElement | null): void {
+    const transform = this.stripBlockText(anchor);
+
+    /** Decorate once the embed's img exists; a copy rendered hidden is decorated too. */
     const apply = (): boolean => {
       const img = getImg();
       if (!img) return false;
-      // A host copy Obsidian has already superseded and hidden (e.g. a table cell's static render
-      // once its row's own live cell editor takes over) is left alone — attach stays idempotent per
-      // host copy, never re-decorating a retired one (Bug 122).
-      if (isHiddenHostCopy(anchor)) return true;
-      // Fold the native wikilink/markdown size (e.g. `![[img|160]]`) into the {…} transform on READ
-      // so a raw native size still renders at its size; the explicit {…} block always wins (Bug 94).
-      // Re-derived per call — idempotent.
+      // Fold the native size into the transform (an explicit {…} wins).
       const merged: ImageTransform = transform
         ? { ...transform, classes: [...transform.classes] }
         : { classes: [] };
       this.foldNativeSize(merged, img);
-      // A post-processor host nested inside live preview's `.cm-content` sits where the uniform
-      // native-suppression CSS (AD5) hides the native image unconditionally — so THAT host always
-      // needs its replacement box, even a plain/untransformed one: suppression never fires without a
-      // replacement (Bug 124). A true reading-view host has no such suppression and stays a bare
-      // native img when there is nothing to render (unchanged — no wasted DOM).
+      // A `.cm-content` host always needs its replacement box (its native img is CSS-suppressed);
+      // an untransformed reading-view host stays bare.
       if (this.hasTransforms(merged) || img.closest(".cm-content")) applyTransformToImage(img, merged);
       else this.clearStaleTransform(img);
-      // Shrink-wrap the reading-view host that DIRECTLY holds our box (caption/column sizing). We set
-      // the `.lie-embed` class on it ourselves — a direct selector, not `:has(> .lie-image-area)`
-      // (Decision 28). LP doesn't need it (its box sits under `.lie-box`, which shrink-wraps itself).
+      // Shrink-wrap marker on the host that holds the box.
       img.closest(`.${BOX_CLASS}`)?.parentElement?.classList.add("lie-embed");
       return true;
     };
-    if (apply()) {
-      // A post-processor section may still be DETACHED at this synchronous call (Obsidian builds it
-      // off-screen before mounting), so the `.cm-content` check above can miss an ancestor that only
-      // exists once mounted. Re-validate one frame later; idempotent (buildLayers/ensureLayers reuse
-      // the existing box), so re-running is always safe.
-      window.requestAnimationFrame(() => apply());
-      return;
-    }
-
+    if (apply()) return;
+    // Bounded wait for the embed's async img.
     const observer = new MutationObserver(() => { if (apply()) observer.disconnect(); });
     observer.observe(anchor, { childList: true, subtree: true });
     this.register(() => observer.disconnect());
@@ -293,7 +293,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   private applyReadingCaption(img: HTMLImageElement, sourcePath: string, sourceAlt: string): void {
     const want = this.settings.showCaptions ? captionFromAlt(sourceAlt) : "";
     const prev = this.readingCaptions.get(img);
-    if (prev && want && this.readingCaptionText.get(img) === want) return;
+    if (prev && want && this.readingCaptionText.get(img) === want && prev.el.isConnected) return;
 
     if (prev) {
       prev.el.remove();
@@ -315,82 +315,37 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.readingCaptionText.set(img, want);
   }
 
-  private normalizeTimer = 0;
-  private scheduleNormalize(): void {
-    window.clearTimeout(this.normalizeTimer);
-    this.normalizeTimer = window.setTimeout(() => {
-      this.normalizeNativeSizes();
-      this.normalizeLinkFormat();
-    }, 400);
-  }
-
-  // F5/F6 — keep image embeds in the link form Obsidian's "Use [[Wikilinks]]" setting
-  // dictates, carrying the trailing {…} block across. Skips the cursor line.
-  private normalizeLinkFormat(): void {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    const editor = view?.editor;
-    if (!editor) return;
-
-    const useMarkdownLinks = !!(this.app.vault as unknown as { getConfig?: (k: string) => unknown })
-      .getConfig?.("useMarkdownLinks");
-    const desired = desiredFormat(useMarkdownLinks);
-    const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
-    const cursorLine = editor.getCursor().line;
-
-    for (let i = 0; i < editor.lineCount(); i++) {
-      if (i === cursorLine) continue;
-      const line = editor.getLine(i);
-      const newLine = convertEmbedLine(line, desired, (p) => this.formattedPath(p, sourcePath, desired));
-      if (newLine !== null && newLine !== line) editor.setLine(i, newLine);
-    }
-  }
-
-  private formattedPath(path: string, sourcePath: string, desired: LinkFormat): string | null {
+  /** Canonical path token for `desired`, or null when unresolvable/unparseable (the caller then
+   *  keeps the source form). A `#`/`^` subpath is re-attached as written. */
+  private canonicalPathToken(path: string, sourcePath: string, desired: LinkFormat): string | null {
     try {
-      const file = this.app.metadataCache.getFirstLinkpathDest(decodeURIComponent(path.split("|")[0] ?? path), sourcePath);
+      const bare = stripLinkSubpath(path);
+      const subpath = path.slice(bare.length);
+      let linkpath = bare;
+      try { linkpath = decodeURIComponent(bare); } catch { /* keep the raw form */ }
+      const file = this.app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath);
       if (!(file instanceof TFile)) return null;
       const link = this.app.fileManager.generateMarkdownLink(file, sourcePath); // never an alias arg (Lesson 5)
-      // generateMarkdownLink writes an embed for any embeddable (image) file — parse it with the
-      // ONE grammar scanner (Bug 120) rather than a bespoke regex, so a path with parens/spaces
-      // (e.g. "Screenshot (1).png") comes back intact instead of truncated at the first `)`.
-      const e = parseEmbedLine(link);
-      return e && e.format === desired ? e.path : null;
+      const token = pathFromGeneratedLink(link, desired);
+      return token === null ? null : token + subpath;
     } catch {
       return null;
     }
   }
 
-  // Fold a Markdown native size ![alt|513](path) into the portable block (F6), riding the
-  // ONE grammar round-trip (parseEmbedLine → buildEmbed) — no second regex or escape
-  // knowledge here. A wikilink's native size stays in place by design (F5).
-  private normalizeNativeSizes(): void {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    const editor = view?.editor;
-    if (!editor) return;
-
-    const cursorLine = editor.getCursor().line;
-    for (let i = 0; i < editor.lineCount(); i++) {
-      if (i === cursorLine) continue;
-      const line = editor.getLine(i);
-      const e = parseEmbedLine(line);
-      if (!e || e.format !== "md" || e.size === "") continue;
-      const replacement = buildEmbed("md", {
-        caption: e.caption, path: e.path, size: e.size, block: e.block,
-        escapePipe: isTableRow(line),
-      });
-      const newLine = line.slice(0, e.start) + replacement + line.slice(e.end);
-      if (newLine !== line) editor.setLine(i, newLine);
-    }
-  }
+  /** Reconcile run counter (read by the CDP guards). */
+  reconcileRunCount = 0;
 
   // Reading-view render path only (Obsidian caches embeds). The LP CM6 widget owns its
   // own `.lie-wrapper` images — reconcile must NOT touch them (no double render, Lesson 8).
   private reconcileFromSource(): void {
+    this.reconcileRunCount++;
     const run = () => {
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (!view) return;
+      // The VISIBLE container, picked by mode (selector order alone can return the hidden one).
       const container = view.contentEl.querySelector(
-        ".markdown-reading-view, .markdown-preview-view, .markdown-source-view"
+        view.getMode() === "preview" ? ".markdown-reading-view, .markdown-preview-view" : ".markdown-source-view"
       );
       if (!container) return;
       const source = view.editor?.getValue() ?? "";
@@ -408,20 +363,20 @@ export default class LiveImageEditorPlugin extends Plugin {
         if (!file) continue;
         const occurrence = seen.get(file) ?? 0;
         seen.set(file, occurrence + 1);
-        // The LP overlay owns its own images; skip untouched (AD5 — no double render). Likewise
-        // Obsidian's own CM6-native embed, wherever one lands (the main editor, or a post-processor
-        // host's own live cell editor once the cursor enters it) — recognisable by the `.lie-wrapper`
-        // the live-preview pass ALWAYS draws right next to it, never by `.cm-editor` alone (a
-        // post-processor host — a table cell, a callout, a footnote — sits inside `.cm-editor` too,
-        // and IS this pass's job, Bug 121/124). An image being CROPPED in place (`.lie-cropping` on
-        // its area/host) is also skipped — a re-render mid-session would wipe the transient geometry.
-        // A host copy Obsidian has already superseded and hidden (a table cell's static render once
-        // its row's own live cell editor takes over) is left alone too — idempotent per copy (Bug 122).
+        // Skip what this pass does not own: plugin chrome, hidden host copies, and CM6 natives —
+        // structurally anything in `.cm-content` OUTSIDE a `.markdown-rendered` render block
+        // (post-processor hosts always render inside one).
         if (img.closest(".lie-wrapper, .lie-cropping")) continue;
         if (isHiddenHostCopy(img)) continue;
-        const embedHost = img.closest(".internal-embed");
-        if (embedHost?.previousElementSibling?.classList.contains("lie-wrapper")) continue;
-        if (embedHost?.nextElementSibling?.classList.contains("lie-wrapper")) continue;
+        const embedHost = img.closest<HTMLElement>(".internal-embed");
+        if (img.closest(".cm-content") && !img.closest(".markdown-rendered")) {
+          // Cache hygiene (F2): Obsidian re-uses embed DOM across views — a reading caption
+          // riding a re-used native is stale here.
+          if (embedHost) for (const c of Array.from(embedHost.querySelectorAll(".lie-caption"))) c.remove();
+          continue;
+        }
+        // A cached copy re-shown without a post-processor call may still carry its `{…}` text.
+        if (embedHost) this.stripBlockText(embedHost);
         const loc = findImageInText(source, file, occurrence);
         const transform = loc ? parseAltText(loc.params) : { classes: [] };
         // Fold the native wikilink/markdown size into the transform on READ (the {…} block wins);
@@ -1121,27 +1076,24 @@ export default class LiveImageEditorPlugin extends Plugin {
     }) ?? null;
   }
 
+  /** Ordered-edit writer: rebuild the whole embed canonically (form per setting, native size
+   *  folded, caption kept); source form/path kept when no token. One write, one undo step. */
   private writeTransform(editor: Editor, location: ImageLocation, transform: ImageTransform): void {
     const params = serializeTransform(transform);
-    const { size, caption } = splitTail(location.alt);
-    if (size) {
-      // Normalize on edit (Bug 94): the embed carries a native pipe/alt size — rebuild the WHOLE
-      // embed in canonical form so the size moves into the {…} block (already in `transform`,
-      // seeded by locationTransform; empty on reset → size cleared) and is STRIPPED from the link
-      // head, keeping the caption. Size lives in the block, never the link (F6/T2).
-      const embed = buildEmbed(location.isWikiLink ? "wiki" : "md", {
-        caption, path: location.filename, size: "", block: params ? `{${params}}` : "",
-        escapePipe: location.inTable,
-      });
-      const from = editor.posToOffset({ line: location.line, ch: location.start });
-      const to = editor.posToOffset({ line: location.line, ch: location.end });
-      this.writeToSource(editor, from, to, embed);
-      return;
-    }
-    const block = params ? `{${params}}` : "";
-    const from = editor.posToOffset({ line: location.line, ch: location.headEnd });
+    // An ordered edit that changes nothing writes nothing (F0) — no redundant undo step.
+    if (params === serializeTransform(this.locationTransform(location))) return;
+    const { caption } = splitTail(location.alt);
+    const desired = desiredFormat(this.useMarkdownLinks());
+    const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
+    const token = this.canonicalPathToken(location.filename, sourcePath, desired);
+    const target = canonicalTarget(location.isWikiLink ? "wiki" : "md", location.filename, desired, caption, token);
+    const embed = buildEmbed(target.format, {
+      caption, path: target.path, size: "", block: params ? `{${params}}` : "",
+      escapePipe: location.inTable,
+    });
+    const from = editor.posToOffset({ line: location.line, ch: location.start });
     const to = editor.posToOffset({ line: location.line, ch: location.end });
-    this.writeToSource(editor, from, to, block);
+    this.writeToSource(editor, from, to, embed);
   }
 
   // Funnel a document edit through the shared isolateHistory writer (one undo step per
@@ -1373,8 +1325,8 @@ export default class LiveImageEditorPlugin extends Plugin {
     const transform = parseAltText(location.params);
     try {
       const buffer = await renderTransformedImage(this.activeImage!, transform);
-      let linkpath = location.filename;
-      try { linkpath = decodeURIComponent(location.filename); } catch { /* keep the raw link */ }
+      let linkpath = stripLinkSubpath(location.filename);
+      try { linkpath = decodeURIComponent(linkpath); } catch { /* keep the raw link */ }
       const file = this.app.metadataCache.getFirstLinkpathDest(
         linkpath, this.app.workspace.getActiveFile()?.path ?? ""
       );
@@ -1399,22 +1351,17 @@ export default class LiveImageEditorPlugin extends Plugin {
     return !!(this.app.vault as unknown as { getConfig?: (k: string) => unknown }).getConfig?.("useMarkdownLinks");
   }
 
-  // The link token for `file` in the desired form (the wikilink inner text, or the md `(path)`
-  // contents), via Obsidian's own generator so encoding/relative-vs-shortest matches the vault's
-  // settings. Falls back to the vault-relative path when the generator's shape is unexpected (T12).
+  /** Link token for `file` in the desired form via Obsidian's generator (encoding and
+   *  relative-vs-shortest follow the vault settings); the vault-relative path when the
+   *  generator's output does not parse (T12). */
   private replacementPathToken(file: TFile, desired: LinkFormat): string {
     const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
     try {
       const link = this.app.fileManager.generateMarkdownLink(file, sourcePath); // never an alias arg (Lesson 5)
-      if (desired === "wiki") {
-        const m = link.match(/^!?\[\[([^\]|]+)/);
-        if (m?.[1]) return m[1];
-      } else {
-        const m = link.match(/\]\(([^)]+)\)/);
-        if (m?.[1]) return m[1];
-      }
-    } catch { /* fall through to the vault path */ }
-    return file.path;
+      return pathFromGeneratedLink(link, desired) ?? file.path;
+    } catch {
+      return file.path;
+    }
   }
 
   // "Replace image" (single, F19-style image-specific): pick a vault image, rewrite THIS embed's
