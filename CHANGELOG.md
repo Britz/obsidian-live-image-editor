@@ -11,6 +11,13 @@ Every entry is numbered in one global per-category sequence — **Decision**, **
 Decision › Change › Feature › Bug, each category newest-first (highest number on top). Numbers are
 never reused. (Open/unsolved items and the hard-won lessons live in `docs/development/issues.md`.)
 
+## [0.6.16] - 2026-07-29
+
+Post-processor image mapping is now position-exact and its attribute-block boundary uses the shared quote- and escape-aware scanner.
+
+- **Bug 133 — Post-processor attribute blocks now use the shared quote- and escape-aware scanner.** The DOM cleanup's bespoke single-brace regex stopped at a quoted `}` and diverged from source parsing; Live Preview and Reading View now use `scanAttributeBlock` for the same boundary, with regression coverage for quoted `}` blocks.
+- **Bug 131 — Repeated table-cell embeds now map position-exactly and fail closed.** The Reading adapter's document-wide occurrence walk could count unrelated render copies and write an earlier same-file embed; each post-processor host now pairs only within its source-bounded render context against current-document addresses, with strict cardinality, order and source-identity checks and no basename/occurrence fallback. Real Obsidian table journeys cover same-file variants, writes and no-ops, mode transitions, and stability.
+
 ## [0.6.15] - 2026-07-22
 
 The last hand-rolled embed serialization is gone — "Replace image" / "Replace all" now build through the same ONE grammar writer as every other rewrite path; the `lint:obsidian` 0-error baseline is restored; and four post-processor-hosted-embed bugs (invisible/duplicated table-cell renders, a filename shown as caption, no hover toolbar) are fixed as one host-agnostic attach decision instead of four separate patches. A second batch removes the plugin's LAST automatism: the passive link/size normalizer is gone (new F0/F27 — writes only on explicit user action), every ordered edit now rewrites its embed canonically instead, and the table-host defect class the normalizer's rewrites kept re-triggering (dead cells / raw `{…}` shown) is fixed at the attach/render-lifecycle level — covered by a permanent full-matrix guard (`verify-table-host.mjs`, 60/60; `npm test` 379). A third batch merges four small string/regex formulas that had drifted into duplicate copies onto their one shared source (crop editor ↔ render-core's frame-orientation string, three copies of the CSS-function-string regex, render-core's foreign-page flip/length reader ↔ transforms.ts, and the standalone runtime's caption gaining Bug 121's filename-as-caption guard) — `npm test` 385.

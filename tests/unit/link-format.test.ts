@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseEmbedLine, buildEmbed, canonicalTarget, desiredFormat, splitTail, splitWikiInner, isTableRow,
-  scanEmbed, allEmbedsInLine, stripLinkSubpath, pathFromGeneratedLink, LinkFormat,
+  scanAttributeBlock, scanEmbed, allEmbedsInLine, stripLinkSubpath, pathFromGeneratedLink, LinkFormat,
 } from "../../src/link-format";
 
 // The ordered-edit writer pipeline (F5): parse → canonicalTarget → buildEmbed — exactly what
@@ -131,6 +131,57 @@ describe("parseEmbedLine", () => {
     expect(parseEmbedLine("just some text")).toBeNull();
   });
 });
+
+describe("scanAttributeBlock", () => {
+  it("returns exact wiki and markdown blocks with quoted closing braces", () => {
+    const wiki = '![[a.png]]{style="filter: url(}x)" rotate=90} tail';
+    const md = "![b](b.png){data='a}b' width=20} tail";
+    const wikiPos = wiki.indexOf("{");
+    const mdPos = md.indexOf("{");
+
+    expect(scanAttributeBlock(wiki, wikiPos)).toEqual({
+      block: '{style="filter: url(}x)" rotate=90}',
+      inner: 'style="filter: url(}x)" rotate=90',
+      end: wiki.indexOf(" tail"),
+    });
+    expect(scanAttributeBlock(md, mdPos)).toEqual({
+      block: "{data='a}b' width=20}",
+      inner: "data='a}b' width=20",
+      end: md.indexOf(" tail"),
+    });
+  });
+
+  it("honours escaped quotes, backslashes and braces", () => {
+    const text = String.raw`pre{style="a\"}b\\c" data=a\}b}post`;
+    const pos = text.indexOf("{");
+    const result = scanAttributeBlock(text, pos);
+
+    expect(result?.block).toBe(String.raw`{style="a\"}b\\c" data=a\}b}`);
+    expect(result?.inner).toBe(String.raw`style="a\"}b\\c" data=a\}b`);
+    expect(result?.end).toBe(text.indexOf("post"));
+  });
+
+  it("returns null for a missing, unterminated or unterminated-quote block", () => {
+    expect(scanAttributeBlock("plain", 0)).toBeNull();
+    expect(scanAttributeBlock("{width=20", 0)).toBeNull();
+    expect(scanAttributeBlock('{style="x} width=20}', 0)).toBeNull();
+  });
+
+  it("keeps exact offsets for same-line duplicate embeds", () => {
+    const line = `![[a.png]]{style="x:}"} and ![](b.png){style='y:}'}`;
+    const embeds = allEmbedsInLine(line);
+
+    expect(embeds.map((embed) => embed.block)).toEqual([
+      '{style="x:}"}',
+      "{style='y:}'}",
+    ]);
+    expect(embeds.map((embed) => line.slice(embed.headEnd, embed.end))).toEqual(
+      embeds.map((embed) => embed.block)
+    );
+    expect(embeds[1]!.start).toBe(line.indexOf("![]"));
+  });
+});
+
 
 describe("buildEmbed — caption in the slot, size folded into the block (Bug 81)", () => {
   it("md -> wiki carries the caption to the alias + folds the size into the block", () => {

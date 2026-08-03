@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   findImageInText, findImageInLine, firstEmbedInLine, allEmbedsInText, spansOverlappingRanges, basename,
+  isImageEmbedNodeName, locationsInLineRange, currentDocumentLocationPairs, pairImageLocations,
 } from "../../src/image-resolver";
 
 // F2 / AB3 — the reading-view resolver must map the n-th rendered embed of a repeated file to
@@ -39,6 +40,7 @@ describe("findImageInText — position-exact duplicate resolution (F2/AB3)", () 
     const mixed = "![[sample.png]]{rotate=90} and ![x](sample.png){rotate=180}";
     expect(findImageInText(mixed, "sample.png", 0)?.params).toBe("rotate=90");
     expect(findImageInText(mixed, "sample.png", 1)?.params).toBe("rotate=180");
+    expect(findImageInText(mixed, "sample.png", 1)?.block).toBe("{rotate=180}");
   });
 
   it("matches a wikilink with a |size suffix by basename and preserves the path", () => {
@@ -46,6 +48,157 @@ describe("findImageInText — position-exact duplicate resolution (F2/AB3)", () 
     expect(loc?.params).toBe("flip=vertical");
     expect(loc?.isWikiLink).toBe(true);
     expect(loc?.filename).toBe("img/sample.png");
+  });
+});
+
+describe("pairImageLocations", () => {
+  it("pairs only the supplied bounded locations and keeps duplicate basenames in order", () => {
+    const source = [
+      "![[same.png]]{width=10}",
+      "| A | B |",
+      "| ![[same.png]]{width=20} | ![](same.png){width=30} |",
+    ].join("\n");
+    const tableLocations = allEmbedsInText(source).slice(1);
+
+    const pairs = pairImageLocations([
+      { identity: "first-cell", source: "same.png" },
+      { identity: "second-cell", source: "same.png" },
+    ], tableLocations);
+
+    expect(pairs?.map(({ identity, location }) => [identity, location.line, location.params])).toEqual([
+      ["first-cell", 2, "width=20"],
+      ["second-cell", 2, "width=30"],
+    ]);
+  });
+
+  it("fails closed on basename mismatch", () => {
+    const locations = allEmbedsInText("![[a.png]] ![[b.png]]");
+    expect(pairImageLocations([
+      { identity: 1, source: "a.png" },
+      { identity: 2, source: "c.png" },
+    ], locations)).toBeNull();
+  });
+
+  it("fails closed on cardinality mismatch or repeated identity", () => {
+    const locations = allEmbedsInText("![[same.png]] ![[same.png]]");
+    expect(pairImageLocations([
+      { identity: 1, source: "same.png" },
+    ], locations)).toBeNull();
+    expect(pairImageLocations([
+      { identity: 1, source: "same.png" },
+      { identity: 1, source: "same.png" },
+    ], locations)).toBeNull();
+  });
+
+  it("fails closed on empty rendered or source basenames", () => {
+    const location = allEmbedsInText("![[same.png]]")[0]!;
+    expect(pairImageLocations([{ identity: 1, source: "" }], [location])).toBeNull();
+    expect(pairImageLocations([{ identity: 1, source: "same.png" }], [
+      { ...location, filename: "" },
+    ])).toBeNull();
+  });
+});
+
+describe("section-bounded source mapping", () => {
+  const locations = allEmbedsInText([
+    "![[before.png]]",
+    "",
+    "![[first.png]]",
+    "![](second.png)",
+    "",
+    "![[after.png]]",
+  ].join("\n"));
+
+  it("filters cache-confirmed locations to the inclusive section lines", () => {
+    expect(locationsInLineRange(locations, 2, 3)?.map((location) => location.filename)).toEqual([
+      "first.png",
+      "second.png",
+    ]);
+  });
+
+  it("rejects invalid section bounds and inconsistent locations", () => {
+    expect(locationsInLineRange(locations, -1, 3)).toBeNull();
+    expect(locationsInLineRange(locations, 3, 2)).toBeNull();
+    expect(locationsInLineRange([{ ...locations[0]!, line: 1.5 }], 0, 3)).toBeNull();
+  });
+
+  it("keeps strict pairing inside the bounded section", () => {
+    const bounded = locationsInLineRange(locations, 2, 3)!;
+    expect(pairImageLocations([
+      { identity: "first", source: "first.png" },
+      { identity: "second", source: "second.png" },
+    ], bounded)?.map(({ identity, location }) => [identity, location.line])).toEqual([
+      ["first", 2],
+      ["second", 3],
+    ]);
+    expect(pairImageLocations([
+      { identity: "first", source: "first.png" },
+    ], bounded)).toBeNull();
+    expect(pairImageLocations([
+      { identity: "first", source: "second.png" },
+      { identity: "second", source: "first.png" },
+    ], bounded)).toBeNull();
+  });
+});
+
+describe("currentDocumentLocationPairs", () => {
+  const locations = allEmbedsInText("![[first.png]] ![[second.png]]");
+  const identities = ["first", "second"];
+  const currentDoc = {};
+
+  it("accepts an ordered complete cache from the current immutable document", () => {
+    expect(currentDocumentLocationPairs(identities, [
+      { identity: "first", doc: currentDoc, location: locations[0]! },
+      { identity: "second", doc: currentDoc, location: locations[1]! },
+    ], currentDoc)?.map(({ identity, location }) => [identity, location.filename])).toEqual([
+      ["first", "first.png"],
+      ["second", "second.png"],
+    ]);
+  });
+
+  it("rejects missing, stale, reordered and duplicate cache identities", () => {
+    expect(currentDocumentLocationPairs(identities, [
+      { identity: "first", doc: currentDoc, location: locations[0]! },
+      null,
+    ], currentDoc)).toBeNull();
+    expect(currentDocumentLocationPairs(identities, [
+      { identity: "first", doc: {}, location: locations[0]! },
+      { identity: "second", doc: currentDoc, location: locations[1]! },
+    ], currentDoc)).toBeNull();
+    expect(currentDocumentLocationPairs(identities, [
+      { identity: "second", doc: currentDoc, location: locations[1]! },
+      { identity: "first", doc: currentDoc, location: locations[0]! },
+    ], currentDoc)).toBeNull();
+    expect(currentDocumentLocationPairs(["first", "first"], [
+      { identity: "first", doc: currentDoc, location: locations[0]! },
+      { identity: "first", doc: currentDoc, location: locations[1]! },
+    ], currentDoc)).toBeNull();
+  });
+
+  it("rejects one source address cached for distinct identities", () => {
+    expect(currentDocumentLocationPairs(identities, [
+      { identity: "first", doc: currentDoc, location: locations[0]! },
+      { identity: "second", doc: currentDoc, location: locations[0]! },
+    ], currentDoc)).toBeNull();
+  });
+
+  it("rejects source locations that move backward in DOM order", () => {
+    expect(currentDocumentLocationPairs(identities, [
+      { identity: "first", doc: currentDoc, location: locations[1]! },
+      { identity: "second", doc: currentDoc, location: locations[0]! },
+    ], currentDoc)).toBeNull();
+  });
+});
+
+describe("isImageEmbedNodeName", () => {
+  it("accepts decorated Obsidian image fragments shared by LP and the resolver", () => {
+    expect(isImageEmbedNodeName("formatting_image-marker")).toBe(true);
+    expect(isImageEmbedNodeName("HyperMD-formatting-embed")).toBe(true);
+  });
+
+  it("rejects unrelated syntax nodes", () => {
+    expect(isImageEmbedNodeName("hmd-codeblock")).toBe(false);
+    expect(isImageEmbedNodeName("link-marker")).toBe(false);
   });
 });
 

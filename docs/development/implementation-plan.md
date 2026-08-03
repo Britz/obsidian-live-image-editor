@@ -21,8 +21,8 @@ One file per building block where possible; pure decision logic split into a sib
 |---|---|---|
 | `src/main.ts` | AB17 Lifecycle | `Plugin` subclass |
 | `src/transforms.ts` | AB1 Transform model | `ImageTransform` *(classes/inline; orientation: rotate/flipH/flipV → inner-frame; content: transform/filter → img; footprint: width/height/aspectRatio/box → outer)*<br>`FilterData`<br>`parseAltText` *(bare keys + legacy `style=` back-compat)*<br>`serializeTransform` *(bare keys)*<br>`getRotation`/`setRotation` *(the orientation field)*<br>`toggleFlipH`/`toggleFlipV`/`getFlipH`/`getFlipV` *(fields)*<br>`isCrop`<br>`getFilter`/`setFilter`/`filterToCss`/`parseFilterCss`/`nonDefaultFilter` *(the shared "≠ default" predicate)*<br>`getWidthPx`/`getHeightPx`/`setWidthPx`/`setHeightPx`<br>`PRESET_KEYS`/`PresetKey`<br>`MARKER_CLASS` *(backward-compat parse-skip only — never written)*<br>`INLINE_CLASS`<br>`parseFlipTokens` *(flip= token vocabulary, shared with render-core's `readTransform`)*<br>`lengthValue` *(bare-number → px, shared with `readTransform`)*<br>`parseFns`/`Fn` *(CSS-function-string parse, shared with `export.ts` and `crop-editor-logic.ts`)* |
-| `src/link-format.ts` | AB2 Link form & native-size normalization | `parseEmbedLine`<br>`buildEmbed`<br>`pathFromGeneratedLink`<br>`desiredFormat` |
-| `src/image-resolver.ts` | AB3 Source↔DOM mapping (pure — `import type` Editor) | `findImageInSource`<br>`findImageInText` *(occurrence-aware — F2)*<br>`findImageInLine` *(one line, the posAtDOM-disambiguated resolver)*<br>`getImageFilename`<br>`ImageLocation` |
+| `src/link-format.ts` | AB2 Link form & native-size normalization | `parseEmbedLine`<br>`scanAttributeBlock` *(the one quote-/escape-aware attr-list boundary scanner, shared by source parsing and post-processor DOM stripping)*<br>`buildEmbed`<br>`pathFromGeneratedLink`<br>`desiredFormat` |
+| `src/image-resolver.ts` | AB3 Source↔DOM mapping (pure — `import type` Editor) | `findImageInSource`<br>`findImageInText` *(occurrence-aware — F2)*<br>`findImageInLine` *(one line, the posAtDOM-disambiguated resolver)*<br>`isImageEmbedNodeName` *(shared fragment-based Obsidian syntax-node predicate)*<br>`locationsInLineRange` *(section-bounded Reading-view source subset)*<br>`currentDocumentLocationPairs` *(immutable-document cache gate)*<br>`pairImageLocations` *(fail-closed pairing within an already position-bounded source/render context)*<br>`getImageFilename`<br>`ImageLocation` *(exact source block + brace-less params)* |
 | `src/replace-logic.ts` | AB2/AB3 — "Change image source" (F26, pure) | `buildReplacementEmbed`<br>`replaceEmbedTarget`<br>`planReplaceAll` — build the replacement embed through link-format's ONE writer (`buildEmbed`) rather than a hand-rolled string: table-pipe escaping (`ImageLocation.inTable`) and the write ⊆ read invariant now cover Replace too. A native size already on the embed folds into the `{…}` block like any other active edit (Bug-94 precedent, F6/T2 — never re-emitted as a raw pipe suffix). A caption the desired form cannot represent (a wiki alias containing `]]`) makes the embed keep its EXISTING form — only the path swaps, never lose the link |
 | `src/source-writer.ts` | AB3 / AD1 edit writer (shared) | `writeSource` *(one isolated CM transaction per edit)*<br>`LIE_USER_EVENT` |
 | `src/snippet-scanner.ts` | AB4 Snippet class discovery | `scanSnippets` *(flat, enabled-only — toolbar)*<br>`scanSnippetFiles` *(per-file grouped + our-file status — settings)*<br>`SnippetClass`/`SnippetFile`<br>`installBundledSnippet`<br>`resetBundledSnippet`<br>`restoreBundledClass`<br>`isBundledSnippetInstalled` |
@@ -436,6 +436,12 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   of the grammar. The writer never emits a link the read grammar (or Obsidian) cannot read back
   losslessly — an embed whose caption cannot be represented in the target form (a wiki alias
   containing `]]`) keeps its current form instead of being converted (never lose the link).
+  The trailing attribute-list boundary is read by the one exported `scanAttributeBlock`: it
+  closes at the first unescaped `}` outside a single- or double-quoted value, with `\` protecting
+  the following character. An unterminated quote or block yields no block. The embed scanners and
+  the post-processor's DOM-prefix removal call this same pure scanner; no adapter carries a second
+  brace regex or a looser DOM-only grammar. The scanner returns the exact block, brace-less content
+  and end offset. This boundary correction does not broaden `parseAltText`'s separate value-token grammar.
 - **`image-resolver.ts`** — maps a DOM `img` to its source `ImageLocation`. `findImageInLine`
   resolves the embed on ONE known line (the CM6 `posAtDOM` path — line-accurate even for a duplicated
   file); `findImageInText(text, src, occurrence)` resolves the **occurrence-th** embed of a basename
@@ -445,7 +451,18 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   shared `writeSource` (below), scroll untouched, cursor on the image line (D11). The wiki
   path/alias split rides link-format's `splitWikiInner` (the table-escaped `\|` handled in ONE
   place), and `ImageLocation` carries `inTable` (from its line) so the writers escape pipes
-  when rebuilding an embed inside a table row.
+  when rebuilding an embed inside a table row. It also carries the exact source `block` alongside
+  brace-less `params`. `isImageEmbedNodeName` is the one fragment-based predicate used by both
+  Live Preview decoration discovery and the source resolver because Obsidian may decorate the
+  `image-marker` / `formatting-embed` fragments in concrete syntax-node names. `locationsInLineRange`
+  selects only cache-confirmed source locations inside an inclusive post-processor section line range
+  and rejects invalid bounds. `currentDocumentLocationPairs` accepts an ordered cache only when every
+  rendered identity has exactly one entry from the same immutable current document; missing, stale,
+  reordered or duplicate identities, duplicate source addresses, and non-increasing source order fail
+  closed. `pairImageLocations` then pairs owned hosts with those locations only
+  within that position-bounded Obsidian render context, in source/DOM order and by basename, consuming
+  each location at most once; any ambiguity, mismatch or cardinality error returns no mapping rather
+  than a first-basename guess.
 - **`source-writer.ts`** — `writeSource(view, changes, cursor?)` is the **single funnel** for every
   plugin edit to the document (AD1, edit direction): it dispatches the change as **one** CM transaction,
   isolated in history (`isolateHistory.of("full")`) and tagged `LIE_USER_EVENT`, so each plugin edit
@@ -557,6 +574,32 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   adapters. The hover region binds to the host copy the plugin actually decorated, the same
   region-hover pattern the floating toolbar already uses, so hover opens the toolbar there exactly as
   it does everywhere else.
+  A post-processor host inside Live Preview is mapped through its enclosing
+  `.cm-embed-block.markdown-rendered`: the main EditorView's `posAtDOM` gives that block's current
+  `[from,to]` source range, and only syntax-tree embed spans inside that range may be paired with the
+  owned hosts of that same block. A derived `WeakMap` keeps `{ doc, location }` for render, caption and
+  later toolbar actions; it is only an AB3 address cache, never display or transform state. A different
+  immutable `state.doc` invalidates the entry. Immediately before a write, the exact current source
+  offset and basename are re-parsed; a stale entry is remapped once within its block and otherwise the
+  action aborts. No post-processor write falls back to a document-wide first-basename match.
+  Owned post-processor images are collected in DOM order from both `.internal-embed` hosts and bare
+  owned `img` elements; an image inside an already-owned host and caption descendants are not collected
+  twice. Reading view obtains `MarkdownPostProcessorContext.getSectionInfo(el)` immediately before each
+  mapping attempt, filters cache-confirmed source locations to that section's inclusive
+  `lineStart`/`lineEnd`, and applies the same strict cardinality/order/basename pairing to that section's
+  owned images. Null section information or any bounds, cardinality or identity mismatch fails closed.
+  Successful section pairs populate the existing `{ doc, location }` `WeakMap`; later reconcile and
+  settings refreshes first revalidate current-document cached section pairs. Each Reading
+  `MarkdownRenderChild` registers its `{ el, ctx }` only for its `onload`→`onunload` lifetime. If a
+  reused connected Reading DOM carries stale/missing document entries, Preview reconcile remaps only
+  the registered sections contained by the active Reading root, with fresh `getSectionInfo(el)` and
+  the same bounded strict pairing, then revalidates the complete visible cache. A metadata `changed`
+  event for the active file schedules the same bounded retry after cache readiness. No retry
+  reconstructs a document-wide basename/occurrence map.
+  Reconcile obtains the source location before removing the DOM block and renders from its brace-less
+  `params`. The DOM block prefix is removed with `scanAttributeBlock` whether or not its content
+  contains a recognized transform; an incomplete block remains untouched. The initial detached attach,
+  where no source location is available, may read the DOM prefix only through that same scanner.
 - **`live-preview.ts`** — `createLivePreviewExtension` is a CM6 `StateField` that, for each embed,
   draws an `EmbedWidget` carrying the plugin's own transformed image (the uniform `.lie-wrapper`,
   R0/AD3) in one of **three modes** (`WidgetMode`), the **same uniform chrome** in each — only the
@@ -843,6 +886,115 @@ The standalone bundle that delivers T3 portability. **Built.**
   (overflow:hidden on the frame, the float `:has()` routing, the column cap) — `align`/`width`
   already work natively, so the no-JS fallback needs none of it.
 
+
+### 3.7 CDP change-confinement guards (`T13`)
+
+The CDP regression layer records one canonical black-box capture contract for the same journey in
+the same vault. Its automation is deliberately split into an implemented first phase and an explicit
+expansion backlog; a planned journey is not presented as captured evidence.
+
+**Implemented phase — exact 24-journey matrix.** Every capture starts with hard gates for exactly
+one Obsidian page target, the loaded `live-image-editor` plugin, caller-supplied expected
+plugin/Obsidian versions and exact `main.js` / `manifest.json` / `styles.css` hashes. The generated
+`_toolbar-hosts-fixture.md` bytes, plugin settings, locale, theme, active file/mode and the 1280×900
+CSS-pixel viewport at device scale factor 1 are recorded or asserted as environment identity;
+failure to establish a gate aborts before comparison.
+
+- **`tests/cdp/verify-toolbar-hosts.mjs`.** Self-creates one fixture and executes exactly these 24
+  IDs: five placement journeys (normal inset; tiny/inline floating above; table, callout and footnote
+  inset), fifteen panel journeys (real-pointer open → panel travel → Esc for Resize, Filters and Crop
+  on each of those five Live Preview hosts), and four Reading View negatives (normal, table, callout
+  and footnote). Hover, toolbar/panel travel and button activation use the CDP `Input` mouse path;
+  each Reading negative additionally uses a CDP touch long-press. No synthetic DOM event substitutes
+  for these inputs.
+
+  Each implemented journey records raw bounding geometry, connected active-image/toolbar/anchor/
+  region state, painted/hit-test visibility, the exact dimensions and SHA-256 of its decoded RGBA
+  screenshot region (plus fixed sample pixels), exact source bytes and write counters before/after,
+  and post-Esc surface/reference cleanup. The implemented persistence assertion is intentionally
+  limited to **Esc = discard/no write**. `finally` restores the original source/settings/file/mode/
+  viewport, removes the fixture and instrumentation, clears plugin surface references, and runs on
+  failure as well as success. `SIGINT`/`SIGTERM` request the same cleanup path rather than exiting
+  around it.
+
+- **`tests/cdp/verify-release-differential.mjs`.** Accepts immutable baseline and candidate build
+  directories plus their expected versions/hashes and runs the identical toolbar-host capture
+  journey **sequentially in the same vault**: snapshot original vault/plugin state; load baseline;
+  restore the declared source/settings seed; capture; restore that same seed; load candidate;
+  capture; finally restore the original build, source, settings, file/mode and viewport even after
+  failure. It rejects a build whose manifest version or content hash differs from its declared
+  identity and accepts only the complete 24-ID capture contract. The compared contract is canonical
+  JSON with stable key/order and only documented technical non-determinism removed. The current
+  visual evidence is the exact RGBA hash + dimensions + fixed samples recorded above; it is **not**
+  a retained full-pixel screenshot artifact.
+
+  The optional allow-envelope is a checked manifest of exact contract paths and expected
+  baseline→candidate values. Every entry carries a changelog/issue ID for a change explicitly
+  authorized by the user; an unbound path, wildcard, missing ID or merely observed candidate delta
+  is rejected. A difference is accepted only when it matches that ID-bound expected delta exactly.
+  Every undeclared or mismatching difference fails the command, and the tool never rewrites captures
+  or updates a baseline from candidate output.
+
+  **Outcome-invariant assertion contract.** Every capture emits exactly **124 fixed, named assertion
+  slots in their declared order**, independent of whether the product is RED or GREEN. A journey
+  error records that error and fills every remaining slot assigned to the journey as `ok:false` with
+  error evidence; it never truncates, renames or reorders the contract. A structurally complete RED
+  baseline therefore remains valid diagnostic input and its product failures stay visible in the
+  baseline→candidate comparison.
+
+  **Result and exit semantics.** Any candidate `productFailures` produce `DIAGNOSTIC_RED` and exit 1,
+  including under `--report-only` and when the normalized baseline/candidate diff is empty. A fatal,
+  aborted or structurally incomplete capture exits 2. A normal gate pass requires both a
+  product-GREEN candidate and a passing ID-bound allow-envelope/differential assessment. The
+  `--self-test` mode exercises the fixed-slot validation, RED/GREEN classification and exit/status
+  semantics in isolation, without filesystem access, CDP or a build swap.
+
+**Pending expansion — not yet captured by this guard.** The target matrix in `test-plan.md` remains
+binding, but the following automated journeys are unchecked until each gets a concrete journey ID,
+assertions and differential evidence:
+
+- [ ] reconcile and post-reconcile owner continuity;
+- [ ] table-cell editor open/close;
+- [ ] scroll and viewport-resize while a session is open;
+- [ ] cached DOM/host reuse;
+- [ ] a session carried across a mode switch;
+- [ ] plugin unload/reload during or after a session;
+- [ ] ✓ accept, ordinary leave/click-away and ✗ cancel outcomes (✓/leave persist once; ✗ discards),
+  rather than the current Esc-only discard path;
+- [ ] undo grouping and final cursor/selection/scroll outcomes; and
+- [ ] retained full RGBA/pixel artifacts and full pixel comparison, beyond dimensions, an exact
+  RGBA hash and fixed samples.
+
+### 3.8 Bug 134 — editor-owned post-processor toolbar
+
+The fix changes none of methodology, requirements, architecture or the test plan. It realizes the
+existing `F7`, `D1`/`D1.1`, `D6`, `AD8` and `AB10` contracts for wrapperless post-processor hosts.
+
+- `toolbar.ts` exposes one editor-toolbar owner lookup: the existing `.lie-wrapper`, or an
+  `.internal-embed.image-embed.lie-embed` only while it is inside `.markdown-source-view`. Reading
+  View therefore has no eligible owner. Toolbar reflow keeps the existing `.lie-float` routing for
+  CM6 and assigns a separate measurement-preserving float marker to a too-small post-processor
+  owner; normal-size post-processor chrome stays in-image.
+- `main.ts` reconciles exactly one shared-model `.lie-toolbar-in-image` into the rendered image area
+  of each source-paired, wrapperless Live Preview host. It removes that owned chrome outside Live
+  Preview, when the toolbar setting is off and on plugin unload. Selection/hover uses the in-image
+  bar for a normal owner and the existing body-floating presentation only for an owner marked too
+  small. The active toolbar and hover region resolve through the same editor owner.
+- `filter-panel.ts`, `class-panel.ts` and `crop-editor.ts` use that same owner lookup. Size, Filters
+  and Crop consequently keep one connected image + toolbar + panel region without changing their
+  action, persistence or placement implementations. `styles.css` extends only the existing
+  in-image hover/region selectors to the Live Preview post-processor owner and keeps its hidden
+  measurement copy inert when the too-small floating presentation is active.
+
+**Bug-134 allowed change envelope.** Reading View normal/table/callout/footnote journeys change only
+from the regressed editing surface back to no toolbar, panel, crop surface or active editing image.
+Normal-size Live Preview table/callout/footnote journeys may change only from the body-floating bar
+to the same inset toolbar model used by CM6, and from a missing/disconnected hover owner to their
+connected post-processor host. Button order/actions and source writes are unchanged. Normal CM6,
+tiny/inline CM6, all rendering/caption/source-mapping behaviour, panel Esc/no-write behaviour and
+cleanup must remain byte-/geometry-/interaction-equivalent to the v0.6.16 baseline. The 24-journey
+host guard must be product-green; the v0.6.16→candidate differential may accept only exact
+Bug-134-bound paths and values matching this envelope.
 ---
 
 ## 4. Realization pitfalls (regression guards)
@@ -901,6 +1053,13 @@ caused. These are the low-level half of the decisions in `architecture.md` §2.
   rotate/filter/size still work while classes silently vanish).
 - **Link conversion.** Never route the size through `generateMarkdownLink`'s `alias` argument —
   it pushes the size into the alt text.
+- **Post-processor source identity.** Never pair a document-wide DOM occurrence set with a narrower
+  or differently-owned source set, and never use a first-basename fallback for a write. Live-preview
+  render blocks are bounded by their main-EditorView DOM range and paired only with parse-derived spans
+  in that range; cached addresses are revalidated against the current document and fail closed.
+- **Attribute-block boundary.** Never scan a trailing `{…}` block with `[^}]`, `indexOf("}")` or an
+  adapter-local approximation. Source parsing and post-processor DOM stripping use the same
+  quote-/escape-aware `scanAttributeBlock`; unterminated input is not consumed.
 - **AD7 (testability).** Keep decision logic in the `*-logic.ts` units; logic embedded in
   framework-coupled modules can only be caught by a manual live check.
 

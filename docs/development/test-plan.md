@@ -93,6 +93,71 @@ and sums pass/fail — "test a new Obsidian version" in one command. The crop sc
 > source `{…}` back and asserts it** (§3 `AD1` write-path matrix), never assuming the render. A test
 > that cannot fail when the write path is dead is not a verification.
 
+### 1.1 Release-baseline differential gate (`T13`)
+
+Every bugfix and feature declares its **allowed change envelope before implementation**: the exact
+user-visible journeys, views/hosts and expected before→after deltas that are explicitly in scope.
+Everything not listed in that envelope is protected by `T13`.
+
+The same black-box journey matrix is run against an immutable build of the **immediately preceding
+release** and the candidate, with the plugin build/version/hash recorded in the evidence. Both runs
+use the same vault state, Obsidian version, settings, locale, theme, viewport, view mode, input
+sequence and settle points; source and settings are restored between runs. When diagnosing a
+regression introduced by the latest release, first compare the previous-good release with the
+regressed release to locate the introduced deltas, then compare the regressed release with the
+candidate: the candidate may change only the declared correction and must preserve every unrelated
+latest-release behaviour.
+
+The differential gate compares all of the following outside the allowed envelope:
+
+- **Behaviour and interaction:** painted visibility and geometry, pointer/keyboard hit targets,
+  selection, toolbar/panel open–travel–close behaviour and command outcome.
+- **Appearance:** region screenshots plus geometry/pixel comparison under the deterministic fixture;
+  only explicitly declared deltas and documented non-deterministic masks may differ.
+- **Functionality and persistence:** rendered result, exact source delta, write count, undo grouping,
+  cursor/selection and scroll position.
+- **Lifecycle and cleanup:** hover/click, panel travel, resize/scroll, reconcile, cached/reused DOM,
+  mode switch and unload/reload leave no detached anchor, stale active image or orphaned surface.
+
+`tests/cdp/verify-toolbar-hosts.mjs` supplies the black-box real-pointer, geometry, screenshot and
+lifecycle host matrix. `tests/cdp/verify-release-differential.mjs` runs the same capture journey
+against the immutable baseline and candidate and compares their normalized contracts through an
+ID-bound allow-envelope whose entries require explicit user authorization.
+Normalization may remove only documented **technical** non-determinism; it must never equate
+semantically or visually different outcomes.
+
+A candidate passes only when every declared delta occurs inside the envelope and there is **no
+unexplained delta outside it**. An unexplained difference blocks the release. A baseline expectation
+may be changed only for a delta explicitly authorized by the user; accepting the candidate output as
+a new baseline is not a substitute for that authorization.
+
+### 1.2 Toolbar-host automation status
+
+Section 1.1 and the integration/acceptance cases below define the required **target** release gate.
+The currently executable `verify-toolbar-hosts.mjs` phase covers exactly 24 journeys; no item outside
+this checked list counts as automated evidence yet.
+
+- [x] Placement in Live Preview: normal CM6 inset, tiny/inline above, table inset, callout inset and
+  footnote inset (5 journeys).
+- [x] Real-pointer Resize/Filters/Crop panel open → panel travel → **Esc** on normal, tiny/inline,
+  table, callout and footnote hosts (15 journeys). Source bytes and write counts are compared
+  before/after; Esc must discard without a write.
+- [x] Reading View negatives for normal, table, callout and footnote images: real-pointer hover and
+  click plus touch long-press open no editing surface and write nothing (4 journeys).
+- [x] Current evidence: environment/settings/file/mode/version/build-hash/viewport gates; raw DOM
+  geometry and connected owner/anchor/region state; exact dimensions and SHA-256 of decoded RGBA
+  regions plus fixed pixel samples; before/after source/write state; per-journey surface cleanup;
+  failure and `SIGINT`/`SIGTERM` cleanup restoring the original fixture/settings/file/mode/viewport.
+- [ ] Reconcile, table-cell editor open/close, scroll/resize, cached host reuse, an open session
+  across mode switch, and plugin unload/reload.
+- [ ] ✓ accept, ordinary leave/click-away and ✗ cancel outcomes (including exactly-once persistence
+  for ✓/leave and discard for ✗), undo grouping, and final cursor/selection/scroll outcome.
+- [ ] Retained full RGBA/pixel artifacts and full pixel comparison; the implemented exact RGBA hash,
+  dimensions and fixed samples do not by themselves provide the complete pixel artifact.
+
+The later AD8 and Toolbar UX paragraphs describe the **target** matrix. Their unchecked portions are
+the expansion list above, not claims about the current script.
+
 ---
 
 ## 2. Unit tests (Low) — per pure `*-logic` unit
@@ -348,6 +413,13 @@ run via CDP eval against the example vault (`Lesson 6`, `AD7`).
   image + toolbar + panel form one active region (toolbar+panel show/hide together). *Verifies the
   single component, not per-feature reimplementation (`F14`, `D6`); pinned by
   `tests/cdp/verify-submodal-icons.mjs` + `tests/cdp/verify-submodal-region.mjs`.*
+  **Pending target expansion:** repeat the complete host lifecycle for both Live Preview ownership
+  forms: the CM6 `.lie-wrapper` widget and a Live Preview post-processor host (table/callout/footnote).
+  The selected image, toolbar, placement anchor and hover region must stay connected to one owner
+  before and after a reconcile; a detached/replaced owner closes through the defined context-loss
+  path and leaves no orphaned chrome. Reading View is the negative control and never creates an
+  editing region (`F7`). The current 24-journey phase pins only the placement, real-pointer
+  panel-open→Esc and Reading-negative subset listed in §1.2.
 - **D6.2/D6.3/D6.4 — Region visibility coupling (Bugs 62–64).** ONE signal drives toolbar visibility,
   staying-greyed and panel/palette visibility — never the CSS `:hover` competing with the JS region
   state. Confirm: (1) an active click OUTSIDE the region closes+persists filter/size but leaves an
@@ -557,10 +629,21 @@ Grouped by area; each line states what is checked.
 - **i18n (`F21`).** Switching Obsidian's locale switches the plugin's strings (reusing platform
   strings where available) with English fallback; the filter panel widens so translated labels
   fit, never clipped (`D6`).
-- **Toolbar & sub-menu UX (`F7`, `D1`–`D2`, `D6`).** The toolbar appears on selection and hover,
-  sits inset at the top (above the image when too small, `D1.1`), follows the defined order, and
-  wraps at dividers on overflow; every sub-menu is fully visible, never clipped or internally
-  scrolled, and the image + toolbar + open panel form one continuous active region.
+- **Toolbar & sub-menu UX (`F7`, `D1`–`D2`, `D6`).** In Reading View, hover, click and
+  long-press open no toolbar, panel or crop surface, establish no active editing image and write no
+  source. In Live Preview, repeat the same user journeys for (a) a normal CM6 widget, (b) a
+  too-small/inline widget and (c) post-processor-hosted images in a table, callout and footnote. A
+  normal-size image keeps the toolbar inset at its top; the toolbar is above the image only when the
+  image is too small under `D1.1`.
+  **Implemented automated subset:** the exact 24 journeys in §1.2 pin these five placement cases,
+  real-pointer Resize/Filters/Crop panel-open→travel→Esc on all five editor hosts, and the four
+  Reading negatives. They assert connected ownership/region state, painted/hit-test visibility,
+  exact RGBA hashes/dimensions, no Esc write and cleanup.
+  **Pending target expansion:** ✓/leave/✗ outcomes, undo/cursor/selection/scroll results, reconcile,
+  cell-editor open/close, scroll/resize, host reuse, session mode-switch, unload/reload and retained
+  full pixel artifacts. These must preserve one connected session or perform the defined context-loss
+  close without a detached active image, anchor, toolbar or panel before this entire target paragraph
+  is considered automated.
 
 ---
 

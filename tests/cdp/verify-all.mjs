@@ -1,12 +1,6 @@
 #!/usr/bin/env node
-// OPTICAL / CDP SUITE RUNNER — runs every `verify-*.mjs` in this folder against the running Obsidian
-// and summarises pass/fail. "Test a new Obsidian version" = one command:
-//   node tests/cdp/verify-all.mjs            (CDP_PORT defaults to 9223, target vault-image-toolbar)
-//
-// Scripts run SEQUENTIALLY — they share the one Obsidian window (active leaf + self-created
-// fixtures), so parallel runs would collide. Each script is self-contained (connects via _optical.mjs
-// or scripts/obsidian-debug.mjs) and exits non-zero on failure; this runner aggregates exit codes and
-// echoes each script's own "X/Y passed" line. Exit code = number of failing scripts.
+// Runs all single-build `verify-*.mjs` checks sequentially against the active Obsidian target.
+// `verify-release-differential.mjs` is the excluded multi-build orchestrator.
 
 import { readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -15,8 +9,12 @@ import path from "node:path";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const self = path.basename(fileURLToPath(import.meta.url));
+const multiBuildOrchestrator = "verify-release-differential.mjs";
 const scripts = readdirSync(here)
-  .filter((f) => f.startsWith("verify-") && f.endsWith(".mjs") && f !== self)
+  .filter((f) => f.startsWith("verify-")
+    && f.endsWith(".mjs")
+    && f !== self
+    && f !== multiBuildOrchestrator)
   .sort();
 
 const env = { ...process.env, CDP_PORT: process.env.CDP_PORT ?? "9223", CDP_TARGET: process.env.CDP_TARGET ?? "vault-image-toolbar" };

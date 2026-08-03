@@ -370,3 +370,9 @@ no language or link-format setting of its own.
   carries design history, bug-number narratives, why-prose, or cross-reference essays; that
   rationale belongs in `CHANGELOG.md` or the requirements / architecture / plan documents
   (one source of truth per altitude, R0).
+- **T13 — Strict change confinement.** A change may alter only the explicitly described incorrect
+  behaviour and/or an expressly commissioned feature. In every other user-observable path, its
+  behaviour, appearance, interactions and functionality remain unchanged from the immediately
+  preceding released version under the same environment.
+  Any additional observable delta is a regression — even if it appears
+  useful or reasonable — unless the user explicitly authorizes it as part of the change scope.

@@ -214,13 +214,45 @@ function encodeMdDest(path: string): string {
   return out;
 }
 
-/** Find the closing `{…}` block starting exactly at `pos` ("" / unchanged `end` if none —
- *  immediately adjacent only, no gap, matching the link head). */
-function scanBlock(line: string, pos: number): { block: string; end: number } {
-  if (line[pos] !== "{") return { block: "", end: pos };
-  const close = line.indexOf("}", pos + 1);
-  if (close === -1) return { block: "", end: pos };
-  return { block: line.slice(pos, close + 1), end: close + 1 };
+/**
+ * Scans an attribute block starting at `pos`.
+ *
+ * @returns The exact block, its brace-less inner text and exclusive end offset, or `null`.
+ */
+export function scanAttributeBlock(
+  text: string,
+  pos: number
+): { block: string; inner: string; end: number } | null {
+  if (text[pos] !== "{") return null;
+
+  let quote = "";
+  let i = pos + 1;
+  while (i < text.length) {
+    const char = text[i]!;
+    if (char === "\\") {
+      i += 2;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = "";
+      i++;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      i++;
+      continue;
+    }
+    if (char === "}") {
+      return {
+        block: text.slice(pos, i + 1),
+        inner: text.slice(pos + 1, i),
+        end: i + 1,
+      };
+    }
+    i++;
+  }
+  return null;
 }
 
 /** The first UNESCAPED `]` from `start` (an md alt's terminator) — Obsidian's own alt grammar
@@ -295,8 +327,18 @@ function scanWikiAt(line: string, i: number): ParsedEmbed | null {
   const { path, tail } = splitWikiInner(inner);
   const alt = tail ?? "";
   const { caption, size } = splitTail(alt);
-  const blockScan = scanBlock(line, headEnd);
-  return { format: "wiki", caption, path, size, alt, block: blockScan.block, start: i, headEnd, end: blockScan.end };
+  const blockScan = scanAttributeBlock(line, headEnd);
+  return {
+    format: "wiki",
+    caption,
+    path,
+    size,
+    alt,
+    block: blockScan?.block ?? "",
+    start: i,
+    headEnd,
+    end: blockScan?.end ?? headEnd,
+  };
 }
 
 /** Try a markdown embed (`![alt](dest){block}?`) anchored exactly at `i`. */
@@ -328,8 +370,18 @@ function scanMdAt(line: string, i: number): ParsedEmbed | null {
   const headEnd = closeParen + 1;
   const alt = resolveMdEscapes(altRaw);
   const { caption, size } = splitTail(alt);
-  const blockScan = scanBlock(line, headEnd);
-  return { format: "md", caption, path: pathRaw, size, alt, block: blockScan.block, start: i, headEnd, end: blockScan.end };
+  const blockScan = scanAttributeBlock(line, headEnd);
+  return {
+    format: "md",
+    caption,
+    path: pathRaw,
+    size,
+    alt,
+    block: blockScan?.block ?? "",
+    start: i,
+    headEnd,
+    end: blockScan?.end ?? headEnd,
+  };
 }
 
 /**

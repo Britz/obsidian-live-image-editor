@@ -24,6 +24,7 @@ import zlib from "node:zlib";
 const HOST = process.env.CDP_HOST || "host.containers.internal";
 const PORT = Number(process.env.CDP_PORT || 9223);
 const TARGET_MATCH = process.env.CDP_TARGET || "vault-image-toolbar";
+const COMMAND_TIMEOUT_MS = Number(process.env.CDP_COMMAND_TIMEOUT_MS || 10000);
 
 function httpGetJson(ip, path) {
   return new Promise((resolve, reject) => {
@@ -63,11 +64,19 @@ export async function connectOptical() {
   const ws = new WebSocket(wsUrl);
   let nextId = 1;
   const pending = new Map();
+  const rejectPending = (error) => {
+    for (const { reject, timer } of pending.values()) {
+      clearTimeout(timer);
+      reject(error);
+    }
+    pending.clear();
+  };
   ws.addEventListener("message", (ev) => {
     const m = JSON.parse(ev.data);
     if (m.id && pending.has(m.id)) {
-      const { resolve, reject } = pending.get(m.id);
+      const { resolve, reject, timer } = pending.get(m.id);
       pending.delete(m.id);
+      clearTimeout(timer);
       return m.error ? reject(new Error(m.error.message)) : resolve(m.result);
     }
   });
@@ -75,10 +84,24 @@ export async function connectOptical() {
     ws.addEventListener("open", resolve, { once: true });
     ws.addEventListener("error", () => reject(new Error("websocket error — CDP endpoint unreachable")), { once: true });
   });
+  ws.addEventListener("error", () => rejectPending(new Error("websocket error — pending CDP commands rejected")));
+  ws.addEventListener("close", () => rejectPending(new Error("websocket closed — pending CDP commands rejected")));
   const send = (method, params = {}) => {
     const id = nextId++;
-    ws.send(JSON.stringify({ id, method, params }));
-    return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(`CDP ${method} timed out after ${COMMAND_TIMEOUT_MS}ms`));
+      }, COMMAND_TIMEOUT_MS);
+      pending.set(id, { resolve, reject, timer });
+      try {
+        ws.send(JSON.stringify({ id, method, params }));
+      } catch (error) {
+        clearTimeout(timer);
+        pending.delete(id);
+        reject(error);
+      }
+    });
   };
 
   await send("Runtime.enable");
@@ -104,6 +127,7 @@ export async function connectOptical() {
         .catch((e) => { window[${q}] = JSON.stringify({ ok: false, err: String((e && e.stack) || e) }); });
       return true; })()`;
     await rawEval(kick);
+    try {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       await new Promise((r) => setTimeout(r, 300));
@@ -115,6 +139,9 @@ export async function connectOptical() {
         return obj.v;
       }
       if (Date.now() > deadline) throw new Error(`evaluate timed out after ${timeoutMs}ms`);
+    }
+    } finally {
+      await rawEval(`delete window[${q}]`).catch(() => {});
     }
   };
   // A real pointer move — the ONLY way to fire CSS `:hover` (a dispatched MouseEvent does not).
@@ -135,6 +162,14 @@ export async function connectOptical() {
     await send("Input.dispatchMouseEvent", { type: "mousePressed", x: px, y: py, button: "left", buttons: 1, clickCount: 1 });
     await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: px, y: py, button: "left", buttons: 0, clickCount: 1 });
   };
+  // A REAL touch long-press through the Input domain for touch-only negative controls.
+  const longPress = async (x, y, holdMs = 700) => {
+    const px = Math.round(x), py = Math.round(y);
+    const point = { x: px, y: py, radiusX: 1, radiusY: 1, rotationAngle: 0, force: 1, id: 1 };
+    await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+    await new Promise((resolve) => setTimeout(resolve, holdMs));
+    await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  };
   // Capture a viewport region (CSS px, getBoundingClientRect coords) at 1:1 and decode to RGBA.
   const screenshot = async (clip) => {
     const r = await send("Page.captureScreenshot", {
@@ -151,9 +186,29 @@ export async function connectOptical() {
   const focusEmulation = async (enabled = true) => {
     await send("Emulation.setFocusEmulationEnabled", { enabled });
   };
+  const setViewport = async (width, height, deviceScaleFactor = 1) => {
+    await send("Emulation.setDeviceMetricsOverride", {
+      width,
+      height,
+      deviceScaleFactor,
+      mobile: false,
+      screenWidth: width,
+      screenHeight: height,
+    });
+  };
+  const clearViewport = async () => {
+    await send("Emulation.clearDeviceMetricsOverride");
+  };
   const close = () => { try { ws.close(); } catch { /* ignore */ } };
 
-  return { evaluate, hover, click, press, screenshot, focusEmulation, close };
+  const targetInfo = {
+    pageCount: pages.length,
+    matchingPageCount: pages.filter((page) => score(page) === 3).length,
+    id: chosen.id,
+    title: chosen.title,
+    url: chosen.url,
+  };
+  return { evaluate, hover, click, longPress, press, screenshot, focusEmulation, setViewport, clearViewport, targetInfo, close };
 }
 
 // ---- minimal PNG decoder (8-bit, colorType 2/6, non-interlaced — what Chrome screenshots emit) ----

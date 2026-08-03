@@ -10,6 +10,7 @@ import { captionMarkdown, createCaption, CaptionHandle } from "./caption";
 import { buildLayers as applyTransformToImage } from "./render-core";
 import { ToolbarItem, buildToolbarElement } from "./toolbar";
 import { writeSource } from "./source-writer";
+import { isImageEmbedNodeName } from "./image-resolver";
 
 // Force a rebuild when external state (captions / reveal mode settings) changed.
 export const refreshDecorations = StateEffect.define<void>();
@@ -372,7 +373,7 @@ function collectEmbeds(state: EditorState, includeCode: boolean): TreeEmbed[] {
     // the scanner sweep below (fail-open).
     const full = ensureSyntaxTree(state, doc.length, 100);
     const cursor = (full ?? syntaxTree(state)).cursor();
-    do { if (/image-marker|formatting-embed/.test(cursor.name)) addAt(cursor.from); } while (cursor.next());
+    do { if (isImageEmbedNodeName(cursor.name)) addAt(cursor.from); } while (cursor.next());
     parsed = full !== null;
   } catch { /* parse unavailable → scanner fail-open below */ }
   // F20 "render images in code blocks" re-includes the code-section embeds the parse excluded; and if

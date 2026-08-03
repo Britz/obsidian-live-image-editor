@@ -8,6 +8,8 @@ export interface ImageLocation {
   end: number;      // end of the embed incl. a trailing {…} block
   isWikiLink: boolean;
   filename: string; // path as written in the embed (table-escaped `\|` unescaped)
+  /** The exact trailing attribute block including braces, or an empty string. */
+  block: string;
   params: string;   // content of the {…} transform block, "" if none
   // The alt/alias the embed carries (table-escaped `\|` unescaped): the Markdown alt
   // (`![ALT](path)`) or the wikilink alias after the first unescaped pipe (`![[path|ALIAS]]`,
@@ -50,10 +52,100 @@ function embedsInLine(line: string, lineNo: number): ImageLocation[] {
     end: e.end,
     isWikiLink: e.format === "wiki",
     filename: e.path,
+    block: e.block,
     params: e.block ? e.block.slice(1, -1) : "",
     alt: e.alt,
     inTable,
   }));
+}
+
+export interface RenderedImageIdentity<T> {
+  identity: T;
+  source: string;
+}
+
+export interface ImageLocationPair<T> {
+  identity: T;
+  location: ImageLocation;
+}
+
+export interface CachedImageLocation<T, D> extends ImageLocationPair<T> {
+  doc: D;
+}
+
+/** Returns whether a syntax-node name carries an Obsidian image-embed fragment. */
+export function isImageEmbedNodeName(name: string): boolean {
+  return name.includes("image-marker") || name.includes("formatting-embed");
+}
+
+/** Returns source locations inside an inclusive line range. */
+export function locationsInLineRange(
+  locations: readonly ImageLocation[],
+  lineStart: number,
+  lineEnd: number
+): ImageLocation[] | null {
+  if (!Number.isInteger(lineStart) || !Number.isInteger(lineEnd) || lineStart < 0 || lineEnd < lineStart) return null;
+  const bounded: ImageLocation[] = [];
+  for (const location of locations) {
+    if (!Number.isInteger(location.line) || location.line < 0) return null;
+    if (location.line >= lineStart && location.line <= lineEnd) bounded.push(location);
+  }
+  return bounded;
+}
+
+/** Returns a unique source-ordered cache for the current document. */
+export function currentDocumentLocationPairs<T, D>(
+  identities: readonly T[],
+  cached: readonly (CachedImageLocation<T, D> | null | undefined)[],
+  currentDoc: D
+): ImageLocationPair<T>[] | null {
+  if (identities.length !== cached.length) return null;
+  const seen = new Set<T>();
+  const locations = new Set<string>();
+  let previous: ImageLocation | null = null;
+  const pairs: ImageLocationPair<T>[] = [];
+  for (let i = 0; i < identities.length; i++) {
+    const identity = identities[i]!;
+    const entry = cached[i];
+    if (!entry || entry.identity !== identity || entry.doc !== currentDoc || seen.has(identity)) return null;
+    const location = entry.location;
+    const key = `${location.line}:${location.start}:${location.headEnd}:${location.end}`;
+    if (
+      locations.has(key)
+      || (previous !== null && (
+        location.line < previous.line
+        || (location.line === previous.line && location.start <= previous.start)
+      ))
+    ) return null;
+    seen.add(identity);
+    locations.add(key);
+    previous = location;
+    pairs.push({ identity, location });
+  }
+  return pairs;
+}
+
+/**
+ * Pairs rendered image identities and source locations in order when their basenames match exactly.
+ */
+export function pairImageLocations<T>(
+  rendered: readonly RenderedImageIdentity<T>[],
+  locations: readonly ImageLocation[]
+): ImageLocationPair<T>[] | null {
+  if (rendered.length !== locations.length) return null;
+
+  const identities = new Set<T>();
+  const pairs: ImageLocationPair<T>[] = [];
+  for (let i = 0; i < rendered.length; i++) {
+    const item = rendered[i]!;
+    const location = locations[i]!;
+    const renderedName = basename(item.source);
+    const locationName = basename(location.filename);
+    if (!renderedName || !locationName || identities.has(item.identity) || renderedName !== locationName) return null;
+    identities.add(item.identity);
+    pairs.push({ identity: item.identity, location });
+  }
+  return pairs;
 }
 
 export function findImageInSource(editor: Editor, img: HTMLImageElement): ImageLocation | null {

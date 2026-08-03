@@ -137,7 +137,7 @@ requirement + the storage/permission implications) before any code.
 
 ### Known open bugs (Bug)
 
-_**133 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
+_**134 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) except the ones still open below._
 
 > **Bugs 95–104 — a regression batch from the layout rework (`ba2dfa4`, "decouple size from layout"),
 > found in a CLEAN store install (v0.6.6).** The dev vault MASKED most of them: its `styles.css` was a
@@ -249,16 +249,6 @@ _**133 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       Bug 86) that consumes the interaction, or a guard in `crop()` (`locateActiveImage` / panel
       teardown) aborts the open on that click. DISTINCT from the reveal/dismiss engagement bug — even
       if co-triggered, the definitive defect is the dead button. (2026-06-27, user+CDP.)
-- [ ] **Bug 131 — A table-cell edit can write the WRONG embed when the same file also appears
-      earlier in the document.** The reading-adapter resolution walks ALL container `<img>`s counting
-      occurrences per basename — but in live preview that walk also counts the plugin's own widget
-      copies, suppressed natives and hidden static copies, so the n-th visible copy no longer maps to
-      the n-th source embed. _Live evidence (CDP, 2026-07-24):_ in the `verify-table-host` cell
-      journey, a width commit on the FIRST table-cell image wrote the standalone control line (same
-      file, earlier in the doc) instead of the row — the guard now uses a table-only fixture and this
-      registry item tracks the defect. _Fix sketch:_ resolve post-processor hosts position-exact from
-      their own host context (never a global img walk): count occurrences only among hosts this pass
-      OWNS, or map a cell host to its source row/column via the table widget's own position data.
 - [ ] **Bug 132 — The table cell editor can LINGER open after a click-away (the raw source stays
       revealed beside/behind the image).** Observed repeatedly under CDP focus emulation
       (2026-07-24): after interacting with a cell image, real clicks on a paragraph outside the table
@@ -267,12 +257,28 @@ _**133 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       whether this reproduces WITHOUT focus emulation (a real focused window); if it does, check
       whether the plugin's click/dismiss path or caret handling keeps the selection inside the cell
       editor. (`verify-table-host` reports it as a WARN, not gated.)
-- [ ] **Bug 133 — The post-processor `{…}` model is a bespoke single-brace regex, not the ONE
-      grammar.** `stripBlockText` ([main.ts](../../src/main.ts)) matches `^\s*\{([^}]*)\}` against
-      the text node after the embed — it cannot handle a quoted `}` inside the block and duplicates
-      block knowledge outside link-format (Bug 120's insight). _Fix sketch:_ the reconcile/attach
-      already knows the embed's SOURCE location (`findImageInText` → `loc.params`); strip exactly the
-      source-derived block text via the one grammar instead of re-parsing the DOM text node.
+- [ ] **Bug 134 — v0.6.15 routes Reading View and normal-sized post-processor hosts through the
+      tiny-image floating-toolbar path.** Bug 123 expanded the delegated `mouseover` from floated
+      wrappers to every `.internal-embed.image-embed.lie-embed`; that selector also reaches Reading
+      View. `onImageSelected` then treats the absence of `.lie-wrapper:not(.lie-float)` as the reason
+      to call `ImageToolbar.show`, so a wrapperless host is effectively conflated with a genuinely
+      tiny image. _Differential evidence (0.6.14 → 0.6.15, identical environment, real pointer):_ all
+      four **Reading** journeys (normal/table/callout/footnote) had no body toolbar in the baseline;
+      the candidate creates a 566×38 `.lie-toolbar-floating` on `body`, exactly 8px above the image.
+      In Reading View the editing toolbar itself is forbidden. For Live Preview Table/Callout, the
+      candidate's normal-sized images likewise get the above-image variant exactly 8px away instead
+      of the in-image variant; real Size/Filter/Crop button clicks reach and open their panels, but
+      the hover/owner region remains unconnected. The Live Preview baseline does **not** support a
+      blanket no-toolbar claim: its Table state reported a floating/above placement at a much larger
+      gap, while its panel journeys found no visible buttons. The normal CM6 widget is unchanged and
+      green. Because the Table/Callout panels do open in the candidate, the broader report
+      “submenus/modals do not work” is **not** generally reproduced; the tiny custom-size panel travel
+      does fail, and the exact additional host/sequence remains to reproduce before extending the
+      claim. A missing Live Preview footnote host and the tiny-image placement are already present in
+      the baseline or are not proven as v0.6.15 deltas, so they are not separate release-regression
+      claims here. _Guard gap:_ the old host check accepted floating OR in-image placement and opened
+      panels through private methods; it did not pin view mode, real-click reachability, geometry or
+      the connected interaction region. (2026-08-02, user+CDP differential.)
 ---
 
 ## Meta level

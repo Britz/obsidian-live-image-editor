@@ -8,7 +8,11 @@ import { buildLayers as applyTransformToImage, applyFilterPreview, BOX_CLASS } f
 import { ImageToolbar, ToolbarItem, ToolbarButton, ToolbarGroup } from "./toolbar";
 import { BRAND_ICON_ID, BRAND_ICON_SVG } from "./brand-icon";
 import { LAYOUTS, LAYOUT_ICON_ID, registerLayoutIcons, currentLayout } from "./layout-icons";
-import { findImageInSource, findImageInText, findImageInLine, firstEmbedInLine, allEmbedsInText, spansOverlappingRanges, getImageFilename, basename, ImageLocation } from "./image-resolver";
+import {
+  firstEmbedInLine, allEmbedsInText, spansOverlappingRanges, getImageFilename, basename,
+  isImageEmbedNodeName, locationsInLineRange, currentDocumentLocationPairs,
+  pairImageLocations, ImageLocation,
+} from "./image-resolver";
 import { CropEditor } from "./crop-editor";
 import { FilterPanel } from "./filter-panel";
 import { ClassPanel } from "./class-panel";
@@ -22,16 +26,21 @@ import { registerCommands, CommandHandler } from "./commands";
 import { LieSettings, DEFAULT_SETTINGS, LieSettingTab } from "./settings";
 import { createLivePreviewExtension, refreshDecorations, toggleEmbedReveal } from "./live-preview";
 import { captionFromAlt, createCaption, CaptionHandle } from "./caption";
-import { Prec } from "@codemirror/state";
+import { Prec, type Text as CmText } from "@codemirror/state";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { EditorView, ViewPlugin } from "@codemirror/view";
 import { setLocale, detectLocale, t } from "./i18n";
-import { desiredFormat, splitTail, buildEmbed, stripLinkSubpath, pathFromGeneratedLink, canonicalTarget, LinkFormat } from "./link-format";
+import {
+  desiredFormat, splitTail, buildEmbed, stripLinkSubpath, pathFromGeneratedLink, canonicalTarget,
+  scanAttributeBlock, scanEmbed, isTableRow, LinkFormat, ParsedEmbed,
+} from "./link-format";
 import { replaceEmbedTarget, planReplaceAll } from "./replace-logic";
 import { ImagePickerModal } from "./replace-picker";
 import { writeSource } from "./source-writer";
 import { clickDismissesToolbar, isEngaged } from "./toolbar-region-logic";
 import { ensureEditingToolbarButtons } from "./editing-toolbar-integration";
-import { isHiddenHostCopy } from "./attach-logic";
+
+const POSTPROCESSOR_BLOCK_SELECTOR = ".cm-embed-block.markdown-rendered";
 
 // Shared transform modifiers — used by BOTH the single-image toolbar/command path and the
 // multi-image (selection) command path, so the two never drift (R0). Rotate/flip/inline are
@@ -62,6 +71,7 @@ export default class LiveImageEditorPlugin extends Plugin {
   private classPanel: ClassPanel | null = null;
   private submenu: AnchoredSubmenu | null = null;
   private cropEditor: CropEditor | null = null;
+  private readingSections = new Map<HTMLElement, { ctx: MarkdownPostProcessorContext }>();
 
   async onload(): Promise<void> {
     addIcon(BRAND_ICON_ID, BRAND_ICON_SVG); // brand mark — usable via setIcon (editing-toolbar submenu, settings)
@@ -80,6 +90,9 @@ export default class LiveImageEditorPlugin extends Plugin {
 
     this.registerEvent(this.app.workspace.on("layout-change", () => this.reconcileFromSource()));
     this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.reconcileFromSource()));
+    this.registerEvent(this.app.metadataCache.on("changed", (file) => {
+      if (file.path === this.app.workspace.getActiveFile()?.path) this.scheduleReconcile();
+    }));
 
     // An EditorView's create/destroy is a real render-lifecycle op (the LP extension runs in every
     // editor, the table cell editor included) — the close re-shows the static copy, which may
@@ -224,32 +237,46 @@ export default class LiveImageEditorPlugin extends Plugin {
     // Attach at the section's mount (`onload`); a section is built detached.
     const child = new MarkdownRenderChild(el);
     child.onload = () => {
+      const registration = { ctx };
+      this.readingSections.set(el, registration);
+      child.register(() => {
+        if (this.readingSections.get(el) === registration) this.readingSections.delete(el);
+      });
+      const reconcile = (): void => this.reconcileReadingSection(el, ctx);
       for (const embed of Array.from(el.querySelectorAll(".internal-embed"))) {
-        this.processBlock(embed as HTMLElement, () => embed.querySelector("img"));
+        this.processBlock(embed as HTMLElement, () => embed.querySelector("img"), reconcile);
       }
       for (const img of Array.from(el.querySelectorAll("img"))) {
         if (img.closest(".internal-embed")) continue;
-        this.processBlock(img, () => img);
+        this.processBlock(img, () => img, reconcile);
       }
+      reconcile();
+      window.requestAnimationFrame(reconcile);
     };
     ctx.addChild(child);
-    // Captions/occurrences ride the document-wide reconcile pass.
+    // Reconcile mounted cached sections after layout settles.
     this.scheduleReconcile();
   }
 
-  /** Strip a leading `{…}` off the text node right after `anchor` (F3 — the block is never shown
-   *  as text); returns its parsed transform. Shared by the post-processor attach and reconcile. */
-  private stripBlockText(anchor: HTMLElement): ImageTransform | null {
+  /** Removes a complete leading attribute block and returns its parsed source transform. */
+  private stripBlockText(anchor: HTMLElement, location?: ImageLocation): ImageTransform | null {
     const textNode = this.findBlockTextNode(anchor);
-    const match = textNode ? (textNode.textContent ?? "").match(/^\s*\{([^}]*)\}/) : null;
-    const transform = match ? parseAltText(match[1] ?? "") : null;
-    if (transform && this.hasTransforms(transform) && textNode && match) {
-      textNode.textContent = (textNode.textContent ?? "").slice(match[0].length);
+    if (textNode) {
+      const text = textNode.textContent ?? "";
+      let start = 0;
+      while (start < text.length && /\s/.test(text[start]!)) start++;
+      const scanned = scanAttributeBlock(text, start);
+      if (scanned) textNode.textContent = text.slice(scanned.end);
+      if (!location && scanned) return parseAltText(scanned.inner);
     }
-    return transform;
+    return location ? parseAltText(location.params) : null;
   }
 
-  private processBlock(anchor: HTMLElement, getImg: () => HTMLImageElement | null): void {
+  private processBlock(
+    anchor: HTMLElement,
+    getImg: () => HTMLImageElement | null,
+    onApply?: () => void
+  ): void {
     const transform = this.stripBlockText(anchor);
 
     /** Decorate once the embed's img exists; a copy rendered hidden is decorated too. */
@@ -267,6 +294,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       else this.clearStaleTransform(img);
       // Shrink-wrap marker on the host that holds the box.
       img.closest(`.${BOX_CLASS}`)?.parentElement?.classList.add("lie-embed");
+      onApply?.();
       return true;
     };
     if (apply()) return;
@@ -284,6 +312,240 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   private readingCaptions = new WeakMap<HTMLImageElement, CaptionHandle>();
+  private postProcessorLocations = new WeakMap<HTMLImageElement, { doc: CmText; location: ImageLocation }>();
+
+  /** Returns the visible adapter root for the active Markdown mode. */
+  private adapterRoot(view: MarkdownView): HTMLElement | null {
+    return view.contentEl.querySelector<HTMLElement>(
+      view.getMode() === "preview" ? ".markdown-reading-view, .markdown-preview-view" : ".markdown-source-view"
+    );
+  }
+
+  /** Converts one anchored embed scan into the source-location shape. */
+  private toImageLocation(line: number, lineText: string, column: number, embed: ParsedEmbed): ImageLocation {
+    return {
+      line,
+      start: column,
+      headEnd: column + embed.headEnd,
+      end: column + embed.end,
+      isWikiLink: embed.format === "wiki",
+      filename: embed.path,
+      block: embed.block,
+      params: embed.block ? embed.block.slice(1, -1) : "",
+      alt: embed.alt,
+      inTable: isTableRow(lineText),
+    };
+  }
+
+  /** Returns parse-derived image locations wholly contained in a document range. */
+  private parseLocationsInRange(cm: EditorView, from: number, to: number): ImageLocation[] | null {
+    if (from < 0 || to < from || to > cm.state.doc.length) return null;
+    try {
+      const current = syntaxTree(cm.state);
+      const tree = current.length >= to ? current : ensureSyntaxTree(cm.state, to, 100);
+      if (!tree || tree.length < to) return null;
+
+      const locations: ImageLocation[] = [];
+      const seen = new Set<number>();
+      const cursor = tree.cursor();
+      do {
+        if (!isImageEmbedNodeName(cursor.name)) continue;
+        if (cursor.from < from || cursor.from >= to || seen.has(cursor.from)) continue;
+        seen.add(cursor.from);
+        const line = cm.state.doc.lineAt(cursor.from);
+        const embed = scanEmbed(cm.state.doc.sliceString(cursor.from, line.to), 0);
+        if (!embed || embed.start !== 0 || cursor.from + embed.end > to) return null;
+        locations.push(this.toImageLocation(line.number - 1, line.text, cursor.from - line.from, embed));
+      } while (cursor.next());
+      locations.sort((a, b) => a.line - b.line || a.start - b.start);
+      return locations;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Returns owned post-processor images once each in DOM order. */
+  private postProcessorImages(root: ParentNode, block?: HTMLElement): HTMLImageElement[] | null {
+    const images: HTMLImageElement[] = [];
+    const seen = new Set<HTMLImageElement>();
+    for (const node of Array.from(root.querySelectorAll<HTMLElement>(".internal-embed, img"))) {
+      if (node.matches(".internal-embed")) {
+        if (node.closest(".lie-caption")) continue;
+        if (block && node.closest(POSTPROCESSOR_BLOCK_SELECTOR) !== block) continue;
+        const owned = Array.from(node.querySelectorAll<HTMLImageElement>("img")).filter((candidate) =>
+          candidate.closest(".internal-embed") === node && !candidate.closest(".lie-caption")
+        );
+        if (owned.length !== 1 || seen.has(owned[0]!)) return null;
+        seen.add(owned[0]!);
+        images.push(owned[0]!);
+        continue;
+      }
+      const img = node as HTMLImageElement;
+      if (img.closest(".internal-embed") || img.closest(".lie-caption")) continue;
+      if (block && img.closest(POSTPROCESSOR_BLOCK_SELECTOR) !== block) continue;
+      if (seen.has(img)) return null;
+      seen.add(img);
+      images.push(img);
+    }
+    return images;
+  }
+
+  /** Clears derived post-processor addresses within a render context. */
+  private clearPostProcessorLocations(root: ParentNode): void {
+    for (const img of Array.from(root.querySelectorAll("img"))) this.postProcessorLocations.delete(img);
+  }
+
+  /** Pairs one Live Preview render block with source locations from its main editor range. */
+  private pairLivePreviewBlock(
+    cm: EditorView,
+    block: HTMLElement
+  ): { identity: HTMLImageElement; location: ImageLocation }[] | null {
+    this.clearPostProcessorLocations(block);
+    const images = this.postProcessorImages(block, block);
+    if (!images) return null;
+    try {
+      const from = cm.posAtDOM(block, 0);
+      const to = cm.posAtDOM(block, block.childNodes.length);
+      if (to < from) return null;
+      const locations = this.parseLocationsInRange(cm, from, to);
+      if (!locations) return null;
+      const pairs = pairImageLocations(
+        images.map((identity) => ({ identity, source: getImageFilename(identity) ?? "" })),
+        locations
+      );
+      if (!pairs) return null;
+      for (const pair of pairs) this.postProcessorLocations.set(pair.identity, { doc: cm.state.doc, location: pair.location });
+      return pairs;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Returns cache-confirmed source locations for the current immutable document. */
+  private readingLocations(file: TFile, doc: CmText): ImageLocation[] | null {
+    const embeds = this.app.metadataCache.getFileCache(file)?.embeds ?? [];
+    const locations: ImageLocation[] = [];
+    const seen = new Set<number>();
+    for (const cached of embeds) {
+      const { start, end } = cached.position;
+      if (start.line !== end.line || start.line < 0 || start.line >= doc.lines) return null;
+      const line = doc.line(start.line + 1);
+      if (
+        start.col < 0 || end.col < start.col ||
+        line.from + start.col !== start.offset ||
+        line.from + end.col !== end.offset ||
+        start.offset < line.from || end.offset > line.to ||
+        doc.sliceString(start.offset, end.offset) !== cached.original ||
+        seen.has(start.offset)
+      ) return null;
+      const embed = scanEmbed(doc.sliceString(start.offset, line.to), 0);
+      if (
+        !embed || embed.start !== 0 ||
+        embed.headEnd !== cached.original.length ||
+        start.offset + embed.headEnd !== end.offset ||
+        start.offset + embed.end > line.to
+      ) return null;
+      seen.add(start.offset);
+      locations.push(this.toImageLocation(start.line, line.text, start.col, embed));
+    }
+    locations.sort((a, b) => a.line - b.line || a.start - b.start);
+    return locations;
+  }
+
+  /** Pairs one Reading View post-processor section with its bounded source embeds. */
+  private pairReadingSection(
+    el: HTMLElement,
+    ctx: MarkdownPostProcessorContext
+  ): { identity: HTMLImageElement; location: ImageLocation }[] | null {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view || view.getMode() !== "preview") return null;
+    const file = view.file;
+    if (!file || file.path !== ctx.sourcePath) return null;
+    const cm = (view.editor as unknown as { cm?: EditorView }).cm;
+    if (!cm || cm.state.doc.toString() !== view.editor.getValue()) return null;
+    this.clearPostProcessorLocations(el);
+    const images = this.postProcessorImages(el);
+    if (!images) return null;
+    const allLocations = this.readingLocations(file, cm.state.doc);
+    if (!allLocations) return null;
+    const section = ctx.getSectionInfo(el);
+    if (!section || section.lineEnd >= cm.state.doc.lines) return null;
+    const locations = locationsInLineRange(allLocations, section.lineStart, section.lineEnd);
+    if (!locations) return null;
+    const pairs = pairImageLocations(
+      images.map((identity) => ({ identity, source: getImageFilename(identity) ?? "" })),
+      locations
+    );
+    if (!pairs) return null;
+    for (const pair of pairs) {
+      this.postProcessorLocations.set(pair.identity, { doc: cm.state.doc, location: pair.location });
+    }
+    return pairs;
+  }
+
+  /** Returns current-document cached Reading View section pairs. */
+  private cachedReadingPairs(
+    container: ParentNode,
+    editor: Editor,
+    doc: CmText
+  ): { identity: HTMLImageElement; location: ImageLocation }[] | null {
+    const images = this.postProcessorImages(container);
+    if (!images) return null;
+    const current = currentDocumentLocationPairs(
+      images,
+      images.map((identity) => {
+        const cached = this.postProcessorLocations.get(identity);
+        return cached ? { identity, doc: cached.doc, location: cached.location } : null;
+      }),
+      doc
+    );
+    if (!current) return null;
+    const pairs: { identity: HTMLImageElement; location: ImageLocation }[] = [];
+    for (const { identity, location: cached } of current) {
+      const source = getImageFilename(identity);
+      if (!source) return null;
+      const location = this.reparseLocation(editor, cached, cached.filename);
+      if (!location || basename(location.filename) !== basename(source)) return null;
+      this.postProcessorLocations.set(identity, { doc, location });
+      pairs.push({ identity, location });
+    }
+    return pairs;
+  }
+
+  /** Remaps connected registered Reading View sections in the active root. */
+  private remapReadingSections(container: HTMLElement): boolean {
+    let found = false;
+    for (const [el, registration] of this.readingSections) {
+      if (!el.isConnected || !container.contains(el)) continue;
+      found = true;
+      if (!this.pairReadingSection(el, registration.ctx)) return false;
+    }
+    return found;
+  }
+
+  /** Applies source-derived render state to paired post-processor images. */
+  private applySourcePairs(
+    pairs: readonly { identity: HTMLImageElement; location: ImageLocation }[],
+    sourcePath: string
+  ): void {
+    for (const { identity: img, location } of pairs) {
+      if (img.closest(".lie-cropping")) continue;
+      const anchor = img.closest<HTMLElement>(".internal-embed") ?? img;
+      const transform = this.stripBlockText(anchor, location) ?? parseAltText(location.params);
+      this.foldNativeSize(transform, img, location.alt);
+      if (this.hasTransforms(transform) || img.closest(".cm-content")) applyTransformToImage(img, transform);
+      else this.clearStaleTransform(img);
+      img.closest(`.${BOX_CLASS}`)?.parentElement?.classList.add("lie-embed");
+      this.applyReadingCaption(img, sourcePath, location.alt);
+    }
+  }
+
+  /** Reconciles one mounted Reading View post-processor section. */
+  private reconcileReadingSection(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
+    const pairs = this.pairReadingSection(el, ctx);
+    if (pairs) this.applySourcePairs(pairs, ctx.sourcePath);
+  }
+
   private readingCaptionText = new WeakMap<HTMLImageElement, string>();
 
   // Reading-view caption (F22): render the alt text as a Markdown caption below the box, as a child
@@ -336,62 +598,42 @@ export default class LiveImageEditorPlugin extends Plugin {
   /** Reconcile run counter (read by the CDP guards). */
   reconcileRunCount = 0;
 
-  // Reading-view render path only (Obsidian caches embeds). The LP CM6 widget owns its
-  // own `.lie-wrapper` images — reconcile must NOT touch them (no double render, Lesson 8).
+  /** Reconciles owned post-processor images with their paired current source locations. */
   private reconcileFromSource(): void {
     this.reconcileRunCount++;
     const run = () => {
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (!view) return;
-      // The VISIBLE container, picked by mode (selector order alone can return the hidden one).
-      const container = view.contentEl.querySelector(
-        view.getMode() === "preview" ? ".markdown-reading-view, .markdown-preview-view" : ".markdown-source-view"
-      );
+      const container = this.adapterRoot(view);
       if (!container) return;
       const source = view.editor?.getValue() ?? "";
-      if (!source) return;
-      const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
+      const file = view.file;
+      if (!file) return;
+      const sourcePath = file.path;
+      const cm = (view.editor as unknown as { cm?: EditorView } | undefined)?.cm;
+      if (!cm || cm.state.doc.toString() !== source) return;
 
-      // Track each basename's occurrence in DOM order (= source order in reading view) so a
-      // file embedded more than once resolves POSITION-EXACT (F2/AB3): the n-th rendered embed
-      // maps to the n-th source embed, not merely the first basename match. Skipped images are
-      // still counted so later duplicates stay aligned.
-      const seen = new Map<string, number>();
-      for (const el of Array.from(container.querySelectorAll("img"))) {
-        const img = el;
-        const file = getImageFilename(img);
-        if (!file) continue;
-        const occurrence = seen.get(file) ?? 0;
-        seen.set(file, occurrence + 1);
-        // Skip what this pass does not own: plugin chrome, hidden host copies, and CM6 natives —
-        // structurally anything in `.cm-content` OUTSIDE a `.markdown-rendered` render block
-        // (post-processor hosts always render inside one).
-        if (img.closest(".lie-wrapper, .lie-cropping")) continue;
-        if (isHiddenHostCopy(img)) continue;
-        const embedHost = img.closest<HTMLElement>(".internal-embed");
-        if (img.closest(".cm-content") && !img.closest(".markdown-rendered")) {
-          // Cache hygiene (F2): Obsidian re-uses embed DOM across views — a reading caption
-          // riding a re-used native is stale here.
-          if (embedHost) for (const c of Array.from(embedHost.querySelectorAll(".lie-caption"))) c.remove();
-          continue;
+      let pairs: { identity: HTMLImageElement; location: ImageLocation }[] = [];
+      if (view.getMode() === "preview") {
+        let readingPairs = this.cachedReadingPairs(container, view.editor, cm.state.doc);
+        if (!readingPairs && this.remapReadingSections(container)) {
+          readingPairs = this.cachedReadingPairs(container, view.editor, cm.state.doc);
         }
-        // A cached copy re-shown without a post-processor call may still carry its `{…}` text.
-        if (embedHost) this.stripBlockText(embedHost);
-        const loc = findImageInText(source, file, occurrence);
-        const transform = loc ? parseAltText(loc.params) : { classes: [] };
-        // Fold the native wikilink/markdown size into the transform on READ (the {…} block wins);
-        // a raw `![[img|160]]` with no block still renders at its size (Bug 94). The raw source
-        // alias (loc.alt) is authoritative for every pipe variant.
-        this.foldNativeSize(transform, img, loc?.alt);
-        // A post-processor host nested inside live preview's `.cm-content` needs its replacement box
-        // even with no transform — the uniform native-suppression CSS would otherwise hide it with
-        // nothing to show (Bug 124); mirrors the same decision processBlock's own attach makes.
-        if (this.hasTransforms(transform) || img.closest(".cm-content")) applyTransformToImage(img, transform);
-        else this.clearStaleTransform(img);
-        // Same source-derived alt the post-processor path relies on (F22 / Bug 121) — `loc.alt` is the
-        // author's text, never the rendered `alt` attribute (Obsidian defaults that to the filename).
-        this.applyReadingCaption(img, sourcePath, loc?.alt ?? "");
+        if (!readingPairs) return;
+        pairs = readingPairs;
+      } else {
+        for (const host of Array.from(container.querySelectorAll<HTMLElement>(".cm-content .internal-embed"))) {
+          if (host.closest(".markdown-rendered")) continue;
+          for (const caption of Array.from(host.querySelectorAll(".lie-caption"))) caption.remove();
+        }
+
+        for (const block of Array.from(container.querySelectorAll<HTMLElement>(POSTPROCESSOR_BLOCK_SELECTOR))) {
+          const blockPairs = this.pairLivePreviewBlock(cm, block);
+          if (blockPairs) pairs.push(...blockPairs);
+        }
       }
+
+      this.applySourcePairs(pairs, sourcePath);
     };
     run();
     window.requestAnimationFrame(run);
@@ -417,7 +659,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       if (node.nodeType === Node.TEXT_NODE) {
         const text = node.textContent ?? "";
         if (text.trim() === "") { node = node.nextSibling; continue; }
-        return /^\s*\{[^}]*\}/.test(text) ? (node as Text) : null;
+        return node as Text;
       }
       return null;
     }
@@ -812,24 +1054,11 @@ export default class LiveImageEditorPlugin extends Plugin {
     return t("multiImages").replace("{n}", String(n));
   }
 
-  // Line-accurate {location, rendered <img>} pairs for the selected embeds — used to live-preview a
-  // multi panel on EACH image. The DOM image is found by its CM6 source position (`posAtDOM`), so a
-  // file embedded more than once previews on the RIGHT element; basename lookup is the fallback.
+  /** Returns exact source-to-render pairs for uniquely addressable locations. */
   private renderedPairs(locations: ImageLocation[]): { loc: ImageLocation; img: HTMLImageElement }[] {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    const cm = (view?.editor as unknown as { cm?: EditorView } | undefined)?.cm;
-    const root = view?.contentEl.querySelector(".markdown-source-view");
-    const byLine = new Map<number, HTMLImageElement>();
-    if (cm && root) {
-      for (const wrapper of Array.from(root.querySelectorAll<HTMLElement>(".lie-wrapper"))) {
-        const img = wrapper.querySelector("img");
-        if (!img) continue;
-        try { byLine.set(cm.state.doc.lineAt(cm.posAtDOM(wrapper)).number - 1, img); } catch { /* skip */ }
-      }
-    }
     const out: { loc: ImageLocation; img: HTMLImageElement }[] = [];
     for (const loc of locations) {
-      const img = byLine.get(loc.line) ?? this.findRenderedImage(loc);
+      const img = this.findRenderedImage(loc);
       if (img) out.push({ loc, img });
     }
     return out;
@@ -964,44 +1193,95 @@ export default class LiveImageEditorPlugin extends Plugin {
     new Notice(t("resetAllDone").replace("{n}", String(edited.length)));
   }
 
-  // Resolve the active image's source location (Bug 56). Prefer the rendered image's ACTUAL
-  // line, read from its DOM position via CM6 `posAtDOM` (the same line-accurate path the resize
-  // handle uses) — so a file embedded more than once resolves to the RIGHT occurrence, not the
-  // first basename match. Falls back to the basename scan only when there is no live editor
-  // view (e.g. reading view, where `cm` is absent).
-  private locateImage(editor: Editor, img: HTMLImageElement): ImageLocation | null {
-    const src = getImageFilename(img);
-    const cm = (editor as unknown as { cm?: EditorView }).cm;
-    const wrapper = img.closest<HTMLElement>(".lie-wrapper") ?? img;
-    if (src && cm && wrapper.isConnected) {
-      try {
-        const lineNo = editor.offsetToPos(cm.posAtDOM(wrapper)).line;
-        const loc = findImageInLine(editor.getLine(lineNo), lineNo, src);
-        if (loc) return loc;
-      } catch { /* fall back to the basename scan */ }
-    }
-    return findImageInSource(editor, img);
+  /** Re-parses the embed anchored at a stored source location. */
+  private reparseLocation(editor: Editor, location: ImageLocation, source: string): ImageLocation | null {
+    if (location.line < 0 || location.line >= editor.lineCount()) return null;
+    const line = editor.getLine(location.line);
+    if (location.start < 0 || location.start >= line.length) return null;
+    const embed = scanEmbed(line.slice(location.start), 0);
+    if (!embed || embed.start !== 0) return null;
+    const current = this.toImageLocation(location.line, line, location.start, embed);
+    return basename(current.filename) === basename(source) ? current : null;
   }
 
-  // The single image-location lookup every toolbar/menu action shares (R0). Prefers the LIVE
-  // image's DOM position (line-accurate even after the doc shifts — Bug 56); when the image is
-  // DETACHED (a panel whose anchor scrolled out of the CM6 viewport mid-edit), it falls back to
-  // the location captured at panel-open — NOT a basename scan, which would hit the wrong
-  // occurrence of a duplicated image. `notify` shows the user-facing Notices (resolveLocation);
-  // the panel openers stay silent.
-  private locateActiveImage(opts: { notify?: boolean; fallback?: ImageLocation } = {}):
-    { editor: Editor; location: ImageLocation } | null {
-    if (!this.activeImage) return null;
+  /** Resolves a normal CodeMirror widget from its exact decoration position. */
+  private widgetLocation(cm: EditorView, img: HTMLImageElement): ImageLocation | null {
+    const wrapper = img.closest<HTMLElement>(".lie-wrapper");
+    const source = getImageFilename(img);
+    if (!wrapper?.isConnected || !source) return null;
+    try {
+      const position = cm.posAtDOM(wrapper);
+      const line = cm.state.doc.lineAt(position);
+      const locations = this.parseLocationsInRange(cm, line.from, line.to);
+      if (!locations) return null;
+      const matches = locations.filter((location) =>
+        line.from + location.end === position && basename(location.filename) === basename(source)
+      );
+      return matches.length === 1 ? matches[0]! : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Returns whether an image belongs to a post-processor render host. */
+  private isPostProcessorImage(img: HTMLImageElement): boolean {
+    return !img.closest(".lie-caption") && !!img.closest(".markdown-rendered");
+  }
+
+  /** Revalidates a cached post-processor address against the current immutable document. */
+  private cachedPostProcessorLocation(editor: Editor, img: HTMLImageElement): ImageLocation | null {
+    const cached = this.postProcessorLocations.get(img);
+    const cm = (editor as unknown as { cm?: EditorView }).cm;
+    if (!cached || !cm) return null;
+
+    const exact = (): ImageLocation | null => {
+      const location = this.reparseLocation(editor, cached.location, cached.location.filename);
+      const source = getImageFilename(img);
+      if (!location || (source && basename(location.filename) !== basename(source))) return null;
+      this.postProcessorLocations.set(img, { doc: cm.state.doc, location });
+      return location;
+    };
+
+    if (cached.doc === cm.state.doc) {
+      const location = exact();
+      if (location) return location;
+    } else if (!img.isConnected) {
+      return exact();
+    }
+
+    if (!img.isConnected) return null;
+    const block = img.closest<HTMLElement>(POSTPROCESSOR_BLOCK_SELECTOR);
+    if (!block) return null;
+    this.pairLivePreviewBlock(cm, block);
+    const refreshed = this.postProcessorLocations.get(img);
+    if (!refreshed || refreshed.doc !== cm.state.doc) return null;
+    return this.reparseLocation(editor, refreshed.location, refreshed.location.filename);
+  }
+
+  /** Resolves an image without document-wide or basename-first fallback. */
+  private locateImage(editor: Editor, img: HTMLImageElement): ImageLocation | null {
+    if (this.postProcessorLocations.has(img)) return this.cachedPostProcessorLocation(editor, img);
+    if (this.isPostProcessorImage(img)) return null;
+    const cm = (editor as unknown as { cm?: EditorView }).cm;
+    return cm ? this.widgetLocation(cm, img) : null;
+  }
+
+  /** Resolves one specific image and revalidates a captured fallback when detached. */
+  private locateSpecificImage(
+    img: HTMLImageElement,
+    opts: { notify?: boolean; fallback?: ImageLocation } = {}
+  ): { editor: Editor; location: ImageLocation } | null {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) {
       if (opts.notify) new Notice("Open the note in editing mode to edit images.");
       return null;
     }
     const editor = view.editor;
-    let location: ImageLocation | null = null;
-    if (this.activeImage.isConnected) location = this.locateImage(editor, this.activeImage);
-    else if (opts.fallback) location = opts.fallback;
-    else location = this.locateImage(editor, this.activeImage);
+    let location = this.locateImage(editor, img);
+    const postProcessor = this.postProcessorLocations.has(img) || this.isPostProcessorImage(img);
+    if (!location && opts.fallback && !postProcessor) {
+      location = this.reparseLocation(editor, opts.fallback, opts.fallback.filename);
+    }
     if (!location) {
       if (opts.notify) new Notice("Couldn't locate this image in the note source.");
       return null;
@@ -1009,12 +1289,24 @@ export default class LiveImageEditorPlugin extends Plugin {
     return { editor, location };
   }
 
+  /** Resolves the active image for a single-image action. */
+  private locateActiveImage(opts: { notify?: boolean; fallback?: ImageLocation } = {}):
+    { editor: Editor; location: ImageLocation } | null {
+    if (!this.activeImage) return null;
+    return this.locateSpecificImage(this.activeImage, opts);
+  }
+
   private resolveLocation(): { editor: Editor; location: ImageLocation } | null {
     return this.locateActiveImage({ notify: true });
   }
 
-  private modifyTransform(modifier: (t: ImageTransform) => void, fallback?: ImageLocation): void {
-    const resolved = this.locateActiveImage({ notify: true, fallback });
+  private modifyTransform(
+    modifier: (t: ImageTransform) => void,
+    fallback?: ImageLocation,
+    target = this.activeImage
+  ): void {
+    if (!target) return;
+    const resolved = this.locateSpecificImage(target, { notify: true, fallback });
     if (!resolved) return;
     const { editor, location } = resolved;
     // Seed with the native pipe/alt size folded in so an edit that doesn't touch size (rotate,
@@ -1022,8 +1314,8 @@ export default class LiveImageEditorPlugin extends Plugin {
     // the {…} block and strips the pipe (size lives in the block — F6/T2, Bug 94).
     const transform = this.locationTransform(location);
     modifier(transform);
-    this.writeTransform(editor, location, transform);
-    this.applyLivePreview(location, transform);
+    if (!this.writeTransform(editor, location, transform, target)) return;
+    this.applyLivePreview(location, transform, target);
   }
 
   // The transform a located embed currently renders with: its {…} block PLUS the native
@@ -1053,9 +1345,19 @@ export default class LiveImageEditorPlugin extends Plugin {
     }
   }
 
-  private applyLivePreview(location: ImageLocation, transform: ImageTransform): void {
+  private applyLivePreview(
+    location: ImageLocation,
+    transform: ImageTransform,
+    preferred?: HTMLImageElement | null
+  ): void {
     const apply = () => {
-      const img = this.activeImage?.isConnected ? this.activeImage : this.findRenderedImage(location);
+      const img = preferred !== undefined
+        ? preferred?.isConnected
+          ? preferred
+          : this.findRenderedImage(location)
+        : this.activeImage?.isConnected
+          ? this.activeImage
+          : this.findRenderedImage(location);
       if (!img) return;
       this.activeImage = img;
       applyTransformToImage(img, transform);
@@ -1064,24 +1366,59 @@ export default class LiveImageEditorPlugin extends Plugin {
     window.requestAnimationFrame(apply);
   }
 
+  private sameLocation(a: ImageLocation, b: ImageLocation): boolean {
+    return a.line === b.line && a.start === b.start && a.headEnd === b.headEnd &&
+      a.end === b.end && basename(a.filename) === basename(b.filename);
+  }
+
+  /** Finds only a uniquely addressable rendered image for a source location. */
   private findRenderedImage(location: ImageLocation): HTMLImageElement | null {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    const root = view?.contentEl.querySelector(".markdown-source-view, .markdown-reading-view");
-    if (!root) return null;
-    const base = location.filename.split(/[/\\]/).pop() ?? "";
-    if (!base) return null;
-    return Array.from(root.querySelectorAll("img")).find((img) => {
-      const src = decodeURIComponent(img.getAttribute("src") ?? "");
-      return src.includes(base);
-    }) ?? null;
+    if (!view) return null;
+    const root = this.adapterRoot(view);
+    if (!root?.isConnected) return null;
+
+    const cm = (view.editor as unknown as { cm?: EditorView }).cm;
+    const candidates = new Set<HTMLImageElement>();
+    for (const img of Array.from(root.querySelectorAll<HTMLImageElement>("img"))) {
+      if (!img.isConnected || !root.contains(img)) continue;
+      const entry = this.postProcessorLocations.get(img);
+      if (entry && (!cm || entry.doc === cm.state.doc) && this.sameLocation(entry.location, location)) {
+        candidates.add(img);
+      }
+    }
+    if (cm) {
+      for (const wrapper of Array.from(root.querySelectorAll<HTMLElement>(".lie-wrapper"))) {
+        const img = wrapper.querySelector<HTMLImageElement>("img");
+        if (
+          !img?.isConnected || !root.contains(img) ||
+          this.postProcessorLocations.has(img) || this.isPostProcessorImage(img)
+        ) continue;
+        const current = this.widgetLocation(cm, img);
+        if (current && this.sameLocation(current, location)) candidates.add(img);
+      }
+    }
+    if (candidates.size !== 1) return null;
+    for (const candidate of candidates) return candidate;
+    return null;
   }
 
   /** Ordered-edit writer: rebuild the whole embed canonically (form per setting, native size
    *  folded, caption kept); source form/path kept when no token. One write, one undo step. */
-  private writeTransform(editor: Editor, location: ImageLocation, transform: ImageTransform): void {
+  private writeTransform(
+    editor: Editor,
+    location: ImageLocation,
+    transform: ImageTransform,
+    image?: HTMLImageElement | null
+  ): boolean {
+    if (image) {
+      const current = this.locateSpecificImage(image, { fallback: location });
+      if (!current || current.editor !== editor) return false;
+      location = current.location;
+    }
     const params = serializeTransform(transform);
     // An ordered edit that changes nothing writes nothing (F0) — no redundant undo step.
-    if (params === serializeTransform(this.locationTransform(location))) return;
+    if (params === serializeTransform(this.locationTransform(location))) return true;
     const { caption } = splitTail(location.alt);
     const desired = desiredFormat(this.useMarkdownLinks());
     const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
@@ -1094,6 +1431,7 @@ export default class LiveImageEditorPlugin extends Plugin {
     const from = editor.posToOffset({ line: location.line, ch: location.start });
     const to = editor.posToOffset({ line: location.line, ch: location.end });
     this.writeToSource(editor, from, to, embed);
+    return true;
   }
 
   // Funnel a document edit through the shared isolateHistory writer (one undo step per
@@ -1139,21 +1477,28 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.modifyTransform((tr) => setWidthPx(tr, this.settings.presetWidths[key]));
   }
 
-  private applyClass(cls: string): void {
+  private applyClass(
+    cls: string,
+    fallback?: ImageLocation,
+    target = this.activeImage
+  ): void {
     this.modifyTransform((tr) => {
       const idx = tr.classes.indexOf(cls);
       if (idx >= 0) tr.classes.splice(idx, 1);
       else tr.classes.push(cls);
-    });
+    }, fallback, target);
   }
 
   private reset(): void {
-    const resolved = this.resolveLocation();
+    const target = this.activeImage;
+    if (!target) return;
+    const resolved = this.locateSpecificImage(target, { notify: true });
     if (!resolved) return;
     const { editor, location } = resolved;
     const empty: ImageTransform = { classes: [] };
-    this.writeTransform(editor, location, empty);
-    applyTransformToImage(this.activeImage!, empty);
+    if (this.writeTransform(editor, location, empty, target)) {
+      applyTransformToImage(target, empty);
+    }
   }
 
   private activeToolbarEl(): HTMLElement | null {
@@ -1197,7 +1542,7 @@ export default class LiveImageEditorPlugin extends Plugin {
       title: t("customSize"),
       hoverRegion: img.closest<HTMLElement>(".lie-wrapper") ?? undefined,
       onReset: () => sizeBody.reset(),
-      onCommit: () => this.modifyTransform((tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; }, location),
+      onCommit: () => this.modifyTransform((tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; }, location, img),
       // ✗ cancel / Esc (F14): discard — no source write. The source was never touched while open,
       // so re-rendering the live image from its original params restores the pre-open size.
       onCancel: () => applyTransformToImage(this.liveTarget(img), this.locationTransform(location)),
@@ -1211,12 +1556,13 @@ export default class LiveImageEditorPlugin extends Plugin {
     const resolved = this.locateActiveImage();
     if (!resolved) return;
     const { location } = resolved;
+    const img = this.activeImage!;
 
     // Native pipe/alt size folded in, so cropping a raw `![[img|160]]` seeds the crop from its
     // actual displayed width (Bug 94); the commit's modifyTransform then normalizes it.
     const current = this.locationTransform(location);
     const cropEditor = new CropEditor(
-      this.activeImage!,
+      img,
       current,
       // Auto-persist on leave (AD8): a real crop writes its placement; a no-op / Reset leave passes
       // null → un-crop (clear the placement) while keeping the box width set elsewhere. `location`
@@ -1232,14 +1578,14 @@ export default class LiveImageEditorPlugin extends Plugin {
           tr.aspectRatio = undefined;
           tr.height = undefined;
         }
-      }, location),
+      }, location, img),
       () => { this.cropEditor = null; this.refreshLivePreviewDecorations(); }
     );
     // Set the ref BEFORE open(): if open() can't find the 3-layer structure it self-closes
     // synchronously (calling onClosed → nulls the ref), and a post-open assignment would otherwise
     // restore a dead editor and jam the crop toggle + the dismiss guards.
     this.cropEditor = cropEditor;
-    cropEditor.open(this.activeToolbarEl(), this.activeImage);
+    cropEditor.open(this.activeToolbarEl(), img);
   }
 
   private closeCrop(persist = true): void {
@@ -1258,7 +1604,7 @@ export default class LiveImageEditorPlugin extends Plugin {
 
     const panel = new FilterPanel(img, originalFilter, {
       onPreview: (filter: FilterData) => applyFilterPreview(this.liveTarget(img), filter),
-      onCommit: (filter: FilterData) => this.modifyTransform((tr) => setFilter(tr, Object.keys(filter).length ? filter : undefined), location),
+      onCommit: (filter: FilterData) => this.modifyTransform((tr) => setFilter(tr, Object.keys(filter).length ? filter : undefined), location, img),
       // ✗ cancel / Esc (F14): discard — no source write. Re-render from the untouched source to
       // restore the pre-open filter (and any other transform the live preview painted over).
       onCancel: () => applyTransformToImage(this.liveTarget(img), this.locationTransform(location)),
@@ -1303,10 +1649,10 @@ export default class LiveImageEditorPlugin extends Plugin {
       // Read the applied classes FRESHLY from source each refresh so the active marks track the
       // live document after every toggle (the toggle is an immediate write).
       appliedClasses: () => {
-        const loc = this.locateActiveImage();
+        const loc = this.locateSpecificImage(img);
         return loc ? parseAltText(loc.location.params).classes : [];
       },
-      onToggle: (className: string) => this.applyClass(className),
+      onToggle: (className: string) => this.applyClass(className, resolved.location, img),
       onClose: () => { this.classPanel = null; this.refreshLivePreviewDecorations(); },
     });
     panel.open(img, this.activeToolbarEl());
@@ -1369,10 +1715,15 @@ export default class LiveImageEditorPlugin extends Plugin {
   // (`replaceEmbedTarget`) so it carries the block/native-size exactly; we then write back the single
   // embed slice for that line (start→end) via the shared isolated writer.
   private replaceImage(): void {
-    const resolved = this.locateActiveImage({ notify: true });
+    const img = this.activeImage;
+    if (!img) return;
+    const resolved = this.locateSpecificImage(img, { notify: true });
     if (!resolved) return;
-    const { editor, location } = resolved;
+    const initial = resolved.location;
     this.pickImage((file) => {
+      const current = this.locateSpecificImage(img, { notify: true, fallback: initial });
+      if (!current) return;
+      const { editor, location } = current;
       const desired = desiredFormat(this.useMarkdownLinks());
       const token = this.replacementPathToken(file, desired);
       const rewritten = replaceEmbedTarget(editor.getValue(), location, token, desired === "wiki");
