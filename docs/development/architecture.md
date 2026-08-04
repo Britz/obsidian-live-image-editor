@@ -413,8 +413,14 @@ display state — each produces an edit that round-trips through the model layer
 
 - **AB10 — Toolbar** — hover/selection-revealed control bar with the defined order, grouping and
   divider-wrapping (D1, D2, F7); the entry point to every editing action. Sits inset at the
-  image top, or **above** the image when it is too small to hold the bar (D1.1). That too-small
-  placement is **declarative — a CSS container query on the box — with no JS measurement**.
+  image top, or **above** the image when it is too small to hold the bar (D1.1). It is one
+  toolbar with two presentations: a static inset bar on the image and the established body-level
+  presentation above it. The static inset bar remains the measurement instance; the body-level
+  bar is output only. A bounded reflow compares the visible image height with the actually
+  reflowed toolbar height including its 8px inset, and selects the above presentation only when
+  the inset bar would cover more than 60% of the image height. CSS styles both presentations;
+  reflow chooses between them. Image layout and position (inline, block or floated), host kind,
+  and existing layout markers never enter that decision.
 - **AB11 — Shared sub-menu host** — the one component realizing AD8 (greyed toolbar; per-panel
   **reset**, **cancel (✗)** and **accept (✓)** icons; Esc=cancel / Enter=accept; open/close toggle;
   **auto-persist on leave** with cancel/Esc discarding via the owner's revert; the one active region

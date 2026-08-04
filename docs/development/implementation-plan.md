@@ -538,7 +538,7 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   core, attaches chrome. Its reconcile skips images already owned by the live-preview pass (the
   plugin's own `.lie-wrapper` overlay) so the two passes never compete (AD5, AD6). The SAME
   post-processor path also renders post-processor-hosted embeds nested INSIDE live preview (a table
-  cell, a callout, a footnote popover) — there is no separate table/callout code path: for every
+  cell or callout) — there is no separate table/callout code path: for every
   rendered host copy the adapter makes ONE attach decision, and suppression, the replacement render,
   the caption and the hover region all follow from it, never handled piecemeal per host kind. The box
   is built (even for a normal, transform-less image) whenever the host sits where the live-preview
@@ -548,6 +548,11 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   interaction trigger no render/attach work — no observers, no polling, no standing timers): a
   post-processor section is built DETACHED and only its mount point decides whether the suppression
   applies, so the attach decision rides Obsidian's own render lifecycle
+
+  A Footnote definition in Live Preview is not a post-processor popover host in the tested Obsidian
+  runtime: its visible image is the normal plugin-owned CM6 `.lie-wrapper`, while Obsidian's native
+  embed remains uniformly suppressed. It therefore uses the ordinary CM6 widget, source and toolbar
+  paths. Reading View still renders Footnotes through the post-processor and remains editing-UI-free.
   (`MarkdownPostProcessorContext.addChild` → `MarkdownRenderChild.onload` = the section's mount) —
   never concluded early on a detached host, never re-evaluated outside a render. A render that
   produces a host copy decorates THAT copy — hidden or not: a copy rendered `display:none` (a table
@@ -574,10 +579,15 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
   adapters. The hover region binds to the host copy the plugin actually decorated, the same
   region-hover pattern the floating toolbar already uses, so hover opens the toolbar there exactly as
   it does everywhere else.
-  A post-processor host inside Live Preview is mapped through its enclosing
-  `.cm-embed-block.markdown-rendered`: the main EditorView's `posAtDOM` gives that block's current
-  `[from,to]` source range, and only syntax-tree embed spans inside that range may be paired with the
-  owned hosts of that same block. A derived `WeakMap` keeps `{ doc, location }` for render, caption and
+  A post-processor host inside Live Preview is mapped through its enclosing render block: a table uses
+  `.cm-embed-block.markdown-rendered`, while a callout uses `.cm-embed-block.cm-callout` with its
+  `.markdown-rendered` section nested inside. For a non-collapsed DOM range, the main EditorView's
+  `posAtDOM` supplies the current `[from,to]` source range unchanged. Obsidian 1.12.7 renders both of
+  these atomic hosts as CodeMirror `WidgetRange` blocks whose start/end DOM positions collapse to the
+  same source offset; only in that exact case (`lineBlockAt(from)` is a non-empty `WidgetRange` that
+  starts at `from`) the block's own `to` is the authoritative end. Only syntax-tree embed spans inside
+  that bounded range may be paired with the owned hosts of that same block. A derived `WeakMap` keeps
+  `{ doc, location }` for render, caption and
   later toolbar actions; it is only an AB3 address cache, never display or transform state. A different
   immutable `state.doc` invalidates the entry. Immediately before a write, the exact current source
   offset and basename are re-parsed; a stale entry is remapped once within its block and otherwise the
@@ -732,17 +742,28 @@ Mirrors `architecture.md` §4 (building blocks). Only the load-bearing functions
 - **`toolbar.ts`** — `buildToolbarElement` renders the ordered, divider-grouped bar from the shared
   `ToolbarItem[]` — the **ONE** toolbar, shown in **two presentations**: the EmbedWidget hosts it
   **in-chrome** on the box (`lie-toolbar-in-image`), and `ImageToolbar` **floats** the identical bar on
-  `body` (`lie-toolbar-floating`) for a `.lie-float` image (inline / too-short). Only host + class differ;
+  `body` (`lie-toolbar-floating`) only when the owner is geometrically too small. Only host + class differ;
   buttons, order and behaviour are the same by construction. The `<>` reveal is a **normal item**
   (leftmost, built in main's `toolbarItemsForImage`, action `toggleEmbedReveal`), so **both** presentations
   carry it identically; its per-show `is-off`/label reads the wrapper's `.lie-dismissed` class (a plain DOM
   signal set in the widget, since a dismiss flip already recreates the widget). Revealed on hover/selection,
-  positioned `absolute` on the box (D1, D2). **D1.1 (too-small →
-  above)** is a **CSS container query** on the box, no JS: *(CDP-verified)* `.lie-image-area
-  { container-type: size }` + `@container (max-height: <bar height>) { .lie-toolbar { top: auto;
-  bottom: 100% } }` flips the bar above at small sizes and is inert when large. (`container-type:
-  size` needs a resolvable height — the box's `aspect-ratio`/explicit size provides it; a
-  content-driven height would collapse under size containment, so use it only on the sized box.)
+  positioned `absolute` on the box (D1, D2). **D1.1 (too-small → above)** is decided by the pure,
+  unit-tested `toolbarPresentation` in `toolbar-placement-logic.ts`: after group folding, the static
+  inset toolbar's actual height plus its 8px inset is compared with the exact visible
+  `.lie-image-area` height; covering more than 60% selects the existing body-level presentation,
+  otherwise it stays inset. Invalid, zero or disconnected measurements return no decision and do not
+  mutate presentation state. The DOM adapter resolves the image area from the toolbar's exact editor
+  owner (CM6 wrapper or wrapperless post-processor host), observes that image area — never the toolbar
+  or `offsetParent` — and reflows once synchronously before selection chooses a presentation. The
+  static inset bar remains measurable while hidden. One toolbar-specific owner marker
+  (`lie-toolbar-above`) carries only this result; inline/block/float layout, host kind and every image
+  layout class are deliberately absent from the decision and cannot seed or override it. When reflow
+  changes that owner result, one presentation-change signal makes the plugin synchronize the existing
+  body-toolbar controller after the current reflow call stack for the same active or currently hovered
+  image. The deferred handler revalidates the final owner state and acts only when controller identity
+  disagrees with it; a hovered above-owner binds its region only after the final bar exists. This avoids
+  synchronous reentry replacing an already-bound bar, and ResizeObserver transitions therefore never
+  leave both presentations visible or neither presentation reachable.
   *Folded-group popup (`openGroupPopup`):* a lightweight body-level palette, **coupled** to the
   image+toolbar region via `couplePaletteToRegion` (D6.4) so hovering it keeps the in-chrome bar
   visible (`.lie-region-hover` on the wrapper) and closes the popup when the region is left — **not**
@@ -906,7 +927,10 @@ failure to establish a gate aborts before comparison.
   on each of those five Live Preview hosts), and four Reading View negatives (normal, table, callout
   and footnote). Hover, toolbar/panel travel and button activation use the CDP `Input` mouse path;
   each Reading negative additionally uses a CDP touch long-press. No synthetic DOM event substitutes
-  for these inputs.
+  for these inputs. In Live Preview the Footnote journey parks on the definition line and resolves
+  its normal plugin-owned CM6 wrapper through `data-lie-struct`; it never hovers the reference or
+  assumes a Page Preview popover. The Reading Footnote journey continues to resolve the rendered
+  post-processor image and proves that no editing surface opens.
 
   Each implemented journey records raw bounding geometry, connected active-image/toolbar/anchor/
   region state, painted/hit-test visibility, the exact dimensions and SHA-256 of its decoded RGBA
@@ -927,6 +951,25 @@ failure to establish a gate aborts before comparison.
   JSON with stable key/order and only documented technical non-determinism removed. The current
   visual evidence is the exact RGBA hash + dimensions + fixed samples recorded above; it is **not**
   a retained full-pixel screenshot artifact.
+
+  Before the first build swap, the runner also gates that the known guard fixture, instrumentation,
+  theme/optical locks and plugin surfaces are absent, explicitly clears any prior CDP device-metrics
+  override and focus emulation, then snapshots the active file/view state,
+  selection/cursor/scroll and physical viewport alongside build and persisted settings. Its outer
+  `finally` does not rely on a child guard having reached its own `finally`: after restoring and
+  reloading the original build/settings it independently removes only the known guard fixture and
+  test hooks, restores the captured view/editor/scroll state and theme, clears CDP device/focus
+  emulation, and validates the complete runtime state. Restore steps are best-effort independent;
+  every failure remains fatal, is combined with the original failure, and preserves the recovery
+  snapshot. Nested/Aggregate failures are printed recursively, including child stop reason/status,
+  capture fatal/cleanup evidence and bounded stdout/stderr tails, so a failed capture cannot collapse
+  into an opaque top-level message.
+  The outer snapshot also records the exact presence and bytes of the Vault's
+  `.obsidian/appearance.json`. Theme restoration calls `setConfig` only when the effective runtime
+  value actually differs; this prevents the default `system` value from being materialized as a new
+  persisted key when it was originally absent. After runtime restoration, the original appearance
+  file presence/bytes are restored and verified independently. A mismatch is fatal and preserves the
+  recovery snapshot, just like an artifact or plugin-settings restore failure.
 
   The optional allow-envelope is a checked manifest of exact contract paths and expected
   baseline→candidate values. Every entry carries a changelog/issue ID for a change explicitly
@@ -967,34 +1010,162 @@ assertions and differential evidence:
 
 ### 3.8 Bug 134 — editor-owned post-processor toolbar
 
-The fix changes none of methodology, requirements, architecture or the test plan. It realizes the
-existing `F7`, `D1`/`D1.1`, `D6`, `AD8` and `AB10` contracts for wrapperless post-processor hosts.
+The original fix changed none of methodology, requirements, architecture or the test plan. Its
+authorized completion corrects AB10 to match the established body-level presentation and realizes
+`F7`, `D1`/`D1.1`, `D6`, `AD8` and `AB10` uniformly for every editor owner.
 
 - `toolbar.ts` exposes one editor-toolbar owner lookup: the existing `.lie-wrapper`, or an
   `.internal-embed.image-embed.lie-embed` only while it is inside `.markdown-source-view`. Reading
-  View therefore has no eligible owner. Toolbar reflow keeps the existing `.lie-float` routing for
-  CM6 and assigns a separate measurement-preserving float marker to a too-small post-processor
-  owner; normal-size post-processor chrome stays in-image.
+  View therefore has no eligible owner. Toolbar reflow writes the same measurement-preserving
+  `lie-toolbar-above` result to either owner; there is no CM6/PP-specific presentation marker and no
+  relationship to inline, block or floated image layout.
 - `main.ts` reconciles exactly one shared-model `.lie-toolbar-in-image` into the rendered image area
   of each source-paired, wrapperless Live Preview host. It removes that owned chrome outside Live
-  Preview, when the toolbar setting is off and on plugin unload. Selection/hover uses the in-image
-  bar for a normal owner and the existing body-floating presentation only for an owner marked too
-  small. The active toolbar and hover region resolve through the same editor owner.
+  Preview, when the toolbar setting is off and on plugin unload. Because a Markdown post-processor
+  may run while its output is still detached, the mounted Source View hover/selection path performs
+  the same idempotent reconciliation before choosing a presentation. Selection/hover uses the
+  in-image bar for a normal owner and the existing body-floating presentation only for an owner
+  marked too small. The post-processor toolbar stops pointer-down/mouse-down propagation at its own
+  boundary so its controls do not activate and replace the native rendered/table host underneath.
+  The active toolbar and hover region resolve through the same editor owner; the literal CM6 wrapper
+  remains the fast path and the wrapperless helper remains its fallback. Before choosing inset versus
+  body-level presentation, selection reflows the connected static bar against its exact image area
+  and synchronizes exactly one visible presentation. No widget mode or layout marker participates.
+  While a size/filter/crop/class session owns a toolbar, width-preview
+  reflow may still fold toolbar groups but must not switch the owner between inset and floating:
+  that presentation switch invalidates Obsidian's rendered owner/anchor and turns a live preview
+  into an unintended click-away commit. The restriction is gated by a CSS-neutral session-lock
+  class on the exact static inset toolbar, independently of whether the currently
+  visible/panel-anchor toolbar is that inset node or the body-floating presentation. The lock and
+  close synchronization are host-independent. Every Size/Crop/Filter/Class close path
+  removes that lock, re-acquires the connected image for the same source location, reflows its
+  static inset node once and synchronizes the existing toolbar controller through the normal
+  selection path. Thus normal→floating creates the body bar and floating→normal removes it;
+  a detached/replaced owner is only unlocked and its replacement performs normal initial reflow. A
+  delayed close synchronization never removes a lock: if a new session has already locked the current
+  static bar, the stale callback exits without reflow or presentation synchronization. Both immediate
+  and animation-frame close synchronization use the same controller/presentation mismatch gate as the
+  reflow event and bind a hovered above-owner only after its final bar exists; a matching controller is
+  never rebuilt by the later callback.
+  Reading View exclusion is enforced at every selection event entry (click, CM6 above-hover and
+  post-processor hover), each of which requires `.markdown-source-view`; the shared selection method
+  keeps v0.6.16's detached-CM6 fallback and does not re-check current DOM ancestry after CodeMirror
+  has started replacing a widget during an already-entered editor interaction.
 - `filter-panel.ts`, `class-panel.ts` and `crop-editor.ts` use that same owner lookup. Size, Filters
   and Crop consequently keep one connected image + toolbar + panel region without changing their
   action, persistence or placement implementations. `styles.css` extends only the existing
   in-image hover/region selectors to the Live Preview post-processor owner and keeps its hidden
   measurement copy inert when the too-small floating presentation is active.
+- `verify-toolbar-hosts.mjs` follows the real grouped-action path without changing its fixed journey
+  or assertion contract: it first resolves a directly visible action button; when Crop is hidden by
+  the toolbar's existing automatic Edit-group fold, it clicks the visible, hit-testable Edit trigger
+  and then requires the real Crop button in the visible, hit-testable group popup. A missing trigger,
+  popup or action remains a product failure; no test-only class forcing expands the toolbar.
+  The guard also makes its optical environment invariant without persisting Vault appearance: a
+  runtime-only class lock holds `theme-light` throughout each capture and `finally` removes the lock
+  before `app.setTheme()` re-applies the untouched original system configuration. Its observer mutates
+  a theme class only when that class actually differs, so the lock cannot enqueue an unbounded
+  self-triggered MutationObserver loop. A separately identified test-only optical style disables
+  animations, transitions and caret paint during capture, and cleanup proves that both the observer and
+  that style are gone. Each evidence image must produce the same exact RGBA hash in two consecutive
+  captures; a non-converging frame is a test failure rather than an allowed baseline delta.
+  Toolbar/panel travel re-acquires and hit-tests the live surface immediately before and after pointer
+  motion instead of trusting a pre-screenshot rectangle. Escape evidence first parks the pointer at the
+  canonical neutral point, so a removed panel cannot expose an arbitrary underlying hover target.
+  Lifecycle evidence distinguishes whether the plugin active image exists, is the freshly resolved host
+  image and remains connected, and whether the floating toolbar reports that same connected image. After a
+  cursor/decoration refresh, the guard re-acquires the current live image through the real CDP hover path.
+  On paths whose hover deliberately activates an image (floating CM6 or an editor post-processor host), it
+  performs exactly one canonical neutral-pointer → freshly resolved image re-hover, followed by two passive
+  identity observations with no further pointer input. Both observations must match plugin identity; the
+  toolbar identity is additionally required only for floating presentation. Normal CM6 inset hover remains
+  CSS-only and therefore does not manufacture an active-image state. A mismatch/non-convergence is a capture
+  failure, not a retry-normalized baseline delta. Cleanup collects failures without
+  letting an earlier fixture, instrumentation or view-restoration error skip later teardown: theme-observer
+  and optical-style removal, `app.setTheme()`, viewport restoration and focus-emulation restoration are
+  each attempted independently, and any failed step keeps the cleanup contract red.
 
 **Bug-134 allowed change envelope.** Reading View normal/table/callout/footnote journeys change only
 from the regressed editing surface back to no toolbar, panel, crop surface or active editing image.
-Normal-size Live Preview table/callout/footnote journeys may change only from the body-floating bar
+Normal-size Live Preview table/callout journeys may change only from the body-floating bar
 to the same inset toolbar model used by CM6, and from a missing/disconnected hover owner to their
-connected post-processor host. Button order/actions and source writes are unchanged. Normal CM6,
-tiny/inline CM6, all rendering/caption/source-mapping behaviour, panel Esc/no-write behaviour and
-cleanup must remain byte-/geometry-/interaction-equivalent to the v0.6.16 baseline. The 24-journey
-host guard must be product-green; the v0.6.16→candidate differential may accept only exact
-Bug-134-bound paths and values matching this envelope.
+connected post-processor host. The separately authorized completion changes only the wrong toolbar
+presentation and its direct panel-travel consequences: the 24px Tiny fixture becomes above and the
+300×200 Footnote definition becomes inset through the same 60%-coverage decision. Correcting the
+Footnote locator from a nonexistent popover to its existing CM6 wrapper is test infrastructure, not
+a product delta. Button order/actions, rendering, captions, source mapping, persistence, Esc/no-write
+and cleanup remain unchanged. All 124 host assertions must be product-green; the differential may
+accept only these exact Bug-134-bound presentation/interaction deltas.
+
+**Focused post-processor source-address guard.** Add
+`tests/cdp/verify-postprocessor-write-address.mjs` as a separate, additive CDP guard; do not change
+the fixed 24-journey / 124-assertion toolbar-host differential contract. Its self-created fixture
+contains multiple identical-basename embeds in source order, including distinct paths and decoys,
+inside both a Live Preview table and callout. The table target is fixed as the second of two
+source-byte-identical occurrences; the callout target is the second of two real Vault assets with
+different paths and bytes but the same basename. For each designated image, the guard must
+select the second visible table image in rendered DOM/source order (not depend on unrelated cell
+label text): exactly one visible `.workspace-leaf.mod-active .cm-table-widget table`, exactly two
+`tr:has(td)` data rows, and exactly one visible connected non-caption image in each second cell.
+The cursor is parked on the fixed non-embed line and the target source range is scrolled without
+moving selection into a table cell, so Obsidian does not replace the asserted rendered slot with
+its cell editor,
+resolve the cache entry against the current immutable editor document and expected source span, then
+drive the real Size-panel input and accept control through CDP pointer/keyboard input. A successful
+commit must emit exactly one `lie.transform` transaction, change only the designated embed span while
+every other source byte and same-basename occurrence remains identical, settle to identical editor
+buffer and disk bytes, and be reverted to the exact pre-action source by one editor undo. The tagged
+transaction's `iterChanges` range and inserted bytes must equal that precomputed target replacement;
+global substring presence and a write count alone are not address evidence. Pairing is
+therefore asserted by bounded source order and exact slot; equal basenames alone are not treated as a
+distinguishing identity that the DOM does not expose. The current link-format setting is observed to
+derive the expected canonical replacement but is never changed by this guard.
+The existing two success journeys also cover both post-processor presentation transitions without
+adding contract slots: the table starts normal/inset and previews+commits a tiny floating width;
+the callout target starts tiny/floating and previews+commits a normal inset width. The existing
+`keyboard-preview-no-write`, `accept-connected-hit` and `target-rerendered` assertions require the
+session to stay connected and the post-close presentation/controller identity to be correct. The
+baseline keeps its historical floating post-processor presentation, so normalized assertion output
+remains zero-delta while the candidate proves both Bug-134 directions.
+The undo is one real platform-appropriate CDP `Ctrl/Cmd+Z` chord after a positive editor-focus gate,
+not a direct Editor API call or fallback. `_optical.mjs` may expose additive generic key-chord and
+focused-text drivers for these real keyboard paths; existing callers and input semantics remain unchanged.
+Focused text replacement uses a platform-appropriate real CDP `Ctrl/Cmd+A` selection event with the
+browser's `SelectAll` command followed by one CDP `Input.insertText` for the complete value. This
+matches a normal replacement while preventing either an empty value or partial `2` → `23` preview
+widths from transiently changing the toolbar presentation and invalidating the panel anchor.
+
+The same guard also exercises the write-time revalidation boundary. Removing the selected DOM
+image's cache entry, or making its cached source target stale with a different basename before the
+panel commit, must fail closed: zero `lie.transform` transactions and byte-identical source after the
+attempt, with no document-wide basename fallback. The stale case uses an explicitly test-marked,
+reversible cache/remap fault seam so the real connected, hit-testable Accept action—not an earlier
+host-detach/context-loss close—causes the attempted commit. The guard restores the original active file/view,
+selection, scroll, link-format setting and focus state, removes only its known fixture and temporary
+assets, disarms instrumentation independently on every exit path, and fails on console errors or
+leftover test state. Each exact test directory is removed only after its Vault children are proven
+empty and its resolved workspace path is proven to be the expected non-symlink directory, using
+Node's non-recursive `rmdir` in both the child guard and outer recovery. Obsidian 1.12.7's adapter
+`rmdir(path, false)` is not used because its live runtime throws `ERR_FS_EISDIR` even for a confirmed
+empty directory; recursive deletion is forbidden. After removal, cleanup polls until Obsidian's
+Vault index also reports both exact directories absent, so watcher latency cannot create a false
+cleanup failure. These tests add evidence for the already-binding `AD1`, `AD8`, `AB3` and `T13`
+contracts; they authorize no product, appearance or behaviour delta.
+
+The guard emits a fixed, canonical, named result subcontract independent of GREEN/RED outcome.
+`verify-release-differential.mjs` runs and validates that subcontract once under the immutable
+baseline and once under the candidate after each corresponding toolbar-host capture, then requires
+an exact zero-delta comparison for it; no Bug-134 allow-envelope entry may mask source-address
+differences. The toolbar-host journey/assertion arrays remain exactly 24/124. The runner's outer
+preflight and recovery cleanup cover the source-address fixture, its two exact asset paths and only
+the known empty test directories, so a terminated child cannot leave Vault state behind. Its runtime
+identity gate uses the same non-persisting Obsidian-version source as the established toolbar-host
+guard: `app.version` when exposed, otherwise the `obsidian/<version>` token from `navigator.userAgent`;
+an unavailable or mismatching version remains an infrastructure failure before fixture creation.
+The runtime capability gate is baseline-neutral: it requires the cache plus callable pairing,
+location and tagged-writer entry points under both immutable artifacts, but never fingerprints
+candidate-only function-body strings. The fixed behavioral assertions—not implementation text—prove
+bounded addressing and fail-closed behavior.
 ---
 
 ## 4. Realization pitfalls (regression guards)

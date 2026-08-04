@@ -1,6 +1,7 @@
 import { setIcon } from "obsidian";
 import { t, TranslationKey } from "./i18n";
 import { couplePaletteToRegion } from "./region-hover";
+import { toolbarPresentation } from "./toolbar-placement-logic";
 
 export interface ToolbarButton {
   kind: "button";
@@ -28,6 +29,25 @@ export interface ToolbarGroup {
 }
 
 export type ToolbarItem = ToolbarButton | ToolbarGroup;
+
+export const TOOLBAR_ABOVE_CLASS = "lie-toolbar-above";
+export const TOOLBAR_SESSION_CLASS = "lie-toolbar-session-lock";
+export const TOOLBAR_PRESENTATION_CHANGE_EVENT = "lie-toolbar-presentation-change";
+
+/** Returns the editing owner for CM6 or a wrapperless Live Preview render host. */
+export function editorToolbarOwner(el: Element): HTMLElement | null {
+  const wrapper = el.closest<HTMLElement>(".lie-wrapper");
+  if (wrapper) return wrapper;
+  const host = el.closest<HTMLElement>(".internal-embed.image-embed.lie-embed");
+  return host?.closest(".markdown-source-view") ? host : null;
+}
+
+function toolbarImageArea(toolbar: HTMLElement, owner: HTMLElement): HTMLElement | null {
+  if (owner.classList.contains("lie-wrapper")) {
+    return owner.querySelector<HTMLElement>(":scope > .lie-box > .lie-image-host > .lie-image-area");
+  }
+  return toolbar.parentElement?.classList.contains("lie-image-area") ? toolbar.parentElement : null;
+}
 
 // Hover micro-animation keyed off the button/group id (Feature 1, ported from the icon-design prototype).
 // The CSS lives in styles.css (`[data-anim="…"]:hover svg`); an id absent here gets the default
@@ -124,7 +144,7 @@ function openGroupPopup(trigger: HTMLElement, group: ToolbarGroup): void {
   activeDocument.body.appendChild(popup);
 
   const unbindRegion = couplePaletteToRegion(popup, {
-    wrapper: trigger.closest<HTMLElement>(".lie-wrapper"),
+    wrapper: trigger.closest<HTMLElement>(".lie-wrapper") ?? editorToolbarOwner(trigger),
     toolbar: trigger.closest<HTMLElement>(".lie-toolbar"),
   }, close);
 
@@ -219,8 +239,9 @@ export function buildToolbarElement(items: ToolbarItem[]): HTMLElement {
   window.setTimeout(() => {
     if (!toolbar.isConnected) return;
     reflowToolbar(toolbar);
-    const host = toolbar.offsetParent as HTMLElement | null;
-    if (host) new ResizeObserver(() => reflowToolbar(toolbar)).observe(host);
+    const owner = editorToolbarOwner(toolbar);
+    const area = owner ? toolbarImageArea(toolbar, owner) : null;
+    if (area) new ResizeObserver(() => reflowToolbar(toolbar)).observe(area);
   }, 0);
   return toolbar;
 }
@@ -243,18 +264,19 @@ export function reflowToolbar(toolbar: HTMLElement): void {
     if (!wraps()) break;
     s.classList.add("is-folded");
   }
-  // D1.1 — keep the in-chrome bar only while it does NOT dominate the image: it may overlay the
-  // image top on hover, but once it would cover more than COVER_LIMIT of the image's HEIGHT the
-  // image is "almost just toolbar", so FLAG it `lie-float` and show the SAME bar floating on the
-  // body (outside Obsidian's `contain: paint` box, and positioned ABOVE the image). COVERAGE —
-  // not "does it physically fit / wrap" — is the trigger, so a short-wide image floats out even
-  // with a single-row bar, while a narrow-but-TALL image (low coverage) keeps its bar in-chrome.
-  // (The floating bar itself is position:fixed → no offsetParent → host null → fits → never
-  // flagged, no feedback loop.)
-  const COVER_LIMIT = 0.6;
-  const host = toolbar.offsetParent as HTMLElement | null;
-  const fitsComfortably = host ? toolbar.offsetHeight + 8 <= host.clientHeight * COVER_LIMIT : true;
-  toolbar.closest(".lie-wrapper")?.classList.toggle("lie-float", !fitsComfortably);
+  // Fold first, then compare the static bar against its exact visible image area. Floating body bars
+  // have no owner area and therefore cannot feed a presentation decision back into themselves.
+  const owner = editorToolbarOwner(toolbar);
+  const area = owner ? toolbarImageArea(toolbar, owner) : null;
+  if (!owner || !area || !area.isConnected || toolbar.classList.contains("lie-toolbar-inactive")
+    || toolbar.classList.contains(TOOLBAR_SESSION_CLASS)) return;
+  const presentation = toolbarPresentation(area.getBoundingClientRect().height, toolbar.getBoundingClientRect().height);
+  if (presentation === null) return;
+  const wasAbove = owner.classList.contains(TOOLBAR_ABOVE_CLASS);
+  owner.classList.toggle(TOOLBAR_ABOVE_CLASS, presentation === "above");
+  if (wasAbove !== owner.classList.contains(TOOLBAR_ABOVE_CLASS)) {
+    owner.dispatchEvent(new CustomEvent(TOOLBAR_PRESENTATION_CHANGE_EVENT, { bubbles: true }));
+  }
 }
 
 export class ImageToolbar {

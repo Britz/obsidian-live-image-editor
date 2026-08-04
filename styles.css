@@ -522,16 +522,21 @@ body.lie-safe-tall-float .image-embed:has(.lie-image-area.lie-tall.lie-float-rig
    it keeps the in-chrome bar visible while you hover the palette (Bug 64) WITHOUT greying it. */
 .lie-wrapper:hover .lie-toolbar-in-image:not(.lie-toolbar-inactive),
 .lie-wrapper:focus-within .lie-toolbar-in-image:not(.lie-toolbar-inactive),
-.lie-wrapper.lie-region-hover .lie-toolbar-in-image:not(.lie-toolbar-inactive) {
+.lie-wrapper.lie-region-hover .lie-toolbar-in-image:not(.lie-toolbar-inactive),
+.markdown-source-view .lie-embed:hover .lie-toolbar-in-image:not(.lie-toolbar-inactive),
+.markdown-source-view .lie-embed:focus-within .lie-toolbar-in-image:not(.lie-toolbar-inactive),
+.markdown-source-view .lie-embed.lie-region-hover .lie-toolbar-in-image:not(.lie-toolbar-inactive) {
   opacity: 1;
   pointer-events: auto;
 }
-/* D1.1 — an image too SHORT to hold the (wrapped) bar inside the `contain: paint` box is
-   flagged `lie-float` by the reflow (and inline icons always are): hide the clipped in-chrome
-   bar; the plugin then shows the SAME toolbar floating on the body (outside the clip). No
-   `!important` needed — `display` is set by no other rule on `.lie-toolbar-in-image` (the
-   visibility rules above toggle only `opacity`/`pointer-events`), so this `display:none` stands. */
-.lie-wrapper.lie-float .lie-toolbar-in-image { display: none; }
+/* D1.1 — a measured source-view owner marked `lie-toolbar-above` uses the body presentation.
+   The static inset node remains hidden, inert and measurable. */
+.markdown-source-view .lie-wrapper.lie-toolbar-above .lie-toolbar-in-image,
+.markdown-source-view .lie-embed.lie-toolbar-above .lie-toolbar-in-image {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
 
 /* D6 — image + toolbar + open panel are ONE active region. While a submenu is open the host marks
    the bar `.lie-region-active` whenever the pointer is anywhere in that region (incl. the

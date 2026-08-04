@@ -3,15 +3,29 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import dns from "node:dns/promises";
-import { copyFile, lstat, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { copyFile, lstat, mkdtemp, readFile, realpath, rm, rmdir, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PLUGIN_ID = "live-image-editor";
+const GUARD_FIXTURE = "_toolbar-hosts-fixture.md";
+const SOURCE_ADDRESS_FIXTURE = "_postprocessor-write-address-fixture.md";
+const SOURCE_ADDRESS_DIRS = ["_postprocessor-write-address-a", "_postprocessor-write-address-b"];
+const SOURCE_ADDRESS_FILES = [
+  SOURCE_ADDRESS_FIXTURE,
+  "_postprocessor-write-address-a/collision.png",
+  "_postprocessor-write-address-b/collision.png",
+];
+const SOURCE_ADDRESS_HOOK = "__liePpWriteAddressDiag";
+const SOURCE_ADDRESS_MARKER = "LIE_POSTPROCESSOR_WRITE_ADDRESS_CONTRACT=";
+const OPTICAL_LOCK_ID = "__lie-toolbar-host-optical-lock";
 const ARTIFACTS = ["main.js", "manifest.json", "styles.css"];
 const SETTINGS_FILE = "data.json";
+const APPEARANCE_FILE = "appearance.json";
+const APPEARANCE_SNAPSHOT_FILE = "vault-appearance.json";
+const APPEARANCE_SNAPSHOT_STATE_FILE = "vault-appearance-state.json";
 const HASH_KEYS = { "main.js": "main", "manifest.json": "manifest", "styles.css": "styles" };
 const EXPECTED_JOURNEY_IDS = [
   "placement:normal-host:inset",
@@ -70,28 +84,70 @@ const EXPECTED_ASSERTION_NAMES = EXPECTED_JOURNEY_IDS.flatMap((id) => {
   throw new Error("unknown expected journey ID " + id);
 }).concat(["diagnostics.no-errors", "diagnostics.no-orphans"]);
 const EXPECTED_ASSERTION_COUNT = EXPECTED_ASSERTION_NAMES.length;
+const SOURCE_ADDRESS_ASSERTIONS_BY_JOURNEY = {
+  "success:table-identical-second": [
+    "cache-exact", "panel-open", "keyboard-preview-no-write", "source-stable-open",
+    "accept-connected-hit", "single-tagged-write", "exact-transaction-change",
+    "exact-target-source-only", "buffer-disk-settled", "target-rerendered",
+    "undo-focus", "single-real-undo",
+  ],
+  "success:callout-path-collision-second": [
+    "cache-exact", "panel-open", "keyboard-preview-no-write", "source-stable-open",
+    "accept-connected-hit", "single-tagged-write", "exact-transaction-change",
+    "exact-target-source-only", "buffer-disk-settled", "target-rerendered",
+    "undo-focus", "single-real-undo",
+  ],
+  "fail-closed:missing-cache": [
+    "cache-exact", "panel-open", "keyboard-preview-no-write", "source-stable-open",
+    "fault-armed", "accept-connected-hit", "zero-tagged-write",
+    "source-byte-identical", "fault-restored",
+  ],
+  "fail-closed:stale-different-basename": [
+    "cache-exact", "panel-open", "keyboard-preview-no-write", "source-stable-open",
+    "fault-armed", "accept-connected-hit", "zero-tagged-write",
+    "source-byte-identical", "fault-restored",
+  ],
+  diagnostics: ["no-renderer-errors", "no-orphans-before-cleanup"],
+};
+const SOURCE_ADDRESS_JOURNEY_IDS = Object.keys(SOURCE_ADDRESS_ASSERTIONS_BY_JOURNEY);
+const SOURCE_ADDRESS_ASSERTION_NAMES = SOURCE_ADDRESS_JOURNEY_IDS.flatMap((id) =>
+  SOURCE_ADDRESS_ASSERTIONS_BY_JOURNEY[id].map((suffix) => id + "." + suffix)
+);
 const JOURNEY_CONTRACT_KEYS = [
   "actualCount", "actualIds", "complete", "duplicateIds",
   "expectedCount", "expectedIds", "missingIds", "orderMatches", "unexpectedIds",
 ];
 const CLEANUP_KEYS = [
   "cursor", "file", "fixtureExists", "instrumentationExists", "mode", "orphans",
-  "refs", "scrollTop", "selection", "settings", "viewState", "viewport",
+  "opticalStyleExists", "refs", "scrollTop", "selection", "settings", "themeConfig",
+  "themeLockExists", "viewState", "viewport",
 ];
 const CLEANUP_REF_KEYS = ["classPanel", "cropEditor", "filterPanel", "submenu"];
+const SOURCE_ADDRESS_ASSERTION_CONTRACT_KEYS = [
+  "actualCount", "actualNames", "complete", "duplicateNames",
+  "expectedCount", "expectedNames", "missingNames", "orderMatches", "unexpectedNames",
+];
+const SOURCE_ADDRESS_CLEANUP_KEYS = [
+  "activeImage", "assetPaths", "cursor", "documentFocus", "fault", "file",
+  "fixtureExists", "hook", "mode", "orphans", "refs", "scrollLeft", "scrollTop",
+  "selection", "settings", "useMarkdownLinks", "viewState", "viewport",
+];
 const MARKER = "LIE_TOOLBAR_HOST_CONTRACT=";
 const CDP_PORT = 9223;
 const CHILD_ABORT_GRACE_MS = 45000;
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const VAULT_DIR = path.join(ROOT, "vault-image-toolbar");
+const APPEARANCE_DIR = path.join(VAULT_DIR, ".obsidian");
 const INSTALLED_DIR = path.join(VAULT_DIR, ".obsidian/plugins", PLUGIN_ID);
 const GUARD = path.join(ROOT, "tests/cdp/verify-toolbar-hosts.mjs");
+const SOURCE_ADDRESS_GUARD = path.join(ROOT, "tests/cdp/verify-postprocessor-write-address.mjs");
 const VAULT_NAME = path.basename(VAULT_DIR);
 const CDP_HOST = process.env.CDP_HOST || "host.containers.internal";
 const CDP_TARGET = process.env.CDP_TARGET || VAULT_NAME;
 const ABSENT = Symbol("absent");
 const ABSENT_JSON = { $absent: true };
 const AUTHORIZED_ID_PATTERN = /^(Bug|Feature|Change|Decision) [1-9]\d*$/u;
+let cdpEvaluationSlot = 0;
 
 const HELP = [
   "Usage:",
@@ -269,6 +325,15 @@ function canonicalJson(value) {
   return JSON.stringify(canonicalize(value));
 }
 
+function boundedText(value, limit = 4000) {
+  const text = String(value);
+  return text.length <= limit ? text : text.slice(0, limit) + "…[truncated]";
+}
+
+function boundedJson(value, limit = 8000) {
+  return boundedText(canonicalJson(value), limit);
+}
+
 function sha256(data) {
   return createHash("sha256").update(data).digest("hex");
 }
@@ -300,6 +365,24 @@ async function safeDirectory(directory, label) {
     throw new Error(label + " path contains a symlink: " + absolute);
   }
   return resolved;
+}
+
+async function removeKnownSourceAddressDirectories() {
+  const vault = await safeDirectory(VAULT_DIR, "source-address vault root");
+  for (const name of [...SOURCE_ADDRESS_DIRS].reverse()) {
+    const directory = path.resolve(vault, name);
+    if (!isContained(vault, directory)) {
+      throw new Error("source-address directory escapes vault: " + name);
+    }
+    let metadata;
+    try { metadata = await lstat(directory); }
+    catch (error) { if (error?.code === "ENOENT") continue; throw error; }
+    if (metadata.isSymbolicLink() || !metadata.isDirectory()
+      || await realpath(directory) !== directory) {
+      throw new Error("source-address path must be an exact non-symlink directory: " + name);
+    }
+    await rmdir(directory);
+  }
 }
 
 async function safeFile(file, directory, label, allowMissing = false) {
@@ -468,6 +551,124 @@ async function restoreSettingsState(source, expected, destination, label) {
   assertSettingsState(restored, expected, label + " restored");
 }
 
+function effectiveThemeConfig(value) {
+  return value ?? null;
+}
+
+function shouldSetThemeConfig(current, expected) {
+  return effectiveThemeConfig(current) !== effectiveThemeConfig(expected);
+}
+
+function appearanceStateIdentity(state) {
+  return {
+    exists: state.exists,
+    hash: state.exists ? state.hash : null,
+    size: state.exists ? state.bytes.length : 0,
+  };
+}
+
+function appearanceStatesEqual(actual, expected) {
+  return actual.exists === expected.exists
+    && (!expected.exists || actual.bytes.equals(expected.bytes));
+}
+
+function assertAppearanceState(actual, expected, label) {
+  if (!appearanceStatesEqual(actual, expected)) {
+    throw new Error(label + " appearance presence/bytes differ");
+  }
+}
+
+async function inspectAppearanceState(directory, fileName, label) {
+  const resolved = await safeDirectory(directory, label + " directory");
+  const file = await safeFile(path.join(resolved, fileName), resolved, label, true);
+  if (!file.exists) return { exists: false, bytes: null, hash: null };
+  const bytes = await readFile(file.path);
+  return { exists: true, bytes, hash: sha256(bytes) };
+}
+
+function appearanceSnapshotMetadata(state) {
+  return Buffer.from(canonicalJson(appearanceStateIdentity(state)) + "\n", "utf8");
+}
+
+async function assertAppearanceSnapshot(snapshotDirectory, expected, label) {
+  const snapshotState = await inspectAppearanceState(
+    snapshotDirectory,
+    APPEARANCE_SNAPSHOT_FILE,
+    label + " bytes",
+  );
+  assertAppearanceState(snapshotState, expected, label + " bytes");
+  const resolved = await safeDirectory(snapshotDirectory, label + " directory");
+  const metadataFile = await safeFile(
+    path.join(resolved, APPEARANCE_SNAPSHOT_STATE_FILE),
+    resolved,
+    label + " metadata",
+  );
+  const metadata = await readFile(metadataFile.path);
+  if (!metadata.equals(appearanceSnapshotMetadata(expected))) {
+    throw new Error(label + " metadata differs");
+  }
+}
+
+async function snapshotAppearanceState(source, expected, destination, label) {
+  const sourceDirectory = await safeDirectory(source, label + " source");
+  const destinationDirectory = await safeDirectory(destination, label + " destination");
+  if (pathsOverlap(sourceDirectory, destinationDirectory)) {
+    throw new Error(label + " source and destination overlap");
+  }
+  const sourceState = await inspectAppearanceState(
+    sourceDirectory,
+    APPEARANCE_FILE,
+    label + " source",
+  );
+  assertAppearanceState(sourceState, expected, label + " source");
+  const snapshotFile = await safeFile(
+    path.join(destinationDirectory, APPEARANCE_SNAPSHOT_FILE),
+    destinationDirectory,
+    label + " bytes destination",
+    true,
+  );
+  const metadataFile = await safeFile(
+    path.join(destinationDirectory, APPEARANCE_SNAPSHOT_STATE_FILE),
+    destinationDirectory,
+    label + " metadata destination",
+    true,
+  );
+  if (snapshotFile.exists || metadataFile.exists) {
+    throw new Error(label + " destination is not empty");
+  }
+  if (expected.exists) {
+    await writeFile(snapshotFile.path, expected.bytes, { flag: "wx" });
+  }
+  await writeFile(metadataFile.path, appearanceSnapshotMetadata(expected), { flag: "wx" });
+  await assertAppearanceSnapshot(destinationDirectory, expected, label + " verified");
+}
+
+async function restoreAppearanceState(source, expected, destination, label) {
+  const sourceDirectory = await safeDirectory(source, label + " source");
+  const destinationDirectory = await safeDirectory(destination, label + " destination");
+  if (pathsOverlap(sourceDirectory, destinationDirectory)) {
+    throw new Error(label + " source and destination overlap");
+  }
+  await assertAppearanceSnapshot(sourceDirectory, expected, label + " source");
+  const destinationFile = await safeFile(
+    path.join(destinationDirectory, APPEARANCE_FILE),
+    destinationDirectory,
+    label + " destination " + APPEARANCE_FILE,
+    true,
+  );
+  if (expected.exists) {
+    await copyFile(path.join(sourceDirectory, APPEARANCE_SNAPSHOT_FILE), destinationFile.path);
+  } else if (destinationFile.exists) {
+    await rm(destinationFile.path, { force: true });
+  }
+  const restored = await inspectAppearanceState(
+    destinationDirectory,
+    APPEARANCE_FILE,
+    label + " restored",
+  );
+  assertAppearanceState(restored, expected, label + " restored");
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -539,7 +740,7 @@ async function oneCdpTarget() {
   return { target, wsUrl };
 }
 
-async function evaluateCdp(expression) {
+async function cdpCommand(method, params = {}) {
   const { wsUrl } = await oneCdpTarget();
   const socket = new WebSocket(wsUrl);
   await withTimeout(new Promise((resolve, reject) => {
@@ -562,17 +763,216 @@ async function evaluateCdp(expression) {
     }), 10000, "CDP evaluation");
     socket.send(JSON.stringify({
       id,
-      method: "Runtime.evaluate",
-      params: { expression, returnByValue: true, replMode: true },
+      method,
+      params,
     }));
-    const result = await response;
-    if (result.exceptionDetails) {
-      throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
-    }
-    return result.result?.value;
+    return await response;
   } finally {
     try { socket.close(); } catch {}
   }
+}
+
+async function evaluateCdp(expression) {
+  const result = await cdpCommand("Runtime.evaluate", {
+    expression,
+    returnByValue: true,
+    replMode: true,
+  });
+  if (result.exceptionDetails) {
+    throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
+  }
+  return result.result?.value;
+}
+
+async function evaluateCdpAwait(expression, timeoutMs = 30000) {
+  const slot = "__lieReleaseDifferentialEval" + ++cdpEvaluationSlot;
+  const quotedSlot = JSON.stringify(slot);
+  await evaluateCdp("(() => { window[" + quotedSlot + "] = '__pending__';"
+    + "Promise.resolve().then(() => (async () => (" + expression + "))())"
+    + ".then((value) => { window[" + quotedSlot + "] = JSON.stringify({ok:true,value:value===undefined?null:value}); })"
+    + ".catch((error) => { window[" + quotedSlot + "] = JSON.stringify({ok:false,error:String(error?.stack||error)}); });"
+    + "return true; })()");
+  const deadline = Date.now() + timeoutMs;
+  try {
+    while (Date.now() < deadline) {
+      await delay(250);
+      const encoded = await evaluateCdp("window[" + quotedSlot + "] || ''");
+      if (!encoded || encoded === "__pending__") continue;
+      const result = JSON.parse(encoded);
+      if (!result.ok) throw new Error(result.error);
+      return result.value;
+    }
+    throw new Error("CDP async evaluation timed out after " + timeoutMs + "ms");
+  } finally {
+    try { await evaluateCdp("delete window[" + quotedSlot + "]"); } catch {}
+  }
+}
+
+async function runtimeSnapshot(label) {
+  const encoded = await evaluateCdp("JSON.stringify((() => {"
+    + "const p=app.plugins.plugins[" + JSON.stringify(PLUGIN_ID) + "];"
+    + "const leaf=app.workspace.activeLeaf;const editor=leaf?.view?.editor??null;"
+    + "const root=leaf?.view?.containerEl??null;const scroller=root?.querySelector('.markdown-source-view .cm-scroller,.markdown-reading-view .markdown-preview-view')??null;"
+    + "return {pluginLoaded:!!p,pluginVersion:p?.manifest?.version??null,file:app.workspace.getActiveFile()?.path??null,"
+    + "mode:leaf?.view?.getMode?.()??null,viewState:leaf?.getViewState()??null,"
+    + "selection:editor?{anchor:editor.getCursor('anchor'),head:editor.getCursor('head')}:null,"
+    + "cursor:editor?.getCursor()??null,scrollTop:scroller?.scrollTop??null,scrollLeft:scroller?.scrollLeft??null,"
+    + "themeConfig:app.vault.getConfig('theme')??null,"
+    + "themeClasses:[...document.body.classList].filter((name)=>name.startsWith('theme-')).sort(),"
+    + "viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio},"
+    + "settings:p?JSON.parse(JSON.stringify(p.settings)):null,"
+    + "fixtureExists:!!app.vault.getAbstractFileByPath(" + JSON.stringify(GUARD_FIXTURE) + "),"
+    + "sourceFixtureExists:!!app.vault.getAbstractFileByPath(" + JSON.stringify(SOURCE_ADDRESS_FIXTURE) + "),"
+    + "sourceAssetPaths:" + JSON.stringify([...SOURCE_ADDRESS_FILES.slice(1), ...SOURCE_ADDRESS_DIRS])
+    + ".filter((value)=>!!app.vault.getAbstractFileByPath(value)),"
+    + "sourceInstrumentationExists:!!window[" + JSON.stringify(SOURCE_ADDRESS_HOOK) + "],"
+    + "sourceFaultExists:!!window[" + JSON.stringify(SOURCE_ADDRESS_HOOK) + "]?.fault,"
+    + "instrumentationExists:!!window.__lieToolbarHostDiag,"
+    + "themeLockExists:!!window.__lieToolbarHostThemeLock,"
+    + "opticalStyleExists:!!document.getElementById(" + JSON.stringify(OPTICAL_LOCK_ID) + "),"
+    + "refs:{submenu:!!p?.submenu,filterPanel:!!p?.filterPanel,classPanel:!!p?.classPanel,cropEditor:!!p?.cropEditor},"
+    + "orphans:document.querySelectorAll('.lie-submenu,.lie-filter-panel,.lie-class-panel,.lie-group-popup,.lie-crop-portal,.lie-toolbar-floating').length};"
+    + "})())");
+  try {
+    return JSON.parse(encoded);
+  } catch (error) {
+    throw new Error(label + " runtime snapshot is invalid: " + error.message);
+  }
+}
+
+function assertCleanRuntime(state, label) {
+  if (!state.pluginLoaded || state.fixtureExists || state.sourceFixtureExists
+    || state.sourceAssetPaths.length !== 0 || state.sourceInstrumentationExists || state.sourceFaultExists
+    || state.instrumentationExists
+    || state.themeLockExists || state.opticalStyleExists
+    || Object.values(state.refs).some(Boolean) || state.orphans !== 0) {
+    throw new Error(label + " is not clean: " + boundedJson({
+      pluginLoaded: state.pluginLoaded,
+      fixtureExists: state.fixtureExists,
+      sourceFixtureExists: state.sourceFixtureExists,
+      sourceAssetPaths: state.sourceAssetPaths,
+      sourceInstrumentationExists: state.sourceInstrumentationExists,
+      sourceFaultExists: state.sourceFaultExists,
+      instrumentationExists: state.instrumentationExists,
+      themeLockExists: state.themeLockExists,
+      opticalStyleExists: state.opticalStyleExists,
+      refs: state.refs,
+      orphans: state.orphans,
+    }));
+  }
+}
+
+function assertRestoredRuntime(actual, expected, label) {
+  const exactKeys = [
+    "pluginVersion", "file", "mode", "viewState", "selection", "cursor",
+    "themeConfig", "themeClasses", "viewport", "settings",
+  ];
+  const mismatched = exactKeys.filter((key) => canonicalJson(actual[key]) !== canonicalJson(expected[key]));
+  if (actual.scrollTop === null || expected.scrollTop === null) {
+    if (actual.scrollTop !== expected.scrollTop) mismatched.push("scrollTop");
+  } else if (Math.abs(actual.scrollTop - expected.scrollTop) > 1) {
+    mismatched.push("scrollTop");
+  }
+  if (actual.scrollLeft === null || expected.scrollLeft === null) {
+    if (actual.scrollLeft !== expected.scrollLeft) mismatched.push("scrollLeft");
+  } else if (Math.abs(actual.scrollLeft - expected.scrollLeft) > 1) {
+    mismatched.push("scrollLeft");
+  }
+  if (actual.fixtureExists || actual.sourceFixtureExists || actual.sourceAssetPaths.length !== 0
+    || actual.sourceInstrumentationExists || actual.sourceFaultExists
+    || actual.instrumentationExists || actual.themeLockExists
+    || actual.opticalStyleExists || Object.values(actual.refs).some(Boolean) || actual.orphans !== 0) {
+    mismatched.push("test-cleanliness");
+  }
+  if (mismatched.length) {
+    throw new Error(label + " runtime differs at " + mismatched.join(", "));
+  }
+}
+
+async function restoreRuntime(original) {
+  const errors = [];
+  const step = async (name, callback) => {
+    try { await callback(); } catch (error) {
+      errors.push(new Error(name + ": " + boundedText(error?.message || error), { cause: error }));
+    }
+  };
+  await step("instrumentation restore", () => evaluateCdp("(() => {"
+    + "const d=window.__lieToolbarHostDiag;if(!d)return true;app.workspace.offref(d.editorRef);"
+    + "removeEventListener('error',d.onError);removeEventListener('unhandledrejection',d.onReject);"
+    + "console.error=d.originalConsoleError;if(d.dispatchDescriptor)Object.defineProperty(d.cm,'dispatchTransactions',d.dispatchDescriptor);"
+    + "else delete d.cm.dispatchTransactions;delete window.__lieToolbarHostDiag;return true;})()"));
+  await step("source-address instrumentation restore", () => evaluateCdp("(() => {"
+    + "const d=window[" + JSON.stringify(SOURCE_ADDRESS_HOOK) + "];if(!d)return true;"
+    + "const p=app.plugins.plugins[" + JSON.stringify(PLUGIN_ID) + "];const f=d.fault;"
+    + "if(f?.kind==='stale'){if(f.hadOwnPair)Object.defineProperty(p,'pairLivePreviewBlock',f.pairDescriptor);"
+    + "else delete p.pairLivePreviewBlock;}if(f?.image&&f.originalCache)p.postProcessorLocations.set(f.image,f.originalCache);"
+    + "removeEventListener('error',d.onError);removeEventListener('unhandledrejection',d.onReject);"
+    + "console.error=d.originalConsoleError;if(d.dispatchDescriptor)Object.defineProperty(d.cm,'dispatchTransactions',d.dispatchDescriptor);"
+    + "else delete d.cm.dispatchTransactions;delete window[" + JSON.stringify(SOURCE_ADDRESS_HOOK) + "];return true;})()"));
+  await step("theme observer restore", () => evaluateCdp("(() => {"
+    + "window.__lieToolbarHostThemeLock?.observer?.disconnect();return true;})()"));
+  await step("optical style restore", () => evaluateCdp("(() => {"
+    + "window.__lieToolbarHostThemeLock?.style?.remove();document.getElementById("
+    + JSON.stringify(OPTICAL_LOCK_ID) + ")?.remove();delete window.__lieToolbarHostThemeLock;return true;})()"));
+  await step("plugin surface restore", () => evaluateCdp("(() => {"
+    + "app.plugins.plugins[" + JSON.stringify(PLUGIN_ID) + "]?.dismissToolbar?.();return true;})()"));
+  await step("runtime settings restore", () => evaluateCdp("(() => {"
+    + "const p=app.plugins.plugins[" + JSON.stringify(PLUGIN_ID) + "];if(!p)throw new Error('plugin missing');"
+    + "for(const key of Object.keys(p.settings))delete p.settings[key];Object.assign(p.settings,"
+    + JSON.stringify(original.settings) + ");return true;})()"));
+  await step("decoration refresh", () => evaluateCdp("(() => {"
+    + "const p=app.plugins.plugins[" + JSON.stringify(PLUGIN_ID) + "];if(!p)throw new Error('plugin missing');"
+    + "p.refreshLivePreviewDecorations();return true;})()"));
+  await step("view-state restore", () => evaluateCdpAwait("(async () => {"
+    + "const state=" + JSON.stringify(original.viewState) + ";if(state)await app.workspace.activeLeaf.setViewState(state);"
+    + "return true;})()", 15000));
+  await delay(600);
+  await step("selection restore", () => evaluateCdp("(() => {"
+    + "const editor=app.workspace.activeLeaf?.view?.editor??null;const selection=" + JSON.stringify(original.selection) + ";"
+    + "if(selection&&!editor)throw new Error('active editor missing');if(selection)editor.setSelection(selection.anchor,selection.head);return true;})()"));
+  await step("scroll restore", () => evaluateCdp("(() => {"
+    + "const leaf=app.workspace.activeLeaf;const root=leaf?.view?.containerEl??null;"
+    + "const scroller=root?.querySelector('.markdown-source-view .cm-scroller,.markdown-reading-view .markdown-preview-view')??null;"
+    + "const scrollTop=" + JSON.stringify(original.scrollTop) + ",scrollLeft=" + JSON.stringify(original.scrollLeft) + ";"
+    + "if((scrollTop!==null||scrollLeft!==null)&&!scroller)throw new Error('active scroller missing');"
+    + "if(scroller&&scrollTop!==null)scroller.scrollTop=scrollTop;if(scroller&&scrollLeft!==null)scroller.scrollLeft=scrollLeft;return true;})()"));
+  await step("fixture restore", () => evaluateCdpAwait("(async () => {"
+    + "const fixture=app.vault.getAbstractFileByPath(" + JSON.stringify(GUARD_FIXTURE) + ");"
+    + "if(fixture)await app.vault.delete(fixture);return true;})()", 15000));
+  await step("source-address fixture restore", async () => {
+    await evaluateCdpAwait("(async () => {"
+      + "const v=app.vault;for(const path of " + JSON.stringify(SOURCE_ADDRESS_FILES) + "){"
+      + "const item=v.getAbstractFileByPath(path);if(item){if(Array.isArray(item.children))throw new Error('expected file at '+path);"
+      + "await v.delete(item);}}for(const path of " + JSON.stringify([...SOURCE_ADDRESS_DIRS].reverse()) + "){"
+      + "const item=v.getAbstractFileByPath(path);if(!item)continue;if(!Array.isArray(item.children))throw new Error('expected directory at '+path);"
+      + "if(item.children.length!==0)throw new Error('source-address directory is not empty: '+path);}"
+      + "return true;})()", 15000);
+    await removeKnownSourceAddressDirectories();
+    let remaining = [];
+    for (let attempt = 0; attempt < 40; attempt++) {
+      remaining = await evaluateCdp("(() => " + JSON.stringify(SOURCE_ADDRESS_DIRS)
+        + ".filter((value)=>!!app.vault.getAbstractFileByPath(value)))()");
+      if (remaining.length === 0) break;
+      await delay(100);
+    }
+    if (remaining.length) {
+      throw new Error("vault index retained source-address directories: " + remaining.join(","));
+    }
+  });
+  await step("theme config restore", () => evaluateCdp("(() => {"
+    + "const expected=" + JSON.stringify(effectiveThemeConfig(original.themeConfig)) + ";"
+    + "const current=app.vault.getConfig('theme')??null;"
+    + "if(current!==expected)app.vault.setConfig('theme',expected);return current!==expected;})()"));
+  await step("theme apply", () => evaluateCdp("(() => {app.setTheme();return true;})()"));
+  await delay(350);
+  await step("viewport restore", () => cdpCommand("Emulation.clearDeviceMetricsOverride"));
+  await step("focus restore", () => cdpCommand("Emulation.setFocusEmulationEnabled", { enabled: false }));
+  await delay(300);
+  await step("runtime validation", async () => {
+    const restored = await runtimeSnapshot("restored");
+    assertRestoredRuntime(restored, original, "restored");
+  });
+  if (errors.length) throw new AggregateError(errors, "runtime restore failed");
 }
 
 async function runtimeState() {
@@ -674,12 +1074,12 @@ function runChild(command, args, options) {
   });
 }
 
-function parseContract(stdout, label) {
-  const markers = stdout.split(/\r?\n/).filter((line) => line.startsWith(MARKER));
+function parseContract(stdout, label, marker = MARKER) {
+  const markers = stdout.split(/\r?\n/).filter((line) => line.startsWith(marker));
   if (markers.length !== 1) {
     throw new Error(label + " emitted " + markers.length + " contract markers; expected exactly one");
   }
-  const encoded = markers[0].slice(MARKER.length);
+  const encoded = markers[0].slice(marker.length);
   let contract;
   try {
     contract = JSON.parse(encoded);
@@ -711,6 +1111,11 @@ function validateCleanupContract(contract, label) {
   }
   if (cleanup.fixtureExists !== false || cleanup.instrumentationExists !== false) {
     throw new Error(label + " cleanup left fixture or instrumentation behind");
+  }
+  if (cleanup.themeLockExists !== false
+    || cleanup.opticalStyleExists !== false
+    || (cleanup.themeConfig !== null && typeof cleanup.themeConfig !== "string")) {
+    throw new Error(label + " cleanup left an invalid theme lock or config");
   }
   if (cleanup.file !== null && typeof cleanup.file !== "string") {
     throw new Error(label + " cleanup file is invalid");
@@ -792,21 +1197,27 @@ function validateJourneyContract(contract, label) {
 }
 
 function collectProductFailures(contract) {
-  const assertionFailures = contract.assertions
+  const failuresFor = (current, prefix = "") => {
+    const assertionFailures = current.assertions
     .filter((assertion) => !assertion.ok)
     .map((assertion) => ({
       kind: "assertion",
-      id: assertion.name,
+      id: prefix + assertion.name,
       detail: assertion.actual,
     }));
-  const journeyFailures = contract.journeys
+    const journeyFailures = current.journeys
     .filter((journey) => Object.hasOwn(journey, "error"))
     .map((journey) => ({
       kind: "journey",
-      id: journey.id,
+      id: prefix + journey.id,
       detail: journey.error,
     }));
-  return [...assertionFailures, ...journeyFailures];
+    return [...assertionFailures, ...journeyFailures];
+  };
+  return [
+    ...failuresFor(contract),
+    ...(contract.sourceAddress ? failuresFor(contract.sourceAddress, "source-address:") : []),
+  ];
 }
 
 function validateIdentityGate(contract, name, expected, label) {
@@ -856,6 +1267,112 @@ function validateCaptureContract(contract, identity, expectedObsidianVersion, la
   validateJourneyContract(contract, label);
 }
 
+function validateSourceAddressCleanup(contract, label) {
+  if (contract.cleanupValid !== true || !hasExactKeys(contract.cleanup, SOURCE_ADDRESS_CLEANUP_KEYS)) {
+    throw new Error(label + " source-address cleanup contract is incomplete");
+  }
+  const cleanup = contract.cleanup;
+  if (cleanup.fixtureExists !== false || canonicalJson(cleanup.assetPaths) !== "[]"
+    || cleanup.hook !== false || cleanup.fault !== false || cleanup.activeImage !== false
+    || !hasExactKeys(cleanup.refs, CLEANUP_REF_KEYS)
+    || Object.values(cleanup.refs).some((value) => value !== false) || cleanup.orphans !== 0) {
+    throw new Error(label + " source-address cleanup left test/plugin state behind");
+  }
+  if ((cleanup.file !== null && typeof cleanup.file !== "string")
+    || (cleanup.mode !== null && typeof cleanup.mode !== "string")
+    || (cleanup.viewState !== null && !isRecord(cleanup.viewState))
+    || (cleanup.selection !== null && !isRecord(cleanup.selection))
+    || (cleanup.cursor !== null && !isRecord(cleanup.cursor))
+    || (cleanup.scrollTop !== null && !Number.isFinite(cleanup.scrollTop))
+    || (cleanup.scrollLeft !== null && !Number.isFinite(cleanup.scrollLeft))
+    || typeof cleanup.useMarkdownLinks !== "boolean"
+    || typeof cleanup.documentFocus !== "boolean" || !isRecord(cleanup.settings)
+    || !hasExactKeys(cleanup.viewport, ["dpr", "height", "width"])
+    || Object.values(cleanup.viewport).some((value) => !Number.isFinite(value))) {
+    throw new Error(label + " source-address cleanup state has invalid types");
+  }
+}
+
+function validateSourceAddressContract(contract, identity, expectedObsidianVersion, label) {
+  const topLevelKeys = [
+    "aborted", "assertionContract", "assertions", "captureOnly", "cleanup",
+    "cleanupError", "cleanupValid", "environment", "expected", "fatal", "gates",
+    "journeyContract", "journeys", "schema", "setupValid",
+  ];
+  if (!hasExactKeys(contract, topLevelKeys) || contract.schema !== 1
+    || contract.captureOnly !== true || contract.setupValid !== true
+    || contract.fatal !== null || contract.aborted !== null || contract.cleanupError !== null) {
+    throw new Error(label + " source-address setup/fatal contract is invalid");
+  }
+  validateSourceAddressCleanup(contract, label);
+  const expectedHashes = Object.fromEntries(
+    ARTIFACTS.map((name) => [HASH_KEYS[name], identity.hashes[name]]),
+  );
+  if (contract.expected?.pluginVersion !== identity.version
+    || contract.environment?.pluginVersion !== identity.version
+    || contract.expected?.obsidianVersion !== expectedObsidianVersion
+    || contract.environment?.obsidianVersion !== expectedObsidianVersion
+    || canonicalJson(contract.expected?.hashes) !== canonicalJson(expectedHashes)
+    || canonicalJson(contract.environment?.hashes) !== canonicalJson(expectedHashes)
+    || contract.environment?.target?.matchingPageCount !== 1) {
+    throw new Error(label + " source-address build/Obsidian identity is invalid");
+  }
+  const expectedGateNames = [
+    "target", "plugin-version", "obsidian-version", "build-hashes",
+    "preflight-clean", "fixture-assets", "runtime-fingerprint", "instrumentation",
+  ];
+  if (!Array.isArray(contract.gates)
+    || canonicalJson(contract.gates.map((gate) => gate?.name)) !== canonicalJson(expectedGateNames)
+    || contract.gates.some((gate) => gate?.ok !== true)) {
+    throw new Error(label + " source-address runtime gates are incomplete");
+  }
+  validateIdentityGate(contract, "plugin-version", identity.version, label + " source-address");
+  validateIdentityGate(contract, "obsidian-version", expectedObsidianVersion, label + " source-address");
+  validateIdentityGate(contract, "build-hashes", expectedHashes, label + " source-address");
+
+  if (!Array.isArray(contract.assertions)
+    || contract.assertions.length !== SOURCE_ADDRESS_ASSERTION_NAMES.length
+    || contract.assertions.some((assertion) => !isRecord(assertion)
+      || typeof assertion.name !== "string" || typeof assertion.ok !== "boolean"
+      || !Object.hasOwn(assertion, "actual"))
+    || canonicalJson(contract.assertions.map((assertion) => assertion.name))
+      !== canonicalJson(SOURCE_ADDRESS_ASSERTION_NAMES)) {
+    throw new Error(label + " source-address assertions are incomplete/reordered");
+  }
+  const assertionMatrix = contract.assertionContract;
+  if (!hasExactKeys(assertionMatrix, SOURCE_ADDRESS_ASSERTION_CONTRACT_KEYS)
+    || assertionMatrix.expectedCount !== SOURCE_ADDRESS_ASSERTION_NAMES.length
+    || assertionMatrix.actualCount !== SOURCE_ADDRESS_ASSERTION_NAMES.length
+    || canonicalJson(assertionMatrix.expectedNames) !== canonicalJson(SOURCE_ADDRESS_ASSERTION_NAMES)
+    || canonicalJson(assertionMatrix.actualNames) !== canonicalJson(SOURCE_ADDRESS_ASSERTION_NAMES)
+    || canonicalJson(assertionMatrix.missingNames) !== "[]"
+    || canonicalJson(assertionMatrix.unexpectedNames) !== "[]"
+    || canonicalJson(assertionMatrix.duplicateNames) !== "[]"
+    || assertionMatrix.orderMatches !== true || assertionMatrix.complete !== true) {
+    throw new Error(label + " source-address assertion matrix is incomplete");
+  }
+  if (!Array.isArray(contract.journeys)
+    || canonicalJson(contract.journeys.map((journey) => journey?.id))
+      !== canonicalJson(SOURCE_ADDRESS_JOURNEY_IDS)
+    || contract.journeys.some((journey) => !isRecord(journey)
+      || (Object.hasOwn(journey, "error")
+        && (typeof journey.error !== "string" || journey.error.trim() === "")))) {
+    throw new Error(label + " source-address journeys are incomplete/reordered");
+  }
+  const journeyMatrix = contract.journeyContract;
+  if (!hasExactKeys(journeyMatrix, JOURNEY_CONTRACT_KEYS)
+    || journeyMatrix.expectedCount !== SOURCE_ADDRESS_JOURNEY_IDS.length
+    || journeyMatrix.actualCount !== SOURCE_ADDRESS_JOURNEY_IDS.length
+    || canonicalJson(journeyMatrix.expectedIds) !== canonicalJson(SOURCE_ADDRESS_JOURNEY_IDS)
+    || canonicalJson(journeyMatrix.actualIds) !== canonicalJson(SOURCE_ADDRESS_JOURNEY_IDS)
+    || canonicalJson(journeyMatrix.missingIds) !== "[]"
+    || canonicalJson(journeyMatrix.unexpectedIds) !== "[]"
+    || canonicalJson(journeyMatrix.duplicateIds) !== "[]"
+    || journeyMatrix.orderMatches !== true || journeyMatrix.complete !== true) {
+    throw new Error(label + " source-address journey matrix is incomplete");
+  }
+}
+
 function technicalEnvironment(contract) {
   const expected = structuredClone(contract.expected);
   const environment = structuredClone(contract.environment);
@@ -864,11 +1381,27 @@ function technicalEnvironment(contract) {
   delete environment.pluginVersion;
   delete environment.hashes;
   if (environment.target) delete environment.target.id;
-  return { expected, environment };
+  let sourceAddress = null;
+  if (contract.sourceAddress) {
+    const sourceExpected = structuredClone(contract.sourceAddress.expected);
+    const sourceEnvironment = structuredClone(contract.sourceAddress.environment);
+    delete sourceExpected.pluginVersion;
+    delete sourceExpected.hashes;
+    delete sourceEnvironment.pluginVersion;
+    delete sourceEnvironment.hashes;
+    if (sourceEnvironment.target) delete sourceEnvironment.target.id;
+    sourceAddress = { expected: sourceExpected, environment: sourceEnvironment };
+  }
+  return { expected, environment, sourceAddress };
 }
 
 function comparableContract(contract) {
   const copy = structuredClone(contract);
+  if (copy.sourceAddress) {
+    for (const key of [
+      "schema", "captureOnly", "expected", "gates", "environment", "setupValid", "cleanupValid",
+    ]) delete copy.sourceAddress[key];
+  }
   for (const key of [
     "schema",
     "captureOnly",
@@ -879,6 +1412,85 @@ function comparableContract(contract) {
     "cleanupValid",
   ]) delete copy[key];
   return copy;
+}
+
+function captureFailureDiagnostics(child, contract) {
+  const compactShape = (shape) => shape ? {
+    actualCount: shape.actualCount ?? null,
+    complete: shape.complete ?? null,
+    missing: shape.missingIds ?? shape.missingAssertionNames ?? null,
+    orderMatches: shape.orderMatches ?? null,
+    unexpected: shape.unexpectedIds ?? shape.unexpectedAssertionNames ?? null,
+  } : null;
+  return {
+    child: {
+      status: child.status,
+      signal: child.signal,
+      stopReason: child.stopReason,
+      stdoutTail: child.stdout.slice(-4000),
+      stderrTail: child.stderr.slice(-4000),
+    },
+    contract: contract ? {
+      fatal: contract.fatal ?? null,
+      aborted: contract.aborted ?? null,
+      setupValid: contract.setupValid ?? null,
+      cleanupValid: contract.cleanupValid ?? null,
+      cleanupError: contract.cleanupError ?? null,
+      journeyContract: compactShape(contract.journeyContract),
+      assertionContract: compactShape(contract.assertionContract),
+    } : null,
+  };
+}
+
+function captureContractDiagnostic(label, contract) {
+  if (!contract) return label + " contract diagnostics: unavailable";
+  return label + " contract diagnostics: setupValid=" + String(contract.setupValid)
+    + " cleanupValid=" + String(contract.cleanupValid)
+    + " cleanupError=" + boundedText(contract.cleanupError ?? "null", 1000)
+    + " fatal=" + boundedText(canonicalJson(contract.fatal ?? null), 1000)
+    + " journeys=" + String(contract.journeyContract?.actualCount ?? "?")
+    + "/" + String(contract.journeyContract?.expectedCount ?? "?")
+    + " assertions=" + String(contract.assertionContract?.actualCount ?? "?")
+    + "/" + String(contract.assertionContract?.expectedCount ?? "?");
+}
+
+function walkErrorTree(error, visit, depth = 0, edge = "ROOT", seen = new Set()) {
+  if (depth > 8) { visit(null, depth, edge, "[error depth truncated]"); return; }
+  if (!error || typeof error !== "object") { visit(null, depth, edge, String(error)); return; }
+  if (seen.has(error)) { visit(null, depth, edge, "[circular error]"); return; }
+  seen.add(error);
+  visit(error, depth, edge, null);
+  if (error.cause) walkErrorTree(error.cause, visit, depth + 1, "CAUSE", seen);
+  if (error instanceof AggregateError) {
+    for (let index = 0; index < Math.min(error.errors.length, 16); index++) {
+      walkErrorTree(error.errors[index], visit, depth + 1, "ERROR[" + index + "]", seen);
+    }
+    if (error.errors.length > 16) {
+      visit(null, depth + 1, "ERRORS", "[" + (error.errors.length - 16) + " aggregate errors truncated]");
+    }
+  }
+}
+
+function formatErrorTree(error) {
+  const outline = [];
+  let outlineNodes = 0;
+  walkErrorTree(error, (node, depth, edge, literal) => {
+    if (outlineNodes++ >= 64) return;
+    const indent = "  ".repeat(depth);
+    const label = literal ?? ((node.name || "Error") + ": " + boundedText(node.message || node, 500));
+    outline.push(indent + edge + " " + label);
+  });
+  if (outlineNodes > 64) outline.push("[error outline truncated after 64 nodes]");
+
+  const details = [];
+  let detailNodes = 0;
+  walkErrorTree(error, (node, depth, edge) => {
+    if (!node || detailNodes++ >= 16) return;
+    details.push("  ".repeat(depth) + edge + "\n"
+      + boundedText(node.stack || node, 1500).split("\n").map((line) => "  ".repeat(depth + 1) + line).join("\n"));
+  });
+  return "ERROR OUTLINE\n" + boundedText(outline.join("\n"), 10000)
+    + "\nERROR DETAILS\n" + boundedText(details.join("\n"), 14000);
 }
 
 async function capture(identity, sourceDirectory, expectedObsidianVersion, settingsSeed, label) {
@@ -926,6 +1538,41 @@ async function capture(identity, sourceDirectory, expectedObsidianVersion, setti
       + child.status + (child.signal ? "/" + child.signal : "")
       + "\n" + (child.stderr || child.stdout).slice(-4000)));
   }
+  let sourceAddressChild = null;
+  let sourceAddressContract = null;
+  if (errors.length === 0) {
+    try {
+      assertNotInterrupted();
+      sourceAddressChild = await runChild(process.execPath, [SOURCE_ADDRESS_GUARD], {
+        cwd: ROOT,
+        env,
+        timeoutMs: 300000,
+        abortGraceMs: CHILD_ABORT_GRACE_MS,
+      });
+      sourceAddressContract = parseContract(
+        sourceAddressChild.stdout,
+        label + " source-address",
+        SOURCE_ADDRESS_MARKER,
+      );
+      contract.sourceAddress = sourceAddressContract;
+      validateSourceAddressContract(
+        sourceAddressContract,
+        identity,
+        expectedObsidianVersion,
+        label,
+      );
+      if (sourceAddressChild.stopReason === "timeout") {
+        errors.push(new Error(label + " source-address capture timed out"));
+      }
+      if (sourceAddressChild.status !== 0) {
+        errors.push(new Error(label + " source-address capture failed with exit "
+          + sourceAddressChild.status + (sourceAddressChild.signal ? "/" + sourceAddressChild.signal : "")
+          + "\n" + (sourceAddressChild.stderr || sourceAddressChild.stdout).slice(-4000)));
+      }
+    } catch (error) {
+      errors.push(error);
+    }
+  }
   try {
     const sourceAfter = await inspectArtifacts(sourceDirectory, identity.version, label + " source");
     assertIdentity(sourceAfter, identity, label + " immutable source");
@@ -944,8 +1591,17 @@ async function capture(identity, sourceDirectory, expectedObsidianVersion, setti
   } catch (error) {
     errors.push(error);
   }
+  if (errors.length) {
+    errors.push(new Error(captureContractDiagnostic(label, contract)));
+    errors.push(new Error(label + " child diagnostics: "
+      + boundedJson(captureFailureDiagnostics(child, null), 10000)));
+    if (sourceAddressChild) {
+      errors.push(new Error(label + " source-address diagnostics: "
+        + boundedJson(captureFailureDiagnostics(sourceAddressChild, sourceAddressContract), 10000)));
+    }
+  }
   if (errors.length === 1) throw errors[0];
-  if (errors.length > 1) throw new AggregateError(errors, label + " toolbar-host capture failed");
+  if (errors.length > 1) throw new AggregateError(errors, label + " capture failed");
   return contract;
 }
 
@@ -957,6 +1613,10 @@ function decodePointer(pathValue) {
     if (/~(?![01])/u.test(token)) throw new CliError("invalid JSON Pointer escape in " + pathValue);
   }
   return pathValue;
+}
+
+function isProtectedSourceAddressPath(pointer) {
+  return pointer === "/sourceAddress" || pointer.startsWith("/sourceAddress/");
 }
 
 async function readAllowEnvelope(file, authorizedIds) {
@@ -987,6 +1647,9 @@ async function readAllowEnvelope(file, authorizedIds) {
       throw new CliError("allow-envelope entry " + index + " has no user-authorized change ID");
     }
     const pointer = decodePointer(entry.path);
+    if (isProtectedSourceAddressPath(pointer)) {
+      throw new CliError("source-address differential paths cannot be allow-enveloped");
+    }
     if (seen.has(pointer)) throw new CliError("duplicate allow-envelope path " + pointer);
     seen.add(pointer);
     return { ...entry, path: pointer };
@@ -1050,10 +1713,11 @@ function allowValueMatches(actual, expected) {
 
 function assessDiffs(diffs, envelope, reportOnly) {
   if (!envelope) {
+    const protectedDiffs = diffs.filter((diff) => isProtectedSourceAddressPath(diff.path));
     return {
-      passed: diffs.length === 0 || reportOnly,
+      passed: protectedDiffs.length === 0 && (diffs.length === 0 || reportOnly),
       accepted: [],
-      unallowed: reportOnly ? [] : diffs,
+      unallowed: reportOnly ? protectedDiffs : diffs,
       mismatched: [],
       unused: [],
     };
@@ -1175,11 +1839,17 @@ async function execute(options) {
     throw new CliError("baseline, candidate, and installed plugin directories must not overlap");
   }
   const originalSettings = await inspectSettingsState(INSTALLED_DIR, "installed original settings");
+  const originalAppearance = await inspectAppearanceState(
+    APPEARANCE_DIR,
+    APPEARANCE_FILE,
+    "installed original appearance",
+  );
   const snapshotDir = await mkdtemp(path.join(os.tmpdir(), "lie-release-differential-"));
   let snapshotReady = false;
   let restored = false;
   let result = null;
   let failure = null;
+  let originalRuntime = null;
 
   try {
     await copyArtifacts(INSTALLED_DIR, snapshotDir, true);
@@ -1191,8 +1861,24 @@ async function execute(options) {
       snapshotDir,
       "original settings snapshot",
     );
-    snapshotReady = true;
+    await snapshotAppearanceState(
+      APPEARANCE_DIR,
+      originalAppearance,
+      snapshotDir,
+      "original appearance snapshot",
+    );
     await waitForRuntime(originalIdentity, 15000);
+    const preflightRuntime = await runtimeSnapshot("installed original preflight");
+    assertCleanRuntime(preflightRuntime, "installed original preflight");
+    await cdpCommand("Emulation.clearDeviceMetricsOverride");
+    await cdpCommand("Emulation.setFocusEmulationEnabled", { enabled: false });
+    await delay(300);
+    originalRuntime = await runtimeSnapshot("installed original");
+    assertCleanRuntime(originalRuntime, "installed original");
+    if (originalRuntime.pluginVersion !== originalIdentity.version) {
+      throw new Error("installed runtime version does not match installed artifact version");
+    }
+    snapshotReady = true;
 
     await restoreSettingsState(snapshotDir, originalSettings, INSTALLED_DIR, "baseline settings seed");
     const baselineContract = await capture(
@@ -1241,21 +1927,46 @@ async function execute(options) {
     failure = error;
   } finally {
     if (snapshotReady) {
-      try {
+      const restoreErrors = [];
+      const restoreStep = async (name, callback) => {
+        try { await callback(); } catch (error) {
+          restoreErrors.push(new Error(name + ": " + boundedText(error?.message || error), { cause: error }));
+        }
+      };
+      let artifactsRestored = false;
+      let settingsRestored = false;
+      let runtimeReloaded = false;
+      await restoreStep("original artifact restore", async () => {
         await copyArtifacts(snapshotDir, INSTALLED_DIR);
+        artifactsRestored = true;
+      });
+      await restoreStep("original settings restore", async () => {
         await restoreSettingsState(
           snapshotDir,
           originalSettings,
           INSTALLED_DIR,
           "restored original settings",
         );
+        settingsRestored = true;
+      });
+      await restoreStep("restored artifact identity", async () => {
+        if (!artifactsRestored) throw new Error("skipped: artifact restore failed");
         const restoredIdentity = await inspectArtifacts(
           INSTALLED_DIR,
           originalIdentity.version,
           "restored original",
         );
         assertIdentity(restoredIdentity, originalIdentity, "restored original");
+      });
+      await restoreStep("original runtime reload", async () => {
+        if (!artifactsRestored || !settingsRestored) {
+          throw new Error("skipped: artifact/settings restore prerequisite failed");
+        }
         await reloadAndVerify(originalIdentity, "restored original", true);
+        runtimeReloaded = true;
+      });
+      await restoreStep("restored settings verification", async () => {
+        if (!runtimeReloaded) throw new Error("skipped: original runtime reload failed");
         const restoredSettings = await inspectSettingsState(
           INSTALLED_DIR,
           "restored original settings after reload",
@@ -1265,23 +1976,64 @@ async function execute(options) {
           originalSettings,
           "restored original settings after reload",
         );
+      });
+      await restoreStep("original runtime restore", async () => {
+        if (!originalRuntime) throw new Error("original runtime snapshot missing");
+        await restoreRuntime(originalRuntime);
+      });
+      await restoreStep("original appearance restore", async () => {
+        await restoreAppearanceState(
+          snapshotDir,
+          originalAppearance,
+          APPEARANCE_DIR,
+          "restored original appearance",
+        );
+      });
+      await restoreStep("restored appearance verification", async () => {
+        const restoredAppearance = await inspectAppearanceState(
+          APPEARANCE_DIR,
+          APPEARANCE_FILE,
+          "restored original appearance final",
+        );
+        assertAppearanceState(
+          restoredAppearance,
+          originalAppearance,
+          "restored original appearance final",
+        );
+      });
+      await restoreStep("immutable baseline final", async () => {
         const baselineFinal = await inspectArtifacts(
           baselineIdentity.directory, baselineIdentity.version, "baseline final",
         );
         assertIdentity(baselineFinal, baselineIdentity, "baseline final");
+      });
+      await restoreStep("immutable candidate final", async () => {
         const candidateFinal = await inspectArtifacts(
           candidateIdentity.directory, candidateIdentity.version, "candidate final",
         );
         assertIdentity(candidateFinal, candidateIdentity, "candidate final");
-        restored = true;
-      } catch (restoreError) {
+      });
+      restored = restoreErrors.length === 0;
+      if (restoreErrors.length) {
+        const restoreFailure = restoreErrors.length === 1
+          ? restoreErrors[0]
+          : new AggregateError(restoreErrors, "original state restore failed");
         failure = failure
-          ? new AggregateError([failure, restoreError], "run failed and original plugin restore failed")
-          : restoreError;
+          ? new AggregateError([failure, restoreFailure], "run failed and original state restore failed")
+          : restoreFailure;
       }
     }
     if (restored || !snapshotReady) {
-      await rm(snapshotDir, { recursive: true, force: true });
+      try {
+        await rm(snapshotDir, { recursive: true, force: true });
+      } catch (error) {
+        const cleanupFailure = new Error("recovery snapshot cleanup failed: "
+          + boundedText(error?.message || error), { cause: error });
+        failure = failure
+          ? new AggregateError([failure, cleanupFailure], "run failed and snapshot cleanup failed")
+          : cleanupFailure;
+        console.error("RECOVERY SNAPSHOT PRESERVED: " + snapshotDir);
+      }
     } else {
       console.error("RECOVERY SNAPSHOT PRESERVED: " + snapshotDir);
     }
@@ -1303,7 +2055,7 @@ function syntheticContract(identity, expectedObsidianVersion) {
   }));
   const journeys = EXPECTED_JOURNEY_IDS.map((id) => ({ id }));
   journeys[0].error = "synthetic journey failure";
-  return {
+  const contract = {
     schema: 1,
     captureOnly: true,
     setupValid: true,
@@ -1345,11 +2097,96 @@ function syntheticContract(identity, expectedObsidianVersion) {
       viewState: null,
       fixtureExists: false,
       instrumentationExists: false,
+      opticalStyleExists: false,
+      themeConfig: "system",
+      themeLockExists: false,
       viewport: { width: 1280, height: 900, dpr: 1 },
       settings: {},
       selection: null,
       cursor: null,
       scrollTop: 0,
+      refs: { submenu: false, filterPanel: false, classPanel: false, cropEditor: false },
+      orphans: 0,
+    },
+  };
+  contract.sourceAddress = syntheticSourceAddressContract(identity, expectedObsidianVersion);
+  return contract;
+}
+
+function syntheticSourceAddressContract(identity, expectedObsidianVersion) {
+  const hashes = Object.fromEntries(
+    ARTIFACTS.map((name) => [HASH_KEYS[name], identity.hashes[name]]),
+  );
+  const assertions = SOURCE_ADDRESS_ASSERTION_NAMES.map((name) => ({ name, ok: true, actual: null }));
+  const journeys = SOURCE_ADDRESS_JOURNEY_IDS.map((id) => ({ id }));
+  return {
+    schema: 1,
+    captureOnly: true,
+    setupValid: true,
+    cleanupValid: true,
+    fatal: null,
+    aborted: null,
+    cleanupError: null,
+    expected: { pluginVersion: identity.version, obsidianVersion: expectedObsidianVersion, hashes },
+    environment: {
+      pluginVersion: identity.version,
+      obsidianVersion: expectedObsidianVersion,
+      hashes,
+      target: { matchingPageCount: 1 },
+      vault: "vault-image-toolbar",
+      platform: "Linux x86_64",
+    },
+    gates: [
+      { name: "target", ok: true, actual: { matchingPageCount: 1, vault: "vault-image-toolbar" } },
+      { name: "plugin-version", ok: true, actual: identity.version },
+      { name: "obsidian-version", ok: true, actual: expectedObsidianVersion },
+      { name: "build-hashes", ok: true, actual: hashes },
+      { name: "preflight-clean", ok: true, actual: {} },
+      { name: "fixture-assets", ok: true, actual: {} },
+      { name: "runtime-fingerprint", ok: true, actual: {} },
+      { name: "instrumentation", ok: true, actual: { armed: true } },
+    ],
+    assertions,
+    journeys,
+    journeyContract: {
+      expectedCount: SOURCE_ADDRESS_JOURNEY_IDS.length,
+      expectedIds: [...SOURCE_ADDRESS_JOURNEY_IDS],
+      actualCount: SOURCE_ADDRESS_JOURNEY_IDS.length,
+      actualIds: [...SOURCE_ADDRESS_JOURNEY_IDS],
+      missingIds: [],
+      unexpectedIds: [],
+      duplicateIds: [],
+      orderMatches: true,
+      complete: true,
+    },
+    assertionContract: {
+      expectedCount: SOURCE_ADDRESS_ASSERTION_NAMES.length,
+      expectedNames: [...SOURCE_ADDRESS_ASSERTION_NAMES],
+      actualCount: SOURCE_ADDRESS_ASSERTION_NAMES.length,
+      actualNames: [...SOURCE_ADDRESS_ASSERTION_NAMES],
+      missingNames: [],
+      unexpectedNames: [],
+      duplicateNames: [],
+      orderMatches: true,
+      complete: true,
+    },
+    cleanup: {
+      file: null,
+      mode: null,
+      viewState: null,
+      selection: null,
+      cursor: null,
+      scrollTop: 0,
+      scrollLeft: 0,
+      useMarkdownLinks: true,
+      documentFocus: false,
+      viewport: { width: 1280, height: 900, dpr: 1 },
+      settings: {},
+      fixtureExists: false,
+      assetPaths: [],
+      hook: false,
+      fault: false,
+      activeImage: false,
       refs: { submenu: false, filterPanel: false, classPanel: false, cropEditor: false },
       orphans: 0,
     },
@@ -1383,6 +2220,17 @@ function runSyntheticContractChecks() {
     }
     check(rejected, label);
   };
+  const rejectsSource = (mutate, label) => {
+    const contract = structuredClone(red.sourceAddress);
+    mutate(contract);
+    let rejected = false;
+    try {
+      validateSourceAddressContract(contract, identity, expectedObsidianVersion, "synthetic");
+    } catch {
+      rejected = true;
+    }
+    check(rejected, label);
+  };
 
   check(isDirectPatchSuccessor([0, 6, 14], [0, 6, 15]),
     "direct patch successor accepted");
@@ -1392,8 +2240,44 @@ function runSyntheticContractChecks() {
     "minor successor rejected");
   check(!isDirectPatchSuccessor([0, 6, 14], [1, 0, 0]),
     "major successor rejected");
+  check(!shouldSetThemeConfig("system", "system"),
+    "matching effective theme config avoids persistence write");
+  check(!shouldSetThemeConfig(undefined, null),
+    "missing and null theme config are the same effective value");
+  check(shouldSetThemeConfig("moonstone", "system"),
+    "different effective theme config requires persistence write");
+  const absentAppearance = { exists: false, bytes: null, hash: null };
+  const firstAppearanceBytes = Buffer.from('{"theme":"system"}\n');
+  const firstAppearance = {
+    exists: true,
+    bytes: firstAppearanceBytes,
+    hash: sha256(firstAppearanceBytes),
+  };
+  const sameAppearance = {
+    exists: true,
+    bytes: Buffer.from(firstAppearance.bytes),
+    hash: firstAppearance.hash,
+  };
+  const changedAppearanceBytes = Buffer.from('{"theme":"moonstone"}\n');
+  const changedAppearance = {
+    exists: true,
+    bytes: changedAppearanceBytes,
+    hash: sha256(changedAppearanceBytes),
+  };
+  check(appearanceStatesEqual(absentAppearance, { exists: false, bytes: null, hash: null }),
+    "absent appearance state equality");
+  check(appearanceStatesEqual(firstAppearance, sameAppearance),
+    "exact appearance bytes equality");
+  check(!appearanceStatesEqual(firstAppearance, changedAppearance),
+    "changed appearance bytes inequality");
   validateCaptureContract(red, identity, expectedObsidianVersion, "synthetic");
+  validateSourceAddressContract(red.sourceAddress, identity, expectedObsidianVersion, "synthetic");
   check(true, "structurally valid RED capture");
+  check(SOURCE_ADDRESS_ASSERTION_NAMES.length === 44, "fixed 44-slot source-address contract");
+  check(!isProtectedSourceAddressPath("/journeys/0")
+    && isProtectedSourceAddressPath("/sourceAddress")
+    && isProtectedSourceAddressPath("/sourceAddress/assertions/0"),
+  "source-address allow-envelope paths are protected");
   const failures = collectProductFailures(red);
   check(failures.length === 2, "complete product failure collection");
   const identicalDiffs = collectDiffs(comparableContract(red), comparableContract(structuredClone(red)));
@@ -1407,6 +2291,7 @@ function runSyntheticContractChecks() {
   green.assertions[0].actual = null;
   delete green.journeys[0].error;
   validateCaptureContract(green, identity, expectedObsidianVersion, "synthetic");
+  validateSourceAddressContract(green.sourceAddress, identity, expectedObsidianVersion, "synthetic");
   check(resultStatus(assessDiffs([], null, false), collectProductFailures(green)) === "GREEN",
     "green candidate status");
   rejects((contract) => { contract.assertions.pop(); }, "assertion truncation");
@@ -1417,6 +2302,27 @@ function runSyntheticContractChecks() {
   rejects((contract) => { contract.fatal = { kind: "error", message: "synthetic" }; }, "fatal capture");
   rejects((contract) => { delete contract.schema; }, "missing schema");
   rejects((contract) => { contract.schema = 2; }, "wrong schema");
+  rejectsSource((contract) => { contract.assertions.pop(); }, "source-address assertion truncation");
+  rejectsSource((contract) => { contract.journeyContract.orderMatches = false; },
+    "source-address journey order");
+  const sourceRed = structuredClone(green);
+  sourceRed.sourceAddress.assertions[0].ok = false;
+  sourceRed.sourceAddress.assertions[0].actual = { failure: true };
+  check(collectProductFailures(sourceRed).some((failure) =>
+    failure.id === "source-address:" + SOURCE_ADDRESS_ASSERTION_NAMES[0]),
+  "source-address product failures are collected");
+  const protectedDiffs = collectDiffs(comparableContract(green), comparableContract(sourceRed));
+  const protectedAssessment = assessDiffs(protectedDiffs, null, true);
+  check(!protectedAssessment.passed && protectedAssessment.unallowed.length > 0
+    && protectedAssessment.unallowed.every((diff) => isProtectedSourceAddressPath(diff.path)),
+  "report-only cannot permit source-address deltas");
+  const nestedError = new AggregateError(
+    [new Error("x".repeat(20000)), new Error("second restore diagnostic")],
+    "outer diagnostic",
+  );
+  const wrappedError = new Error("restore wrapper", { cause: nestedError });
+  check(formatErrorTree(wrappedError).includes("second restore diagnostic"),
+    "later nested error diagnostics survive bounded output");
   console.log("SELF-TEST " + passed + "/" + passed + " passed");
   return 0;
 }
@@ -1450,7 +2356,7 @@ async function main() {
 main().then(
   (code) => { process.exitCode = code; },
   (error) => {
-    console.error("FATAL:", error?.stack || error);
+    console.error("FATAL:\n" + formatErrorTree(error));
     process.exitCode = 2;
   },
 );

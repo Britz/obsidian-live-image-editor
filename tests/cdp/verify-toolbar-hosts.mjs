@@ -6,6 +6,8 @@ import { connectOptical, pixel } from "./_optical.mjs";
 
 let abortSignal = null;
 const abortWaiters = new Set();
+class CaptureFatalError extends Error {}
+
 function requestAbort(signal) {
   if (abortSignal) return;
   abortSignal = signal;
@@ -19,6 +21,7 @@ process.on("SIGTERM", handleSigterm);
 
 const PLUGIN_ID = "live-image-editor";
 const FIXTURE = "_toolbar-hosts-fixture.md";
+const OPTICAL_LOCK_ID = "__lie-toolbar-host-optical-lock";
 const VIEWPORT = { width: 1280, height: 900, deviceScaleFactor: 1 };
 const HOST_LINES = {
   "normal-host": 2,
@@ -217,6 +220,7 @@ async function runJourney(id, callback) {
     await callback();
     throwIfAborted();
   } catch (error) {
+    if (error instanceof CaptureFatalError) throw error;
     thrownMessage = String(error?.stack || error);
   }
 
@@ -329,16 +333,14 @@ async function main() {
     const alt = `[alt=${JSON.stringify(id)}]`;
     const struct = `[data-lie-struct^=${JSON.stringify("![" + id + "]")}]`;
     let source;
-    if (id === "footnote-host") {
-      source = `.popover.hover-popover .internal-embed.image-embed.lie-embed img${alt}`;
-    } else if (id === "table-host") {
+    if (id === "table-host") {
       source = `.markdown-source-view table .internal-embed.image-embed.lie-embed img${alt}`;
     } else if (id === "callout-host") {
       source = `.markdown-source-view .callout .internal-embed.image-embed.lie-embed img${alt}`;
     } else {
       source = `.workspace-leaf.mod-active .cm-content .lie-wrapper${struct} img`;
     }
-    const preview = id === "footnote-host" ? `.popover.hover-popover .internal-embed.image-embed.lie-embed img${alt}`
+    const preview = id === "footnote-host" ? `.markdown-reading-view .footnotes .internal-embed.image-embed.lie-embed img${alt}`
       : `.markdown-reading-view .internal-embed.image-embed.lie-embed img${alt}`;
     return `(app.workspace.activeLeaf?.view?.getMode?.() === "source"
       ? document.querySelector(${JSON.stringify(source)})
@@ -348,12 +350,27 @@ async function main() {
   async function evidence(rects) {
     const clip = rectUnion(rects, VIEWPORT);
     if (!clip) return null;
-    const shot = await cdp.screenshot(clip);
+    let shot = await cdp.screenshot(clip);
+    let sha256 = rgbaHash(shot);
+    let stable = false;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await settle(80);
+      const next = await cdp.screenshot(clip);
+      const nextSha256 = rgbaHash(next);
+      shot = next;
+      if (nextSha256 === sha256) {
+        stable = true;
+        sha256 = nextSha256;
+        break;
+      }
+      sha256 = nextSha256;
+    }
+    if (!stable) throw new Error("screenshot did not stabilize");
     return {
       clip,
       width: shot.width,
       height: shot.height,
-      sha256: rgbaHash(shot),
+      sha256,
       pixels: {
         topLeft: pixel(shot, 1, 1),
         center: pixel(shot, shot.width / 2, shot.height / 2),
@@ -414,31 +431,6 @@ async function main() {
       return true;
     })()`);
     await wait(500);
-    if (id === "footnote-host") {
-      const reference = await evaluate(`(() => {
-        const visible = (element) => {
-          if (!element?.isConnected) return false;
-          const rect = element.getBoundingClientRect();
-          const style = getComputedStyle(element);
-          return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight
-            && style.display !== "none" && style.visibility !== "hidden";
-        };
-        const ref = [...document.querySelectorAll(".workspace-leaf.mod-active a.footnote-link,.workspace-leaf.mod-active .cm-hmd-footnote")].find(visible) ?? null;
-        if (!ref) return null;
-        const rect = ref.getBoundingClientRect();
-        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-        const owner = ref.closest("a,sup,.cm-hmd-footnote") ?? ref;
-        return {
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-          visible: rect.top >= 0 && rect.bottom <= innerHeight,
-          hit: !!hit && (owner === hit || owner.contains(hit) || hit.contains(owner)),
-        };
-      })()`);
-      hardGate("target:footnote-host:reference", !!reference?.visible && !!reference?.hit, reference);
-      await cdp.hover(reference.x, reference.y);
-      await wait(800);
-    }
     await evaluate(`(() => {
       const image = ${imageExpression(id)};
       if (!image) throw new Error("missing image ${id}");
@@ -487,6 +479,7 @@ async function main() {
       const toolbar = visible(inImage) ? inImage : visible(floating) ? floating : null;
       const panel = [...document.querySelectorAll(".lie-submenu,.lie-filter-panel,.lie-class-panel,.lie-group-popup,.lie-crop-portal")].find(visible) ?? null;
       const crop = plugin?.cropEditor ?? null;
+      const toolbarActiveImage = plugin?.toolbar?.getActiveImage?.() ?? null;
       const surface = plugin?.submenu ?? plugin?.filterPanel?.submenu ?? plugin?.filterPanel
         ?? plugin?.classPanel?.submenu ?? plugin?.classPanel ?? crop?.controls ?? null;
       const opts = surface?.opts ?? {};
@@ -518,8 +511,11 @@ async function main() {
           panelHit: !!(panel && panelHit && panel.contains(panelHit)),
         },
         identity: {
+          activeImagePresent: !!plugin?.activeImage,
           activeImageSame: plugin?.activeImage === image,
           activeImageConnected: !!plugin?.activeImage?.isConnected,
+          toolbarActiveImageSame: toolbarActiveImage === image,
+          toolbarActiveImageConnected: !!toolbarActiveImage?.isConnected,
           anchorConnected: !!anchor?.isConnected,
           toolbarConnected: !!surfaceToolbar?.isConnected,
           hoverRegionConnected: !!hoverRegion?.isConnected,
@@ -542,21 +538,102 @@ async function main() {
   async function hoverImage(id) {
     await cdp.hover(4, 4);
     await wait(280);
-    const point = await locate(id);
+    let point = await locate(id);
+    const sourceMode = await evaluate(`app.workspace.activeLeaf?.view?.getMode?.() === "source"`);
+    if (!sourceMode) {
+      await cdp.hover(point.x, point.y);
+      await wait(260);
+      return { point, current: await state(id) };
+    }
+
+    await cdp.hover(4, 4);
+    await wait(40);
+    point = await evaluate(`(() => {
+      const image = ${imageExpression(id)};
+      if (!image?.isConnected) return null;
+      const rect = image.getBoundingClientRect();
+      const owner = image.closest(".lie-wrapper,.internal-embed.image-embed.lie-embed") ?? image;
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + Math.min(rect.height / 2, 80);
+      const hit = document.elementFromPoint(x, y);
+      return {
+        x, y,
+        visible: rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.bottom <= innerHeight,
+        hit: !!hit && (owner === hit || owner.contains(hit)),
+      };
+    })()`);
+    if (!point?.visible || !point?.hit) {
+      throw new CaptureFatalError(`active image target did not remain live for ${id}: ${canonicalJson(point)}`);
+    }
+    await cdp.hover(point.x, point.y);
+    await wait(120);
+    const first = await state(id);
+    await wait(120);
+    const second = await state(id);
+    const identityMatches = (sample) => {
+      const requiresActiveImage = sample.presentation.floatingVisible || !!sample.postHost;
+      const activeImageMatches = !requiresActiveImage || (
+        sample.identity.activeImagePresent
+        && sample.identity.activeImageSame
+        && sample.identity.activeImageConnected
+      );
+      const toolbarImageMatches = !sample.presentation.floatingVisible || (
+        sample.identity.toolbarActiveImageSame
+        && sample.identity.toolbarActiveImageConnected
+      );
+      return !!sample.image?.connected && activeImageMatches && toolbarImageMatches;
+    };
+    const presentation = (sample) => ({
+      postHost: !!sample.postHost,
+      inImageVisible: sample.presentation.inImageVisible,
+      floatingVisible: sample.presentation.floatingVisible,
+      inset: sample.presentation.inset,
+      above: sample.presentation.above,
+    });
+    if (!identityMatches(first) || !identityMatches(second)
+      || canonicalJson(presentation(first)) !== canonicalJson(presentation(second))) {
+      throw new CaptureFatalError(`active image identity did not converge for ${id}: ${canonicalJson({
+        first: { identity: first.identity, presentation: presentation(first) },
+        second: { identity: second.identity, presentation: presentation(second) },
+      })}`);
+    }
+    return { point, current: second };
+  }
+
+  async function visibleSurfacePoint(selector) {
+    return evaluate(`(() => {
+      const surfaces = [...document.querySelectorAll(${JSON.stringify(selector)})];
+      for (const surface of surfaces) {
+        if (!surface?.isConnected) continue;
+        const rect = surface.getBoundingClientRect();
+        const style = getComputedStyle(surface);
+        if (rect.width <= 0 || rect.height <= 0 || style.display === "none"
+          || style.visibility === "hidden" || Number(style.opacity) === 0) continue;
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        if (hit && surface.contains(hit)) return { x, y };
+      }
+      return null;
+    })()`);
+  }
+
+  async function travelTo(rect, liveSelector = null) {
+    let point = liveSelector
+      ? await visibleSurfacePoint(liveSelector)
+      : rect ? { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 } : null;
+    if (!point) return false;
+    await cdp.hover(point.x, point.y);
+    await wait(90);
+    if (!liveSelector) { await wait(170); return true; }
+    point = await visibleSurfacePoint(liveSelector);
+    if (!point) return false;
     await cdp.hover(point.x, point.y);
     await wait(260);
-    return { point, current: await state(id) };
+    return !!(await visibleSurfacePoint(liveSelector));
   }
 
-  async function travelTo(rect) {
-    if (!rect) return false;
-    await cdp.hover(rect.x + rect.w / 2, rect.y + rect.h / 2);
-    await wait(260);
-    return true;
-  }
-
-  async function visibleButton(id) {
-    const selector = `[data-lie-id="${id}"]`;
+  async function visibleHitTarget(selector, ownerSelector) {
     return evaluate(`(() => {
       const visible = (element) => {
         if (!element?.isConnected) return false;
@@ -569,7 +646,7 @@ async function main() {
       const button = buttons.find((candidate) => {
         const rect = candidate.getBoundingClientRect();
         const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-        return candidate.closest(".lie-toolbar") && !!hit && candidate.contains(hit);
+        return candidate.closest(${JSON.stringify(ownerSelector)}) && !!hit && candidate.contains(hit);
       }) ?? null;
       if (!button) return null;
       const rect = button.getBoundingClientRect();
@@ -577,6 +654,28 @@ async function main() {
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
         rect: { x: rect.x, y: rect.y, w: rect.width, h: rect.height }, hit: !!hit && button.contains(hit) };
     })()`);
+  }
+
+  async function visibleButton(id, ownerSelector = ".lie-toolbar") {
+    return visibleHitTarget(`[data-lie-id="${id}"]`, ownerSelector);
+  }
+
+  async function resolveActionButton(id) {
+    const direct = await visibleButton(id);
+    if (direct) return { button: direct, group: null };
+    const groupId = id === "crop" ? "edit" : null;
+    if (!groupId) return { button: null, group: null };
+
+    const trigger = await visibleHitTarget(
+      `.lie-toolbar-group-trigger[data-lie-group="${groupId}"]`,
+      ".lie-toolbar"
+    );
+    if (!trigger) return { button: null, group: { id: groupId, trigger: null } };
+    await cdp.click(trigger.x, trigger.y);
+    await wait(180);
+    const popupSelector = `.lie-group-popup[data-for-id="${groupId}"]`;
+    const button = await visibleButton(id, popupSelector);
+    return { button, group: { id: groupId, trigger, popupButton: button } };
   }
 
   async function finalizeJourneyEvidence(journey, hostId, before) {
@@ -609,9 +708,13 @@ async function main() {
       const hovered = await hoverImage(hostId);
       journey.hover = hovered.current;
       journey.hoverEvidence = await evidence([hovered.current.image, hovered.current.toolbar]);
-      await travelTo(hovered.current.toolbar);
+      if (!(await travelTo(hovered.current.toolbar, ".lie-toolbar-floating,.lie-toolbar-in-image"))) {
+        throw new Error("toolbar travel target was not stable");
+      }
       journey.toolbarTravel = await state(hostId);
-      const button = await visibleButton(actionId);
+      const resolvedButton = await resolveActionButton(actionId);
+      const button = resolvedButton.button;
+      journey.group = resolvedButton.group;
       journey.button = button;
       check(`${hostId}.${actionId}.button`, !!button?.hit, button);
       if (!button) throw new Error(`missing visible ${actionId} button`);
@@ -626,11 +729,15 @@ async function main() {
         && journey.open.identity.toolbarConnected
         && journey.open.identity.hoverRegionConnected
         && journey.open.identity.hoverRegionOwnsImage, journey.open.identity);
-      await travelTo(journey.open.panel);
+      if (!(await travelTo(
+        journey.open.panel,
+        ".lie-submenu,.lie-filter-panel,.lie-class-panel,.lie-group-popup,.lie-crop-portal"
+      ))) throw new Error("panel travel target was not stable");
       journey.panelTravel = await state(hostId);
       check(`${hostId}.${actionId}.panel-travel`, journey.panelTravel.presentation.panelVisible
         && journey.panelTravel.presentation.panelHit, journey.panelTravel.presentation);
       await cdp.press("Escape");
+      await cdp.hover(4, 4);
       await wait(380);
       journey.afterEscape = await state(hostId);
       const after = await sourceState();
@@ -736,6 +843,8 @@ async function main() {
         cursor: editor?.getCursor() ?? null,
         scrollTop: scroller?.scrollTop ?? 0,
         viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio },
+        themeConfig: app.vault.getConfig("theme") ?? null,
+        themeClasses: [...document.body.classList].filter((name) => name.startsWith("theme-")).sort(),
         settings: plugin ? JSON.parse(JSON.stringify(plugin.settings)) : null,
       };
     })()`);
@@ -743,6 +852,39 @@ async function main() {
     await cdp.setViewport(VIEWPORT.width, VIEWPORT.height, VIEWPORT.deviceScaleFactor);
     await cdp.focusEmulation(true);
     await wait(250);
+
+    const lockState = await evaluate(`(() => ({
+      theme: !!window.__lieToolbarHostThemeLock,
+      optical: !!document.getElementById(${JSON.stringify(OPTICAL_LOCK_ID)}),
+    }))()`);
+    hardGate("theme-lock-absent", !lockState.theme && !lockState.optical, lockState);
+    const fixedTheme = await evaluate(`(() => {
+      const style = document.createElement("style");
+      style.id = ${JSON.stringify(OPTICAL_LOCK_ID)};
+      style.textContent = "*,*::before,*::after{animation:none!important;caret-color:transparent!important;transition:none!important}";
+      document.head.appendChild(style);
+      const enforce = () => {
+        if (document.body.classList.contains("theme-dark")) {
+          document.body.classList.remove("theme-dark");
+        }
+        if (!document.body.classList.contains("theme-light")) {
+          document.body.classList.add("theme-light");
+        }
+      };
+      const observer = new MutationObserver(enforce);
+      observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+      window.__lieToolbarHostThemeLock = { observer, style };
+      enforce();
+      return {
+        config: app.vault.getConfig("theme") ?? null,
+        classes: [...document.body.classList].filter((name) => name.startsWith("theme-")).sort(),
+        optical: style.isConnected,
+      };
+    })()`);
+    await wait(120);
+    hardGate("capture-theme", fixedTheme.config === original.themeConfig
+      && canonicalJson(fixedTheme.classes) === canonicalJson(["theme-light"])
+      && fixedTheme.optical, fixedTheme);
 
     contract.environment = await evaluate(`(async () => {
       const plugin = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}];
@@ -895,58 +1037,83 @@ async function main() {
       message: String(error?.stack || error),
     };
   } finally {
-    try {
-      await cdp.press("Escape");
-      await cdp.hover(4, 4);
-      await settle(220);
-    } catch {}
-    try {
-      if (instrumentationArmed) {
-        await evaluate(`(() => {
-          const diag = window.__lieToolbarHostDiag;
-          if (!diag) return true;
-          app.workspace.offref(diag.editorRef);
-          removeEventListener("error", diag.onError);
-          removeEventListener("unhandledrejection", diag.onReject);
-          console.error = diag.originalConsoleError;
-          if (diag.dispatchDescriptor) Object.defineProperty(diag.cm, "dispatchTransactions", diag.dispatchDescriptor);
-          else delete diag.cm.dispatchTransactions;
-          delete window.__lieToolbarHostDiag;
-          return true;
-        })()`);
+    const cleanupErrors = [];
+    const cleanupStep = async (name, callback) => {
+      try {
+        await callback();
+      } catch (error) {
+        cleanupErrors.push({ name, error: String(error?.stack || error) });
       }
-      if (original?.settings) {
-        await evaluate(`(() => {
-          const plugin = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}];
-          Object.assign(plugin.settings, ${JSON.stringify(original.settings)});
-          plugin.refreshLivePreviewDecorations();
-          return true;
-        })()`);
-      }
-      if (original?.viewState) {
-        await evaluate(`(async () => { await app.workspace.activeLeaf.setViewState(${JSON.stringify(original.viewState)}); return true; })()`);
-        await settle(600);
-      }
-      if (original) {
-        await evaluate(`(() => {
-          const editor = app.workspace.activeEditor?.editor;
-          const selection = ${JSON.stringify(original.selection)};
-          if (selection && editor) editor.setSelection(selection.anchor, selection.head);
-          const scroller = document.querySelector(".markdown-source-view .cm-scroller,.markdown-reading-view .markdown-preview-view");
-          if (scroller) scroller.scrollTop = ${Number(original.scrollTop || 0)};
-          return true;
-        })()`);
-      }
-      if (fixtureCreated) {
-        await evaluate(`(async () => {
-          const file = app.vault.getAbstractFileByPath(${JSON.stringify(FIXTURE)});
-          if (file) await app.vault.delete(file);
-          return true;
-        })()`);
-      }
-      await cdp.clearViewport();
-      await cdp.focusEmulation(false);
-      await settle(300);
+    };
+
+    await cleanupStep("escape", () => cdp.press("Escape"));
+    await cleanupStep("neutral-pointer", () => cdp.hover(4, 4));
+    await cleanupStep("initial-settle", () => settle(220));
+    if (instrumentationArmed) {
+      await cleanupStep("instrumentation", () => evaluate(`(() => {
+        const diag = window.__lieToolbarHostDiag;
+        if (!diag) return true;
+        app.workspace.offref(diag.editorRef);
+        removeEventListener("error", diag.onError);
+        removeEventListener("unhandledrejection", diag.onReject);
+        console.error = diag.originalConsoleError;
+        if (diag.dispatchDescriptor) Object.defineProperty(diag.cm, "dispatchTransactions", diag.dispatchDescriptor);
+        else delete diag.cm.dispatchTransactions;
+        delete window.__lieToolbarHostDiag;
+        return true;
+      })()`));
+    }
+    if (original?.settings) {
+      await cleanupStep("settings", () => evaluate(`(() => {
+        const plugin = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}];
+        Object.assign(plugin.settings, ${JSON.stringify(original.settings)});
+        plugin.refreshLivePreviewDecorations();
+        return true;
+      })()`));
+    }
+    if (original?.viewState) {
+      await cleanupStep("view-state", () => evaluate(`(async () => {
+        await app.workspace.activeLeaf.setViewState(${JSON.stringify(original.viewState)});
+        return true;
+      })()`));
+      await cleanupStep("view-state-settle", () => settle(600));
+    }
+    if (original) {
+      await cleanupStep("selection-scroll", () => evaluate(`(() => {
+        const editor = app.workspace.activeEditor?.editor;
+        const selection = ${JSON.stringify(original.selection)};
+        if (selection && editor) editor.setSelection(selection.anchor, selection.head);
+        const scroller = document.querySelector(".markdown-source-view .cm-scroller,.markdown-reading-view .markdown-preview-view");
+        if (scroller) scroller.scrollTop = ${Number(original.scrollTop || 0)};
+        return true;
+      })()`));
+    }
+    if (fixtureCreated) {
+      await cleanupStep("fixture", () => evaluate(`(async () => {
+        const file = app.vault.getAbstractFileByPath(${JSON.stringify(FIXTURE)});
+        if (file) await app.vault.delete(file);
+        return true;
+      })()`));
+    }
+    await cleanupStep("theme-observer", () => evaluate(`(() => {
+      window.__lieToolbarHostThemeLock?.observer?.disconnect();
+      return true;
+    })()`));
+    await cleanupStep("optical-style", () => evaluate(`(() => {
+      window.__lieToolbarHostThemeLock?.style?.remove();
+      document.getElementById(${JSON.stringify(OPTICAL_LOCK_ID)})?.remove();
+      delete window.__lieToolbarHostThemeLock;
+      return true;
+    })()`));
+    await cleanupStep("theme-restore", () => evaluate(`(() => {
+      app.setTheme();
+      return true;
+    })()`));
+    await cleanupStep("theme-settle", () => settle(350));
+    await cleanupStep("viewport", () => cdp.clearViewport());
+    await cleanupStep("focus-emulation", () => cdp.focusEmulation(false));
+    await cleanupStep("final-settle", () => settle(300));
+    await cleanupStep("cleanup-contract", async () => {
       contract.cleanup = await evaluate(`(() => {
         const plugin = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}];
         const leaf = app.workspace.activeLeaf;
@@ -961,13 +1128,18 @@ async function main() {
           scrollTop: scroller?.scrollTop ?? 0,
           fixtureExists: !!app.vault.getAbstractFileByPath(${JSON.stringify(FIXTURE)}),
           instrumentationExists: !!window.__lieToolbarHostDiag,
+          opticalStyleExists: !!document.getElementById(${JSON.stringify(OPTICAL_LOCK_ID)}),
+          themeConfig: app.vault.getConfig("theme") ?? null,
+          themeLockExists: !!window.__lieToolbarHostThemeLock,
           viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio },
           settings: JSON.parse(JSON.stringify(plugin.settings)),
           refs: { submenu: !!plugin.submenu, filterPanel: !!plugin.filterPanel, classPanel: !!plugin.classPanel, cropEditor: !!plugin.cropEditor },
           orphans: document.querySelectorAll(".lie-submenu,.lie-filter-panel,.lie-class-panel,.lie-group-popup,.lie-crop-portal,.lie-toolbar-floating").length,
         };
       })()`);
-      cleanupValid = !!original
+    });
+    await cleanupStep("cleanup-validation", async () => {
+      cleanupValid = cleanupErrors.length === 0 && !!original && !!contract.cleanup
         && contract.cleanup.file === original.file
         && contract.cleanup.mode === original.mode
         && JSON.stringify(contract.cleanup.viewState) === JSON.stringify(original.viewState)
@@ -976,19 +1148,21 @@ async function main() {
         && Math.abs(contract.cleanup.scrollTop - original.scrollTop) <= 1
         && !contract.cleanup.fixtureExists
         && !contract.cleanup.instrumentationExists
+        && !contract.cleanup.opticalStyleExists
+        && contract.cleanup.themeConfig === original.themeConfig
+        && !contract.cleanup.themeLockExists
         && JSON.stringify(contract.cleanup.settings) === JSON.stringify(original.settings)
         && !Object.values(contract.cleanup.refs).some(Boolean)
         && contract.cleanup.orphans === 0
         && contract.cleanup.viewport.width === original.viewport.width
         && contract.cleanup.viewport.height === original.viewport.height
         && contract.cleanup.viewport.dpr === original.viewport.dpr;
-    } catch (error) {
-      contract.cleanupError = String(error?.stack || error);
-      cleanupValid = false;
-    }
+    });
     contract.setupValid = setupValid;
+    await cleanupStep("cdp-close", async () => cdp.close());
+    cleanupValid = cleanupValid && cleanupErrors.length === 0;
+    if (cleanupErrors.length) contract.cleanupError = canonicalJson(cleanupErrors);
     contract.cleanupValid = cleanupValid;
-    cdp.close();
   }
 
   finalizeJourneyContract();

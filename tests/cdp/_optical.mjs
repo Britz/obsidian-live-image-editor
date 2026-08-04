@@ -154,6 +154,48 @@ export async function connectOptical() {
     await send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...info });
     await send("Input.dispatchKeyEvent", { type: "keyUp", ...info });
   };
+  // A REAL keyboard chord through CDP (e.g. Ctrl+Z / Cmd+Z). Modifier state is carried on every
+  // event and released in reverse order so a failed test cannot leave a logically held key behind.
+  const keyChord = async (key, {
+    alt = false, ctrl = false, meta = false, shift = false, commands = [],
+  } = {}) => {
+    const definitions = [
+      [alt, 1, { key: "Alt", code: "AltLeft", windowsVirtualKeyCode: 18 }],
+      [ctrl, 2, { key: "Control", code: "ControlLeft", windowsVirtualKeyCode: 17 }],
+      [meta, 4, { key: "Meta", code: "MetaLeft", windowsVirtualKeyCode: 91 }],
+      [shift, 8, { key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16 }],
+    ].filter(([enabled]) => enabled);
+    let modifiers = 0;
+    const pressed = [];
+    try {
+      for (const [, bit, info] of definitions) {
+        modifiers |= bit;
+        await send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...info, modifiers });
+        pressed.push([bit, info]);
+      }
+      const printable = key.length === 1;
+      const upper = printable ? key.toUpperCase() : key;
+      const info = printable
+        ? { key: key.toLowerCase(), code: `Key${upper}`, windowsVirtualKeyCode: upper.charCodeAt(0) }
+        : { key, code: key };
+      await send("Input.dispatchKeyEvent", {
+        type: "rawKeyDown", ...info, modifiers, ...(commands.length ? { commands } : {}),
+      });
+      await send("Input.dispatchKeyEvent", { type: "keyUp", ...info, modifiers });
+    } finally {
+      for (const [bit, info] of pressed.reverse()) {
+        modifiers &= ~bit;
+        await send("Input.dispatchKeyEvent", { type: "keyUp", ...info, modifiers });
+      }
+    }
+  };
+  // Replace the text in the ALREADY focused control through real CDP key events. A platform-
+  // appropriate Select All followed by one complete Input text insertion matches normal user
+  // replacement without manufacturing partial intermediate values in live-preview controls.
+  const replaceFocusedText = async (value, modifiers = { ctrl: true }) => {
+    await keyChord("a", { ...modifiers, commands: ["SelectAll"] });
+    await send("Input.insertText", { text: String(value) });
+  };
   // A REAL left click (move + press + release via the Input domain) — needed where a synthetic
   // `el.click()` does not take (e.g. opening a table cell's live editor rides real mouse events).
   const click = async (x, y) => {
@@ -208,7 +250,7 @@ export async function connectOptical() {
     title: chosen.title,
     url: chosen.url,
   };
-  return { evaluate, hover, click, longPress, press, screenshot, focusEmulation, setViewport, clearViewport, targetInfo, close };
+  return { evaluate, hover, click, longPress, press, keyChord, replaceFocusedText, screenshot, focusEmulation, setViewport, clearViewport, targetInfo, close };
 }
 
 // ---- minimal PNG decoder (8-bit, colorType 2/6, non-interlaced — what Chrome screenshots emit) ----

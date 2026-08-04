@@ -4,6 +4,7 @@ import { BOX_CLASS, FRAME_CLASS, buildLayers, orientationTransform } from "./ren
 import { AnchoredSubmenu } from "./anchored-submenu";
 import { textButton } from "./ui";
 import { t } from "./i18n";
+import { editorToolbarOwner } from "./toolbar";
 
 interface Point { x: number; y: number; }
 
@@ -338,7 +339,7 @@ export class CropEditor {
       anchor,
       toolbar: toolbarEl ?? null,
       title: t("crop"),
-      hoverRegion: this.img.closest<HTMLElement>(".lie-wrapper") ?? undefined,
+      hoverRegion: this.img.closest<HTMLElement>(".lie-wrapper") ?? editorToolbarOwner(this.img) ?? undefined,
       onReset: () => this.resetCrop(),
       // Auto-persist (AD8): leaving-to-persist writes the session ONCE — and only if it was actually
       // touched (an untouched open→leave writes nothing). ✗ cancel / Esc DISCARDS: mark cancelled so

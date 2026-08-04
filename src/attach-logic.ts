@@ -1,5 +1,5 @@
 // Pure decisions for the post-processor attach path (Reading view AND post-processor-hosted embeds
-// nested inside live preview — a table cell, a callout, a footnote popover). Kept out of the DOM so
+// nested inside live preview — a table cell or callout). Kept out of the DOM so
 // they are unit-testable (AD7/Lesson 6); the DOM walk itself is the impure half (main.ts).
 
 // A duck-typed ancestor shape (structurally satisfied by a real DOM Element) so the walk is

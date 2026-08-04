@@ -5,7 +5,10 @@ import {
   setWidthPx, applyNativeSize, PresetKey,
 } from "./transforms";
 import { buildLayers as applyTransformToImage, applyFilterPreview, BOX_CLASS } from "./render-core";
-import { ImageToolbar, ToolbarItem, ToolbarButton, ToolbarGroup } from "./toolbar";
+import {
+  buildToolbarElement, editorToolbarOwner, ImageToolbar, TOOLBAR_ABOVE_CLASS, TOOLBAR_PRESENTATION_CHANGE_EVENT,
+  TOOLBAR_SESSION_CLASS, reflowToolbar, ToolbarItem, ToolbarButton, ToolbarGroup,
+} from "./toolbar";
 import { BRAND_ICON_ID, BRAND_ICON_SVG } from "./brand-icon";
 import { LAYOUTS, LAYOUT_ICON_ID, registerLayoutIcons, currentLayout } from "./layout-icons";
 import {
@@ -28,7 +31,7 @@ import { createLivePreviewExtension, refreshDecorations, toggleEmbedReveal } fro
 import { captionFromAlt, createCaption, CaptionHandle } from "./caption";
 import { Prec, type Text as CmText } from "@codemirror/state";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { EditorView, ViewPlugin } from "@codemirror/view";
+import { BlockType, EditorView, ViewPlugin } from "@codemirror/view";
 import { setLocale, detectLocale, t } from "./i18n";
 import {
   desiredFormat, splitTail, buildEmbed, stripLinkSubpath, pathFromGeneratedLink, canonicalTarget,
@@ -40,7 +43,8 @@ import { writeSource } from "./source-writer";
 import { clickDismissesToolbar, isEngaged } from "./toolbar-region-logic";
 import { ensureEditingToolbarButtons } from "./editing-toolbar-integration";
 
-const POSTPROCESSOR_BLOCK_SELECTOR = ".cm-embed-block.markdown-rendered";
+const POSTPROCESSOR_BLOCK_SELECTOR = ".cm-embed-block.markdown-rendered, .cm-embed-block.cm-callout";
+const POSTPROCESSOR_TOOLBAR_CLASS = "lie-toolbar-postprocessor";
 
 // Shared transform modifiers — used by BOTH the single-image toolbar/command path and the
 // multi-image (selection) command path, so the two never drift (R0). Rotate/flip/inline are
@@ -154,6 +158,12 @@ export default class LiveImageEditorPlugin extends Plugin {
     this.closeSubmenu(false);
     this.closeCrop(false);
     this.toolbar.hide();
+    for (const toolbar of Array.from(activeDocument.querySelectorAll(`.${POSTPROCESSOR_TOOLBAR_CLASS}`))) {
+      toolbar.remove();
+    }
+    for (const owner of Array.from(activeDocument.querySelectorAll(`.${TOOLBAR_ABOVE_CLASS}`))) {
+      owner.classList.remove(TOOLBAR_ABOVE_CLASS, "lie-region-hover");
+    }
     this.stylesInjector.remove();
     activeDocument.body.classList.remove("lie-safe-tall-float", "lie-btn-outline-always", "lie-btn-outline-never");
   }
@@ -395,6 +405,18 @@ export default class LiveImageEditorPlugin extends Plugin {
     for (const img of Array.from(root.querySelectorAll("img"))) this.postProcessorLocations.delete(img);
   }
 
+  /** Returns the exact source range owned by one Live Preview render block. */
+  private livePreviewBlockRange(cm: EditorView, block: HTMLElement): { from: number; to: number } | null {
+    const from = cm.posAtDOM(block, 0);
+    const domTo = cm.posAtDOM(block, block.childNodes.length);
+    if (domTo < from) return null;
+    if (domTo > from) return { from, to: domTo };
+
+    const line = cm.lineBlockAt(from);
+    if (line.type !== BlockType.WidgetRange || line.from !== from || line.to <= from) return null;
+    return { from, to: line.to };
+  }
+
   /** Pairs one Live Preview render block with source locations from its main editor range. */
   private pairLivePreviewBlock(
     cm: EditorView,
@@ -404,9 +426,9 @@ export default class LiveImageEditorPlugin extends Plugin {
     const images = this.postProcessorImages(block, block);
     if (!images) return null;
     try {
-      const from = cm.posAtDOM(block, 0);
-      const to = cm.posAtDOM(block, block.childNodes.length);
-      if (to < from) return null;
+      const range = this.livePreviewBlockRange(cm, block);
+      if (!range) return null;
+      const { from, to } = range;
       const locations = this.parseLocationsInRange(cm, from, to);
       if (!locations) return null;
       const pairs = pairImageLocations(
@@ -536,8 +558,29 @@ export default class LiveImageEditorPlugin extends Plugin {
       if (this.hasTransforms(transform) || img.closest(".cm-content")) applyTransformToImage(img, transform);
       else this.clearStaleTransform(img);
       img.closest(`.${BOX_CLASS}`)?.parentElement?.classList.add("lie-embed");
+      this.reconcilePostProcessorToolbar(img);
       this.applyReadingCaption(img, sourcePath, location.alt);
     }
+  }
+
+  /** Reconciles one shared-model toolbar into a wrapperless Live Preview image area. */
+  private reconcilePostProcessorToolbar(img: HTMLImageElement): void {
+    const host = img.closest<HTMLElement>(".internal-embed.image-embed.lie-embed");
+    const existing = host?.querySelector<HTMLElement>(`.${POSTPROCESSOR_TOOLBAR_CLASS}`) ?? null;
+    const owner = editorToolbarOwner(img);
+    const area = img.closest<HTMLElement>(`.${BOX_CLASS}`);
+    if (!host || owner !== host || !area || !this.settings.showToolbar) {
+      existing?.remove();
+      host?.classList.remove(TOOLBAR_ABOVE_CLASS, "lie-region-hover");
+      return;
+    }
+    if (existing?.parentElement === area) return;
+    existing?.remove();
+    const toolbar = buildToolbarElement(this.toolbarItemsForImage(img));
+    toolbar.classList.add("lie-toolbar-in-image", POSTPROCESSOR_TOOLBAR_CLASS);
+    toolbar.addEventListener("pointerdown", (event) => event.stopPropagation());
+    toolbar.addEventListener("mousedown", (event) => event.stopPropagation());
+    area.appendChild(toolbar);
   }
 
   /** Reconciles one mounted Reading View post-processor section. */
@@ -715,6 +758,28 @@ export default class LiveImageEditorPlugin extends Plugin {
   }
 
   private registerImageSelectionHandler(): void {
+    const onToolbarPresentationChange: EventListener = (event: Event) => {
+      const owner = event.target;
+      if (!(owner instanceof HTMLElement) || !owner.isConnected || !owner.closest(".markdown-source-view")) return;
+      queueMicrotask(() => {
+        if (!owner.isConnected || !owner.closest(".markdown-source-view")) return;
+        const img = owner.querySelector<HTMLImageElement>(".lie-image-area > .lie-frame > img");
+        if (!img || (this.activeImage !== img && !owner.matches(":hover"))) return;
+        const above = owner.classList.contains(TOOLBAR_ABOVE_CLASS);
+        const controllerImage = this.toolbar.getActiveImage();
+        if ((above && controllerImage !== img) || (!above && controllerImage === img)) {
+          this.onImageSelected(img);
+        }
+        if (owner.matches(":hover") && owner.classList.contains(TOOLBAR_ABOVE_CLASS)
+          && this.toolbar.getActiveImage() === img) {
+          this.hoverShown = true;
+          this.bindFloatRegion(owner);
+        }
+      });
+    };
+    activeDocument.addEventListener(TOOLBAR_PRESENTATION_CHANGE_EVENT, onToolbarPresentationChange);
+    this.register(() => activeDocument.removeEventListener(TOOLBAR_PRESENTATION_CHANGE_EVENT, onToolbarPresentationChange));
+
     this.registerDomEvent(activeDocument, "click", (evt: MouseEvent) => {
       const target = evt.target as HTMLElement;
       const panelOpen = this.anyPanelOpen();
@@ -742,37 +807,38 @@ export default class LiveImageEditorPlugin extends Plugin {
       }
     });
 
-    // HOVER path for images that can't host the in-chrome toolbar (`.lie-float`: too-short block
-    // images flagged by the reflow, and inline icons). They use the SAME toolbar, shown floating on the
-    // body (outside `contain: paint`). The delegated `mouseover` OPENS it (entering a `.lie-float`
-    // image); DISMISS is no longer immediate-on-leave — the floating bar now rides the SAME
-    // `bindRegionHover` active region as the panels (D6, `bindFloatRegion`): image + bar are ONE region
-    // with the 160ms travel-grace, so moving image→bar across the gap above the image keeps it (the
-    // floating bar sits ABOVE the image with a gap, so an immediate-on-leave dismiss made it unreachable
-    // for a tiny inline icon). The region governs the dismiss when the whole region is truly left.
+    // HOVER reflows each source-view wrapper before opening the body presentation only for an owner
+    // marked `lie-toolbar-above`. The body bar and image share one grace-bridged hover region.
     this.registerDomEvent(activeDocument, "mouseover", (evt: MouseEvent) => {
       const target = evt.target;
       if (!(target instanceof HTMLElement)) return;
       if (target.closest(".lie-toolbar, .lie-group-popup, .lie-class-panel, .lie-submenu, .lie-filter-panel, .lie-cropping")) return;
-      const floatWrap = target.closest<HTMLElement>(".markdown-source-view .lie-wrapper.lie-float");
+      const floatWrap = target.closest<HTMLElement>(".markdown-source-view .lie-wrapper");
       if (floatWrap) {
-        const img = floatWrap.querySelector("img");
-        if (img && this.settings.showToolbar && this.toolbar.getActiveImage() !== img) {
+        const img = floatWrap.querySelector<HTMLImageElement>("img");
+        const inset = floatWrap.querySelector<HTMLElement>(".lie-toolbar-in-image");
+        if (inset) reflowToolbar(inset);
+        if (img && floatWrap.classList.contains(TOOLBAR_ABOVE_CLASS)
+          && this.settings.showToolbar && this.toolbar.getActiveImage() !== img) {
           this.onImageSelected(img);
           this.hoverShown = true;
           this.bindFloatRegion(floatWrap);
         }
         return;
       }
-      // Post-processor-hosted embeds (reading view, and post-processor-rendered hosts nested inside
-      // live preview — a table cell, a callout, a footnote popover) have no `.lie-wrapper` at all, so
-      // the branch above never matches them — they only got the floating bar on CLICK (Bug 123). Open
-      // it on hover too, host-agnostic: the SAME region-hover pattern, keyed off `.lie-embed` (the
-      // marker attach sets on a host it actually decorated) so only a decorated host is hover-eligible.
-      const embedHost = target.closest<HTMLElement>(".internal-embed.image-embed.lie-embed");
+      // Wrapperless post-processor embeds inside Live Preview use their exact decorated `.lie-embed`
+      // owner. Reading View is excluded by the source-view selector.
+      const embedHost = target.closest<HTMLElement>(
+        ".markdown-source-view .internal-embed.image-embed.lie-embed"
+      );
       if (embedHost) {
         const img = embedHost.querySelector("img");
-        if (img && this.settings.showToolbar && this.toolbar.getActiveImage() !== img) {
+        const inset = embedHost.querySelector<HTMLElement>(".lie-toolbar-in-image");
+        if (inset) reflowToolbar(inset);
+        const needsFloating = embedHost.classList.contains(TOOLBAR_ABOVE_CLASS);
+        const floatingImage = this.toolbar.getActiveImage();
+        const presentationMismatch = needsFloating ? floatingImage !== img : floatingImage === img;
+        if (img && this.settings.showToolbar && (this.activeImage !== img || presentationMismatch)) {
           this.onImageSelected(img);
           this.hoverShown = true;
           this.bindFloatRegion(embedHost);
@@ -829,6 +895,10 @@ export default class LiveImageEditorPlugin extends Plugin {
 
   private onImageSelected(img: HTMLImageElement): void {
     if (!this.settings.showToolbar) return;
+    if (!img.closest(".lie-wrapper")) this.reconcilePostProcessorToolbar(img);
+    const owner = editorToolbarOwner(img);
+    const inset = owner?.querySelector<HTMLElement>(".lie-toolbar-in-image") ?? null;
+    if (inset) reflowToolbar(inset);
     if (img !== this.activeImage) {
       this.closeFilterPanel();
       this.closeClassPanel();
@@ -836,10 +906,10 @@ export default class LiveImageEditorPlugin extends Plugin {
       this.closeCrop();
     }
     this.activeImage = img;
-    // An overlay image that hosts its OWN in-chrome toolbar needs no floating one. But a
-    // `.lie-float` overlay image (too short for in-chrome, or an inline icon) does — let it
-    // through to the floating toolbar, same as a non-overlay image.
-    if (img.closest(".lie-wrapper:not(.lie-float)")) return;
+    if (owner && !owner.classList.contains(TOOLBAR_ABOVE_CLASS)) {
+      this.toolbar.hide();
+      return;
+    }
     this.toolbar.show(img, this.toolbarItemsForImage(img));
   }
 
@@ -1503,7 +1573,55 @@ export default class LiveImageEditorPlugin extends Plugin {
 
   private activeToolbarEl(): HTMLElement | null {
     if (this.toolbar.isVisible()) return activeDocument.querySelector<HTMLElement>(".lie-toolbar-floating");
-    return this.activeImage?.closest(".lie-wrapper")?.querySelector<HTMLElement>(".lie-toolbar-in-image") ?? null;
+    const wrapperToolbar = this.activeImage
+      ?.closest(".lie-wrapper")
+      ?.querySelector<HTMLElement>(".lie-toolbar-in-image") ?? null;
+    if (wrapperToolbar) return wrapperToolbar;
+    return this.activeImage
+      ? editorToolbarOwner(this.activeImage)?.querySelector<HTMLElement>(".lie-toolbar-in-image") ?? null
+      : null;
+  }
+
+  /** The exact static inset toolbar whose presentation must stay stable for a panel session. */
+  private staticSessionToolbar(img: HTMLImageElement): HTMLElement | null {
+    return editorToolbarOwner(img)?.querySelector<HTMLElement>(".lie-toolbar-in-image") ?? null;
+  }
+
+  private lockToolbarSession(img: HTMLImageElement): HTMLElement | null {
+    const toolbar = this.staticSessionToolbar(img);
+    toolbar?.classList.add(TOOLBAR_SESSION_CLASS);
+    return toolbar;
+  }
+
+  /** Unlock, reflow the static inset node and synchronize the visible toolbar presentation. */
+  private finishToolbarSession(
+    lockedToolbar: HTMLElement | null,
+    opened: HTMLImageElement,
+    location: ImageLocation
+  ): void {
+    lockedToolbar?.classList.remove(TOOLBAR_SESSION_CLASS);
+    const sync = () => {
+      const img = opened.isConnected ? opened : this.findRenderedImage(location);
+      if (!img?.isConnected) return;
+      const toolbar = this.staticSessionToolbar(img);
+      if (!toolbar?.isConnected) return;
+      if (toolbar.classList.contains(TOOLBAR_SESSION_CLASS)) return;
+      reflowToolbar(toolbar);
+      const owner = editorToolbarOwner(img);
+      if (!owner) return;
+      const above = owner.classList.contains(TOOLBAR_ABOVE_CLASS);
+      const controllerImage = this.toolbar.getActiveImage();
+      if ((above && controllerImage !== img) || (!above && controllerImage === img)) {
+        this.onImageSelected(img);
+      }
+      if (owner.matches(":hover") && owner.classList.contains(TOOLBAR_ABOVE_CLASS)
+        && this.toolbar.getActiveImage() === img) {
+        this.hoverShown = true;
+        this.bindFloatRegion(owner);
+      }
+    };
+    sync();
+    window.requestAnimationFrame(sync);
   }
 
   private closeSubmenu(persist = true): void {
@@ -1522,6 +1640,8 @@ export default class LiveImageEditorPlugin extends Plugin {
     const current = this.locationTransform(location);
     const img = this.activeImage!;
     const state: SizeState = { width: current.width ?? null, height: current.height ?? null };
+    const toolbarEl = this.activeToolbarEl();
+    const lockedToolbar = this.lockToolbarSession(img);
 
     // Live preview by RE-RENDERING with the new size (so clearing a field / "Original"
     // falls back to the intrinsic default rather than collapsing the box — Bug 42).
@@ -1537,16 +1657,20 @@ export default class LiveImageEditorPlugin extends Plugin {
     submenu.open({
       body: sizeBody.body,
       placement: "under-toolbar",
-      anchor: this.activeToolbarEl() ?? img,
-      toolbar: this.activeToolbarEl(),
+      anchor: toolbarEl ?? img,
+      toolbar: toolbarEl,
       title: t("customSize"),
-      hoverRegion: img.closest<HTMLElement>(".lie-wrapper") ?? undefined,
+      hoverRegion: img.closest<HTMLElement>(".lie-wrapper") ?? editorToolbarOwner(img) ?? undefined,
       onReset: () => sizeBody.reset(),
       onCommit: () => this.modifyTransform((tr) => { tr.width = state.width ?? undefined; tr.height = state.height ?? undefined; }, location, img),
       // ✗ cancel / Esc (F14): discard — no source write. The source was never touched while open,
       // so re-rendering the live image from its original params restores the pre-open size.
       onCancel: () => applyTransformToImage(this.liveTarget(img), this.locationTransform(location)),
-      onClose: () => { this.submenu = null; this.refreshLivePreviewDecorations(); },
+      onClose: () => {
+        this.submenu = null;
+        this.finishToolbarSession(lockedToolbar, img, location);
+        this.refreshLivePreviewDecorations();
+      },
     });
     this.submenu = submenu;
   }
@@ -1557,6 +1681,8 @@ export default class LiveImageEditorPlugin extends Plugin {
     if (!resolved) return;
     const { location } = resolved;
     const img = this.activeImage!;
+    const toolbarEl = this.activeToolbarEl();
+    const lockedToolbar = this.lockToolbarSession(img);
 
     // Native pipe/alt size folded in, so cropping a raw `![[img|160]]` seeds the crop from its
     // actual displayed width (Bug 94); the commit's modifyTransform then normalizes it.
@@ -1579,13 +1705,17 @@ export default class LiveImageEditorPlugin extends Plugin {
           tr.height = undefined;
         }
       }, location, img),
-      () => { this.cropEditor = null; this.refreshLivePreviewDecorations(); }
+      () => {
+        this.cropEditor = null;
+        this.finishToolbarSession(lockedToolbar, img, location);
+        this.refreshLivePreviewDecorations();
+      }
     );
     // Set the ref BEFORE open(): if open() can't find the 3-layer structure it self-closes
     // synchronously (calling onClosed → nulls the ref), and a post-open assignment would otherwise
     // restore a dead editor and jam the crop toggle + the dismiss guards.
     this.cropEditor = cropEditor;
-    cropEditor.open(this.activeToolbarEl(), img);
+    cropEditor.open(toolbarEl, img);
   }
 
   private closeCrop(persist = true): void {
@@ -1601,6 +1731,8 @@ export default class LiveImageEditorPlugin extends Plugin {
     const current = this.locationTransform(location);
     const originalFilter = getFilter(current);
     const img = this.activeImage!;
+    const toolbarEl = this.activeToolbarEl();
+    const lockedToolbar = this.lockToolbarSession(img);
 
     const panel = new FilterPanel(img, originalFilter, {
       onPreview: (filter: FilterData) => applyFilterPreview(this.liveTarget(img), filter),
@@ -1608,9 +1740,13 @@ export default class LiveImageEditorPlugin extends Plugin {
       // ✗ cancel / Esc (F14): discard — no source write. Re-render from the untouched source to
       // restore the pre-open filter (and any other transform the live preview painted over).
       onCancel: () => applyTransformToImage(this.liveTarget(img), this.locationTransform(location)),
-      onClose: () => { this.filterPanel = null; this.refreshLivePreviewDecorations(); },
+      onClose: () => {
+        this.filterPanel = null;
+        this.finishToolbarSession(lockedToolbar, img, location);
+        this.refreshLivePreviewDecorations();
+      },
     });
-    panel.open(img, this.activeToolbarEl());
+    panel.open(img, toolbarEl);
     this.filterPanel = panel;
   }
 
@@ -1644,6 +1780,8 @@ export default class LiveImageEditorPlugin extends Plugin {
     const resolved = this.locateActiveImage();
     if (!resolved) return;
     const img = this.activeImage;
+    const toolbarEl = this.activeToolbarEl();
+    const lockedToolbar = this.lockToolbarSession(img);
 
     const panel = new ClassPanel(availableClasses, {
       // Read the applied classes FRESHLY from source each refresh so the active marks track the
@@ -1653,9 +1791,13 @@ export default class LiveImageEditorPlugin extends Plugin {
         return loc ? parseAltText(loc.location.params).classes : [];
       },
       onToggle: (className: string) => this.applyClass(className, resolved.location, img),
-      onClose: () => { this.classPanel = null; this.refreshLivePreviewDecorations(); },
+      onClose: () => {
+        this.classPanel = null;
+        this.finishToolbarSession(lockedToolbar, img, resolved.location);
+        this.refreshLivePreviewDecorations();
+      },
     });
-    panel.open(img, this.activeToolbarEl());
+    panel.open(img, toolbarEl);
     this.classPanel = panel;
   }
 

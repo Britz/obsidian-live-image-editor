@@ -181,12 +181,10 @@ class EmbedWidget extends WidgetType {
 
   toDOM(view: EditorView): HTMLElement {
     const wrapper = activeDocument.createElement("div");
-    // The chrome ASSEMBLY below is UNIFORM across all three modes (one path, no inline fork) — only the
-    // wrapper class differs, for CSS placement. `lie-float` just routes to the FLOATING toolbar instead
-    // of the in-chrome one (a mid-text icon has no room for the in-chrome bar); standalone/block get the
-    // flag dynamically from the reflow when too short, inline carries it by default.
+    // The chrome assembly is uniform across all modes. Measured toolbar presentation is carried only by
+    // the owner-specific `lie-toolbar-above` marker, never by a widget mode or layout class.
     wrapper.className =
-      this.mode === "inline" ? "lie-wrapper lie-wrapper-inline lie-float"
+      this.mode === "inline" ? "lie-wrapper lie-wrapper-inline"
       : this.mode === "standalone" ? "lie-wrapper lie-wrapper-standalone"
       : "lie-wrapper lie-wrapper-block";
     wrapper.setAttribute("contenteditable", "false");

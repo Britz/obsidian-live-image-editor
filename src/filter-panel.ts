@@ -3,6 +3,7 @@ import { t, TranslationKey } from "./i18n";
 import { AnchoredSubmenu } from "./anchored-submenu";
 import { ContentBound } from "./anchored-submenu-logic";
 import { textButton } from "./ui";
+import { editorToolbarOwner } from "./toolbar";
 
 export interface FilterPanelCallbacks {
   // Apply the working filter to the live image WITHOUT persisting (live preview).
@@ -104,7 +105,9 @@ export class FilterPanel {
       // Show/hide with the toolbar's hover while staying part of the active region
       // (D6/D7): the live-preview overlay is the hover region. Centered (multi-image) mode has no
       // anchor → no region → undefined → the panel stays shown until dismissed.
-      hoverRegion: centeredTitle ? undefined : anchorEl?.closest<HTMLElement>(".lie-wrapper") ?? undefined,
+      hoverRegion: centeredTitle || !anchorEl
+        ? undefined
+        : anchorEl.closest<HTMLElement>(".lie-wrapper") ?? editorToolbarOwner(anchorEl) ?? undefined,
       // Per-panel reset (the SAME shared-host reset as crop/size, F14/Bug 41):
       // clear all filters to default and preview; the panel stays open.
       onReset: () => this.resetFilters(),

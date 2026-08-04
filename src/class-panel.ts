@@ -2,6 +2,7 @@ import { t } from "./i18n";
 import { AnchoredSubmenu } from "./anchored-submenu";
 import { ContentBound } from "./anchored-submenu-logic";
 import { filterClasses } from "./class-panel-logic";
+import { editorToolbarOwner } from "./toolbar";
 
 export interface ClassPanelCallbacks {
   // The class names currently applied (single image: its classes; multi: the classes ALL share).
@@ -61,7 +62,9 @@ export class ClassPanel {
       allowFlip: !centeredTitle,
       contentBound: centeredTitle ? undefined : () => this.editorPaneBound(anchorEl),
       hideWhenAnchorOffscreen: !centeredTitle,
-      hoverRegion: centeredTitle ? undefined : anchorEl?.closest<HTMLElement>(".lie-wrapper") ?? undefined,
+      hoverRegion: centeredTitle || !anchorEl
+        ? undefined
+        : anchorEl.closest<HTMLElement>(".lie-wrapper") ?? editorToolbarOwner(anchorEl) ?? undefined,
       // Toggling writes immediately (kept from the old dropdown), so accept/cancel have nothing to
       // buffer — both just tear the panel down. No onReset: a class panel has no working state.
       onCommit: () => {},
