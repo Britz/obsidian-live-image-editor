@@ -1,0 +1,76 @@
+/* Obsidian-flavoured tweaks on top of MaterialX (the maintained mkdocs-material continuation;
+   theme.name: materialx). Goal: the published docs read like an Obsidian Publish site — Obsidian's
+   purple accent, the near-black dark canvas, soft cards and the familiar coloured callouts.
+   MaterialX's named "deep purple" palette gets us close; these custom properties pin the exact
+   Obsidian hues. (MaterialX keeps mkdocs-material's `--md-*` / `data-md-color-scheme` namespace.) */
+
+:root {
+  --lie-purple: #7c5cff;          /* Obsidian accent (interactive purple) */
+  --lie-purple-dark: #6b4dff;
+}
+
+/* Light scheme — accent + links in Obsidian purple. */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: var(--lie-purple-dark);
+  --md-accent-fg-color: var(--lie-purple);
+  --md-typeset-a-color: var(--lie-purple-dark);
+}
+
+/* Dark scheme — Obsidian's near-black canvas (#1e1e22 body, #181818 header). */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: var(--lie-purple);
+  --md-accent-fg-color: var(--lie-purple);
+  --md-typeset-a-color: #a18bff;
+  --md-default-bg-color: hsl(240, 6%, 13%);
+  --md-default-fg-color: hsla(0, 0%, 100%, 0.9);
+  --md-default-fg-color--light: hsla(0, 0%, 100%, 0.62);
+  --md-code-bg-color: hsl(240, 6%, 17%);
+}
+[data-md-color-scheme="slate"] .md-header,
+[data-md-color-scheme="slate"] .md-tabs {
+  background-color: hsl(240, 5%, 9%);
+}
+
+/* Obsidian-ish soft, full-width-capped content with rounded media. */
+.md-typeset img,
+.md-typeset .lie-image-area {
+  border-radius: 6px;
+}
+
+/* Hero usage GIF (README → site home): the recording's window has rounded corners (≈11px in the
+   GIF's own pixel grid) and its corner-fill is white, so clip a hair more (12px) to hide that fill
+   and add an Obsidian-soft window shadow. Tagged via `{ .lie-usage-gif }` — attr_list on the site;
+   on GitHub that brace renders as raw text, which is fine (the white corners vanish on the white
+   page there anyway). Covers both the bare <img> and the runtime's `.lie-image-area` wrapper. */
+.md-typeset img.lie-usage-gif,
+.md-typeset .lie-usage-gif,
+.md-typeset .lie-usage-gif .lie-image-area {
+  border-radius: 12px;
+  box-shadow: 0 6px 24px var(--lie-gif-shadow, rgba(0, 0, 0, 0.22));
+}
+/* A dark drop shadow is invisible on the slate canvas — invert it to a soft light glow instead. */
+[data-md-color-scheme="slate"] {
+  --lie-gif-shadow: rgba(255, 255, 255, 0.18);
+}
+
+/* "grid cards" landing tiles a touch softer, Obsidian-card-like. */
+.md-typeset .grid.cards > :is(ul, ol) > li,
+.md-typeset .grid > .card {
+  border-radius: 8px;
+}
+
+/* Give the live-rendered demo images a calm frame so transforms read clearly. */
+.md-typeset figure .lie-image-area,
+.md-typeset figure img {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+/* Status icons in release-compliance.md — Lucide check / warning / info (Obsidian uses Lucide),
+   coloured via attr_list classes (`:lucide-circle-check:{ .lie-ok }`). Mid-tones tuned for both
+   palettes; slate gets brighter variants. Matches the community-directory check/warn/info look. */
+.md-typeset .lie-ok   { color: #2da44e; }
+.md-typeset .lie-warn { color: #bf8700; }
+.md-typeset .lie-info { color: #0969da; }
+[data-md-color-scheme="slate"] .md-typeset .lie-ok   { color: #3fb950; }
+[data-md-color-scheme="slate"] .md-typeset .lie-warn { color: #d29922; }
+[data-md-color-scheme="slate"] .md-typeset .lie-info { color: #58a6ff; }

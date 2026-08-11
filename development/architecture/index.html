@@ -1,0 +1,2280 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Non-destructive image editing for Obsidian — crop, rotate, flip, resize and filter images live, without ever modifying the original file.">
+      
+      
+        <meta name="author" content="britz">
+      
+      
+        <link rel="canonical" href="https://britz.github.io/obsidian-live-image-editor/development/architecture/">
+      
+      
+        <link rel="prev" href="../requirements/">
+      
+      
+        <link rel="next" href="../implementation-plan/">
+      
+      
+        
+      
+      
+      
+      
+        
+        
+        
+          <link rel="icon" href="../../img/logo.svg">
+        
+      
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-materialx-10.1.7">
+    
+    
+      
+        <title>Architecture - Live Image Editor</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ad98c137.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.a45159b5.min.css">
+      
+    
+    
+
+    
+
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple" data-mx-topbar="glass">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="toc" type="checkbox" id="__toc" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <label class="md-overlay" for="__toc"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture-live-image-editor" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Live Image Editor" class="md-header__button md-logo" aria-label="Live Image Editor" data-md-component="logo">
+      
+  <img src="../../img/logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Live Image Editor
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10.25 2a8.25 8.25 0 0 1 6.34 13.53l5.69 5.69a.749.749 0 0 1-.326 1.275.75.75 0 0 1-.734-.215l-5.69-5.69A8.25 8.25 0 1 1 10.25 2M3.5 10.25a6.75 6.75 0 1 0 13.5 0 6.75 6.75 0 0 0-13.5 0"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10.25 2a8.25 8.25 0 0 1 6.34 13.53l5.69 5.69a.749.749 0 0 1-.326 1.275.75.75 0 0 1-.734-.215l-5.69-5.69A8.25 8.25 0 1 1 10.25 2M3.5 10.25a6.75 6.75 0 1 0 13.5 0 6.75 6.75 0 0 0-13.5 0"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Britz/obsidian-live-image-editor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Britz/obsidian-live-image-editor
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../user-guide/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  User Guide
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../examples/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Live Image Editor" class="md-nav__button md-logo" aria-label="Live Image Editor" data-md-component="logo">
+      
+  <img src="../../img/logo.svg" alt="logo">
+
+    </a>
+    Live Image Editor
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Britz/obsidian-live-image-editor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Britz/obsidian-live-image-editor
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../methodology/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Methodology
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc">
+      
+        <li class="md-nav__item">
+  <a href="#1-shape-at-a-glance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Shape at a glance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-load-bearing-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Load-bearing decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-data-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Data flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-building-blocks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Building blocks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Building blocks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-model-source-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 Model &amp; source layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-render-core-shared-by-both-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 Render core (shared by both views)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-view-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 View adapters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-editing-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 Editing UI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-plugin-shell-cross-cutting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5 Plugin shell &amp; cross-cutting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-requirement-block-decision-traceability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Requirement → block / decision traceability
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../implementation-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implementation plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../test-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Test plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../issues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issues & lessons
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../release-compliance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release compliance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../examples/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/01-rotate-flip/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rotate & flip
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/02-crop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/03-size-presets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Size & presets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/04-filters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/05-layout-float-wrap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layout, float & wrap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/06-captions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Captions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/07-classes-snippets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classes & snippets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc">
+      
+        <li class="md-nav__item">
+  <a href="#1-shape-at-a-glance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Shape at a glance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-load-bearing-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Load-bearing decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-data-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Data flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-building-blocks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Building blocks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Building blocks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-model-source-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 Model &amp; source layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-render-core-shared-by-both-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 Render core (shared by both views)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-view-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 View adapters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-editing-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 Editing UI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-plugin-shell-cross-cutting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5 Plugin shell &amp; cross-cutting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-requirement-block-decision-traceability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Requirement → block / decision traceability
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+    <a href="https://github.com/Britz/obsidian-live-image-editor/edit/main/docs/development/architecture.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="architecture-live-image-editor">Architecture — Live Image Editor<a class="headerlink" href="#architecture-live-image-editor" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>The architecture artifact — the <strong>Mid-level concept</strong> from <code>methodology.md</code>: <em>how</em> the
+requirements in <code>requirements.md</code> are realized, conceptually. It records the building blocks
+and their responsibilities, the data flow, how they interact, and the load-bearing decisions
+that make the requirements achievable as one coherent whole.</p>
+<p><strong>Abbreviations:</strong> <strong>AD</strong> = Architecture Decision (§2); <strong>AB</strong> = Architecture Building Block
+(§4); <strong>Fn / Dn / Tn</strong> = the functional / design / technical requirements in <code>requirements.md</code>,
+where those references point.</p>
+<p>Everything here is stated as <strong>concepts</strong>: files, functions and other code internals are the
+implementation plan's job, not this document's — the sole exception being framework names
+(Obsidian / JS / CSS) where the platform forces them.</p>
+</blockquote>
+<hr />
+<h2 id="1-shape-at-a-glance">1. Shape at a glance<a class="headerlink" href="#1-shape-at-a-glance" title="Permanent link">&para;</a></h2>
+<p>Four layers, plus a plugin shell that wires them together. The data flows in one direction
+for rendering and round-trips through the source for editing.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>flowchart TD
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    SHELL[&quot;&lt;b&gt;Plugin shell&lt;/b&gt;&lt;br/&gt;lifecycle · commands · settings · styles&lt;br/&gt;i18n · editing-toolbar integration · dev&quot;]
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    SRC[&quot;&lt;b&gt;Markdown source&lt;/b&gt;&lt;br/&gt;image embed + attribute block {…}&quot;]
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    MODEL[&quot;&lt;b&gt;Model &amp;amp; source layer&lt;/b&gt;&lt;br/&gt;transform model · link form &amp;amp; size&lt;br/&gt;source↔DOM map · snippet discovery&quot;]
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    CORE[&quot;&lt;b&gt;Render core&lt;/b&gt;&lt;br/&gt;geometry (pure) · uniform box &amp;amp; measure&lt;br/&gt;caption · declarative CSS contract&quot;]
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    RV[&quot;&lt;b&gt;View adapter: RV&lt;/b&gt;&lt;br/&gt;post-processor&quot;]
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    LP[&quot;&lt;b&gt;View adapter: LP&lt;/b&gt;&lt;br/&gt;CM6 widget&quot;]
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    UI[&quot;&lt;b&gt;Editing UI&lt;/b&gt;&lt;br/&gt;toolbar · shared sub-menu host · crop editor&lt;br/&gt;filter panel · size · raw-link reveal · export&quot;]
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    SHELL -. &quot;registers / owns&quot; .-&gt; MODEL
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    SRC -- &quot;parse&quot; --&gt; MODEL
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    MODEL -- &quot;ImageTransform (+ classes)&quot; --&gt; CORE
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    CORE -- &quot;reading&quot; --&gt; RV
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    CORE -- &quot;live preview&quot; --&gt; LP
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    LP -- &quot;hosts chrome&quot; --&gt; UI
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    UI -- &quot;edits: serialize + write&quot; --&gt; SRC
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    linkStyle 6 stroke:#ea4335,color:#ea4335
+</code></pre></div>
+<p>The <strong>render</strong> direction (source down to pixels) is a pure function of the source. The
+<strong>edit</strong> direction — the red edge closing the loop: Editing UI → write to source → re-parse →
+re-render — is the only way display state changes; there is no second store to keep in sync
+(AD1).</p>
+<hr />
+<h2 id="2-load-bearing-decisions">2. Load-bearing decisions<a class="headerlink" href="#2-load-bearing-decisions" title="Permanent link">&para;</a></h2>
+<p>These are the cross-cutting decisions that make the requirements hold together. They are the
+reason the module decomposition looks the way it does; most are already embodied in the
+current code and are restated here as architecture, not invented anew.</p>
+<ul>
+<li>
+<p><strong>AD1 — Source is the single source of truth.</strong> <em>(F1, F2, F3, T2)</em> The displayed image is a
+  pure projection of the current Markdown; all transform state lives in the trailing
+  attribute block and nowhere else. Every edit serializes back into that block and re-parses,
+  so no cached or stale render state can survive a mode switch or a reused embed. The model
+  layer owns parse/serialize; the editing UI never mutates display state directly, only the
+  source.</p>
+</li>
+<li>
+<p><strong>AD2 — Declarative rendering contract; portable attribute keys routed per layer.</strong> <em>(T2, T3,
+  F1, F25)</em> Transforms are stored <strong>declaratively</strong> in the trailing <code>{…}</code> block as a portable
+  attribute list — never imperative DOM scripting. The block is <strong>not</strong> "all transforms as native
+  CSS": it is a set of <strong>bare keys</strong> (<code>align</code>, <code>width</code>, <code>rotate</code>, <code>flip</code>, <code>transform</code>, <code>filter</code>,
+  <code>aspect-ratio</code>) plus <code>.class</code> and a <code>style=</code> escape (grammar in T2.3). Native CSS is used <strong>only
+  for the faithful subset</strong> — <code>align</code> (legacy HTML float / center) and <code>width</code> (a real HTML
+  attribute) render with no plugin and no shipped CSS; a <code>style="filter:…"</code> escape likewise stays
+  faithful. The <strong>runtime-only</strong> keys (<code>rotate</code>, <code>flip</code>, the inner crop <code>transform</code>, and a bare
+  <code>filter=</code>) have no faithful native path — <code>transform</code> does not reflow, so a rotated <strong>footprint</strong>
+  needs its own element, and a browser ignores a bare <code>filter</code> attribute (the faithful filter path
+  is the <code>style="filter:…"</code> escape) — and are realized by the render core / runtime (so the runtime
+  must claim a bare <code>filter=</code> image too, AB7a), degrading to the original image otherwise (F25).
+  Each datum is routed to the layer it must act on (AD3, 3-layer model):
+  <code>align</code> / <code>width</code> / <code>aspect-ratio</code> / <code>style</code> / <code>.class</code> → the <strong>outer</strong> (the flow footprint);
+  <code>rotate</code> + <code>flip</code> → the <strong>inner-frame</strong> (orientation + crop clip); <code>transform</code> (crop placement)</p>
+</li>
+<li>
+<p><code>filter</code> → the <strong><code>&lt;img&gt;</code></strong> (content). A <code>filter</code> and a <code>transform</code> value pass through
+  <strong>verbatim</strong> to the <code>&lt;img&gt;</code> (a power user's extra <code>filter</code> functions or affine <code>transform</code>
+  functions just work); only the editing tools and the rotated-footprint reflow read the one token
+  they need. <em>(Implemented — <code>align</code>, <code>width</code>, orientation (<code>rotate</code>/<code>flip</code>), the crop placement
+  (<code>transform</code>), the cut shape (<code>aspect-ratio</code>) and <code>filter</code> are all bare keys routed per layer; a
+  non-px <code>width</code> (preset var / %) and a <code>height</code>/box passthrough use the <code>style=</code> escape. The parser
+  still reads the legacy forms — <code>style="transform:…"</code>, the <code>.lie-left/right/center</code> classes,
+  <code>style="width:…"</code> — for back-compat. Presets are baked to a literal <code>width=N</code>.)</em></p>
+</li>
+<li>
+<p><strong>AD3 — One uniform 3-layer image element, one sizing direction (realizes R0).</strong> <em>(T5, T6, D3, D4)</em>
+  Normal, rotated, flipped, cropped, filtered and sized images share the <strong>same</strong> nested structure
+  and the <strong>same</strong> sizing routine; "normal" is the degenerate transform, never a special case. The
+  uniform structure is <strong>three layers</strong>, each owning one concern (this is the realization of the
+  "uniform wrapper", T5):</p>
+</li>
+<li><strong>outer</strong> — the <strong>flow participant / footprint</strong>: carries <code>width</code>, <code>aspect-ratio</code>, <code>align</code>,
+    <code>style</code>, <code>.class</code>. It reserves the (possibly swapped) flow space and <strong>does not rotate</strong>, so
+    the footprint stays correct even though <code>rotate</code> would not reflow.</li>
+<li><strong>inner-frame</strong> — <strong>orientation + crop clip</strong>: carries <code>rotate</code> + <code>flip</code> on <strong>one</strong> element
+    (composed in written <code>{}</code> order) and <strong>clips its content</strong>.</li>
+<li><strong><code>&lt;img&gt;</code></strong> — <strong>content</strong>: carries the crop <code>transform</code> (pan / zoom / optional content-rotate)
+    and <code>filter</code>.</li>
+</ul>
+<p>This decoupling is load-bearing: re-orienting (the inner-frame) never touches the crop placement
+  on the <code>&lt;img&gt;</code>, so no coordinates are recomputed by hand; the footprint is reserved
+  independently, so the rotated <strong>box-swap</strong> is solved; <code>rotate</code> + <code>flip</code> share one element so the
+  written order composes directly; and <code>flip</code>-inner ∘ <code>rotate</code>-frame reaches all eight
+  orientations, so the reverse order is never needed. The frame clips <strong>uniformly</strong> (crop is not a
+  structural fork — just the case with content beyond it). Sizing runs <strong>one way: the stored size
+  sizes the outer, and the inner content is a pure function of the outer and the transform</strong> —
+  never the reverse; the permanent guard against the recurring rotated-image sizing drift (no
+  measure-then-resize loop). Layout and alignment act on the <strong>outer</strong> (the document-flow
+  participant), not the image, so surrounding text wraps. <em>(Implemented — the plugin builds the three
+  layers outer → inner-frame → <code>&lt;img&gt;</code>, upgrading a reused legacy
+  2-layer DOM.)</em></p>
+<ul>
+<li><strong>The box invariant (Decision 19).</strong> The 3-layer DOM is <strong>invariant</strong> — the box is <strong>never
+    empty</strong> and the <code>&lt;img&gt;</code> is <strong>never naked</strong>. Whatever the parameters, the outer always carries at
+    least the <strong>native defaults</strong> (column-capped to the rotation-correct intrinsic
+    dimension — the height or width axis chosen by the box angle — with the aspect-ratio derived
+    natively), and the <code>&lt;img&gt;</code> is <strong>always boxed</strong> inside the inner-frame. Only the
+    <strong>parameterization</strong> changes across normal / rotated / cropped / filtered / resized images; the
+    structure does not. <strong>Crop only affects the inner <code>&lt;img&gt;</code></strong> (its placement <code>transform</code>) — it is
+    never a special case for the box's sizing rules. So a reset falls back to the native-default
+    parameters rather than leaving an empty box, and clearing a stale transform re-parameterizes rather
+    than un-wrapping to a naked image (the two ways the invariant was previously broken).</li>
+<li><strong>The display-mode residual is by design (Decision 13).</strong> Alignment necessarily varies the box's
+    <code>display</code>: a centered image is a centered <strong>block</strong>, an inline image is <strong>inline</strong>. This residual
+    coupling is intentional and harmless — the explicit px <code>width</code> makes the flow footprint identical
+    either way, so no refactor is warranted.</li>
+<li>
+<p><strong>Self-set markers ride the element they style; <code>:has()</code> is reserved for Obsidian's own DOM
+    (Decision 28).</strong> The plugin BUILDS the outer (and, in LP, its host wrapper), so every class
+    or marker IT sets — the user's <code>.class</code> / <code>style</code> (AD2: on the <strong>outer</strong>), the layout/alignment
+    markers, the inline marker, the tall-float marker — is placed on the element that must react and
+    selected <strong>directly</strong> (the float on the flow participant), <strong>never</strong> by matching the image via
+    <code>:has()</code>. <code>:has()</code> is used <strong>only</strong> to react to Obsidian's OWN, uncontrolled DOM — the
+    source-reveal slaving — where the plugin cannot add a class of its own. The <strong>F18 alignment-float
+    routing</strong> on the CodeMirror line context is a TOLERATED <code>:has</code> site for the same reason (an edge
+    case partly controlled by CodeMirror): a direct class is preferred, but <code>:has</code> is acceptable there
+    if removal is risky. This is what makes decoration classes (e.g. <code>shadow</code> / <code>bordered</code>)
+    work on the outer box without being clipped, and it removes the marker-on-image shortcut the code
+    took against AD2/AD3. <strong>Snippet contract (F16):</strong> because the user's class lands on the outer (the
+    conceptual image box), an example / vault snippet is authored as a plain class for box effects
+    plus a descendant <code>… img</code> rule for pixel effects (e.g. a <code>circle</code> snippet's cover crop) — it NEVER
+    references the plugin's internal structure. <em>(Implemented — Change 36 / Bug 91: the user classes +
+    the align/tall/inline markers ride the outer; the standalone runtime floats it with a direct
+    selector; only the plugin's host-float <code>:has</code> (now reading the outer's marker) and the reveal
+    remain, both the tolerated Obsidian/CM-DOM case.)</em></p>
+</li>
+<li>
+<p><strong>AD4 — Two view adapters, one render core.</strong> <em>(T4, F4)</em> Reading view (a Markdown
+  post-processor) and live preview (a CodeMirror-6 extension) are separate <strong>only</strong> because
+  Obsidian renders the two modes through different machinery. Everything below the adapter —
+  geometry, the uniform box, the caption, the CSS contract — is shared, so both adapters
+  produce the same DOM structure and the same visual result.</p>
+</li>
+<li>
+<p><strong>AD5 — Live preview keeps the line native; the plugin renders its own image widget (and kills the native image uniformly).</strong> <em>(T6, F3,
+  F17, F8, F9, F18)</em> Within a mode an image is rendered by exactly one pass. The live-preview adapter
+  <strong>does not replace</strong> the image line: it lets Obsidian render the native embed (so the file loads and
+  the source keeps Obsidian's own cursor-reveal), <strong>suppresses the native image with static CSS</strong>, and
+  draws the plugin's own transformed image (AD3) — and the native image is <strong>suppressed UNIFORMLY</strong>
+  (every embed, unscoped). The plugin's widget renders in <strong>every</strong> case: a <code>{…}</code> embed keeps
+  Obsidian's <code>.cm-line</code>, so it is an <strong>inline widget IN that line</strong> — rendering inline (rather than a
+  block widget below) is load-bearing, because the host cm-line is left a <strong>non-BFC</strong>, so a
+  <code>lie-float-left</code>/<code>lie-float-right</code> <code>float</code> <strong>escapes</strong> into <code>.cm-content</code>'s block formatting context and shortens
+  the following sibling cm-lines (F18 — real multi-line wrap), with <strong>no height desync</strong> (the float
+  counts to no line's height) and no <code>contain:paint</code> clip, and the image <strong>shares the cm-line</strong> with the
+  source, giving the reveal a uniform home. Because the float is out of flow and the host line's only
+  in-flow content (the fake link + <code>{…}</code>) is hidden when idle, the host cm-line <strong>collapses to ~0px on its
+  own</strong> (no forced height) — the wrapped text therefore sits <strong>flush with the image top</strong>, exactly as a
+  native float declared on its own line behaves, minus the paragraph margins cm-lines don't have; the line
+  regains its full text height the moment it is active/hovered (for editing). Forcing the host line to a
+  fixed one-text-line height would push the wrap down by a line — the <strong>1-line top offset of the earlier
+  approach, now understood as a bug, not a baseline to restore</strong>. A <strong>bare</strong> <code>![](…)</code> line (no <code>{…}</code>) is block-promoted by
+  Obsidian into a cm-line-less <code>.cm-content</code> child that would swallow an inline widget — so the plugin
+  renders a <strong><code>block:true</code> widget</strong> for it instead, landing as its own <code>.cm-content</code> child next to the
+  (image-suppressed) native embed. There is <strong>no normalization</strong>: <code>{…}</code> is written only by a real plugin
+  action (a floated image carries it via its alignment class), so no embed needs a marker or auto-rewrite
+  to render. Three things ride on the line, declaratively in CSS with no measurement
+  loop and no edit field: (1) the attribute block <code>{…}</code> is literal text — <strong>hidden when rendered</strong> so F3
+  holds, shown while editing; (2) a display-only <strong>fake raw link</strong> is the <em>reveal-for-looking</em> (F8),
+  shown by CSS on cm-line <strong>hover</strong> or in always-mode (the <strong>global default-state setting</strong>, AB19/F20)
+  and <strong>dismissed by the <code>&lt;&gt;</code> (eye) toggle</strong> — a transient, not-persisted per-image class that
+  auto-clears in auto mode; (3) <strong>editing</strong> is
+  Obsidian's <strong>own cursor-reveal</strong> of the source as real document text (F9) — caret, selection and copy
+  are native, and the fake link <strong>yields</strong> to the native source while the line is active
+  so the link is never shown twice. A <strong>tall-float cap</strong> preserves cross-view consistency: a float
+  taller than CM6's ~250px render margin (which would derender on scroll in LP) falls back to a
+  non-floated block in <strong>both</strong> views, governed by a setting (AB19). This <strong>embraces</strong> the behaviour the
+  old "always replace" rule avoided (an un-replaced line re-fires Obsidian's native embed — the Lesson 1
+  <em>observation</em> still holds): the native embed is now <em>wanted</em> for its image load and cursor-reveal, and
+  merely CSS-hidden. Reading view is unaffected by the cursor logic (no editing). No competing passes.</p>
+</li>
+<li>
+<p><strong>AD6 — Sizing is declarative; the original ratio is the ground truth.</strong> <em>(T7, T11)</em> The
+  <strong>outer</strong>'s vertical extent (the footprint shape) is an <strong><code>aspect-ratio</code></strong>, never a fixed height.
+  The <strong>original image's intrinsic ratio is the always-available ground truth</strong>: the footprint
+  ratio is <strong>derived</strong> from it (plus the angle, for rotation) — read when the image loads, <strong>not</strong>
+  measured from the rendered, column-dependent box, so there is <strong>no measure-then-resize retry
+  loop</strong> (the root of the recurring sizing drift, designed out). An explicit <code>aspect-ratio</code> is
+  <strong>stored only for a deliberate, non-derivable aspect change</strong> (a distorting resize, a
+  width+height set via the modal, or a crop frame whose shape differs from the original) — the
+  only-store-non-derivable-intent rule; it is the genuine user intent. The derived ratio is <strong>applied to the DOM as an overridable
+  default, never written into the source</strong> (which would make the plugin edit the text the user
+  edits — a JS-vs-editor race); CSS precedence resolves the rest with <strong>no source parsing</strong> (ignored
+  when both <code>width</code>+<code>height</code> are set; a stored <code>aspect-ratio</code> overrides). Being width-<em>independent</em>,
+  it survives manual <code>width</code> edits and is responsive; and because everything falls back to the
+  ground-truth ratio, a <strong>missing or hand-edited</strong> value degrades sensibly (T11) rather than
+  breaking — even with cached images, reused embed DOM, mode switches, or a <strong>backgrounded window</strong>.</p>
+</li>
+<li>
+<p><strong>AD7 — Decision logic is extracted into pure units.</strong> <em>(T8)</em> Geometry, line→decoration
+  mapping, caption-text extraction, crop quantization, sub-menu state and link-form
+  normalization live in framework-free units that are unit-tested in isolation; the
+  framework-coupled modules stay thin wrappers around them. Integration and behaviour are
+  verified in the running app.</p>
+</li>
+<li>
+<p><strong>AD8 — One shared sub-menu host for all editing panels.</strong> <em>(F14, D6)</em> Crop, Filters, Export
+  and Resize open through a single host that provides the greyed-toolbar state and three icon
+  actions — per-panel <strong>reset</strong>, <strong>cancel</strong> (✗) and <strong>accept</strong> (✓) — plus the open/close toggle.
+  While open the working state is a live DOM preview only; the host routes the <strong>exit reason</strong>
+  (the pure <code>submenuExitEffect</code>): <strong>accept</strong> and every other <strong>leave</strong> (Enter / click-away /
+  dismiss / context loss) persist <strong>once</strong> through the shared <code>isolateHistory.of("full")</code> writer =
+  one undo step for the session (<strong>auto-persist</strong>); <strong>cancel</strong> / <strong>Esc</strong> discard — no write — and
+  the owner re-renders the live DOM from the unchanged source; plugin unload is the one silent
+  teardown (neither). Reset and cancel are the in-session reverts. The host also owns the <strong>one
+  active region</strong> (D6): image + toolbar + panel share a single hover/active state — the toolbar
+  carries <code>.lie-region-active</code> while the region is hovered (incl. the image→panel travel grace) — so
+  the toolbar (greyed) and the panel show and hide together. Placement is the only thing that varies
+  by size (compact menus hang under the toolbar; the large filter panel docks beside the image). The
+  behaviour is implemented once, not per feature.</p>
+</li>
+<li><strong>One signal, not two (D6.2).</strong> The hover region is driven by <strong>one</strong> binder (<code>bindRegionHover</code>,
+    shared by the host and the palettes below) whose single boolean drives toolbar visibility,
+    staying-greyed AND panel visibility together. The in-chrome bar's CSS <code>:hover</code> no longer competes
+    while a panel is open (<code>.lie-toolbar-in-image:not(.lie-toolbar-inactive)</code>): the bar is greyed for
+    the <strong>whole</strong> open duration, never momentarily un-greyed. The binder tracks a <strong>set</strong> of the
+    members the pointer is inside, so it is robust to the toolbar being nested in the image wrapper
+    (toolbar→image stays "inside") and seeds that set from <code>:hover</code> at bind time.</li>
+<li><strong>Click-away closes; crop exempt (D6.3).</strong> While a filter/size panel is open the click-away
+    boundary is the <strong>sub-panel itself</strong> (plus the toolbar chrome docked to it), NOT the whole hover
+    region: a click anywhere else — <strong>the image included</strong> — closes the panel and persists it
+    (<code>clickDismissesToolbar</code>, pure/tested). The image fills most of the canvas, so treating it as a
+    safe harbor left the panel stuck open when the user clicked the image to dismiss it. Crop is
+    <strong>exempt</strong> — no click dismisses while the in-place editor is active, so a stray click can't tear
+    down the session. (The whole-region selector still governs the <em>bare</em> toolbar's dismiss and the
+    hover visibility — only the modal-panel click-away shrinks to the sub-panel.)</li>
+<li>
+<p><strong>Palettes coupled, not greyed (D6.4).</strong> The folded-group popups and the add-class dropdown live
+    on <code>document.body</code>; <code>couplePaletteToRegion</code> (over the same binder) marks the wrapper
+    <code>.lie-region-hover</code> so the in-chrome bar stays visible while the body-level palette is hovered,
+    and closes the palette when the region is left — bar + palette fade together — <strong>without</strong> greying
+    the bar (palettes are not modal).</p>
+</li>
+<li>
+<p><strong>AD9 — Reuse the platform (R0).</strong> <em>(F5, F6, F21, F22, D4, F13)</em> Where Obsidian already
+  provides the capability, the platform's own code is the building block: <code>MarkdownRenderer</code>
+  for captions, the native resize handle and frame, the native save dialog, the file
+  manager's link generation for link-form conversion (used defensively), and Obsidian's locale
+  and strings for i18n. The plugin adds the missing logic around these, never a parallel
+  reimplementation.</p>
+</li>
+<li><strong>Runtime exception (off-Obsidian).</strong> "Reuse the platform" only binds where the platform
+    actually provides the capability. On a foreign page the standalone runtime (AB7a) has <strong>no</strong>
+    Obsidian — no <code>MarkdownRenderer</code> — so it MAY carry its own <strong>minimal inline-Markdown renderer</strong>
+    for captions (bold / italic / code / link). That is not a parallel reimplementation of a
+    platform capability (there is none to reuse here) and stays <strong>runtime-only</strong> — the plugin's
+    caption path keeps using <code>MarkdownRenderer</code>. Full fidelity is still bounded by the <strong>lossy alt
+    attribute</strong> (e.g. python-markdown strips code-span backticks before the runtime sees the alt).</li>
+<li><strong>AD10 — Embed detection in Live Preview.</strong> <em>(F4)</em> In Live Preview the plugin derives whether and
+  where a line holds an image embed from Obsidian's own parse, not from a parallel detection of its
+  own — so every embed variant is covered and none is invented (a code-block embed is not an embed).
+  Exception: the "render images in code blocks" setting (F20) overrides this to render code-block
+  embeds too.</li>
+<li><strong>AD11 — The plugin owns source-link visibility per embed span.</strong> <em>(F8)</em> For each embed span
+  Obsidian's parse reports, the plugin is the single authority over whether the source link is shown:
+  by default it mirrors Obsidian's native reveal (the editable source shows while the cursor sits
+  within the span, the plugin's overlay otherwise), and where the plugin's own state requires — a
+  dismiss, or while engaged with the image (pinned, AD12) — it actively suppresses the native reveal
+  as well, without disabling native editing of the source.</li>
+<li><strong>AD12 — One engagement predicate.</strong> <em>(F7, F8)</em> Whether the plugin is <strong>engaged with an image</strong> is
+  a <strong>single predicate</strong> — the union of the cursor on the image's line, pointer hover, the image
+  selected/active (editor focused on it), and any plugin surface open for it (a <strong>crop</strong>, or a
+  <strong>filter / class / sub-menu</strong> panel). Every cross-cutting "is this image active?" decision — the
+  reveal <strong>pin</strong> (AB16b), the <code>&lt;&gt;</code> dismiss <strong>auto-clear</strong> (which fires only on full
+  <strong>dis</strong>engagement), and the toolbar's greyed/active state — reads this <strong>one</strong> predicate, never a
+  per-surface ad-hoc check.</li>
+<li><strong>AD13 — Prefer Obsidian's machinery; self-built behaviour is verified against Obsidian and never
+  writes below its own read level.</strong> Wherever the plugin can ride an Obsidian API (link generation &amp;
+  resolution, vault I/O, rendering hosts), it does — an upstream fix then reaches the plugin for
+  free. Where a capability must be self-built (the pure logic modules and the embed grammar — forced
+  by unit-testability, the off-Obsidian runtime and synchronous per-line parsing in Live Preview),
+  its behaviour is verified empirically against Obsidian's live parser/renderer, and the write side
+  keeps the invariant <strong>write ⊆ read</strong>, two-levelled: everything the plugin emits reads back
+  losslessly in the plugin's <strong>own</strong> grammar, and every structure a foreign reader <strong>does</strong>
+  understand stays intact — Obsidian-level markup (links, tables) is never broken by an emission,
+  while the plugin's own additive syntax (the trailing <code>{…}</code> block, T2) degrades to inert text for
+  readers that don't know it, never corrupting anything around it.</li>
+</ul>
+<hr />
+<h2 id="3-data-flow">3. Data flow<a class="headerlink" href="#3-data-flow" title="Permanent link">&para;</a></h2>
+<p><strong>Render (source → pixels).</strong> The adapter for the active mode reads the image line, the model
+layer parses the attribute block into a transform plus class list, the render core produces the
+uniform box and emits the declarative CSS contract, the static stylesheet rules apply it, and —
+if captions are on — the caption is rendered below and sized to the box. Identical core, two
+adapters (AD4); the result is a pure function of the source (AD1).</p>
+<p><strong>Edit (interaction → source → pixels).</strong> A toolbar action (or a sub-menu accept) yields a new
+transform/class state. The model layer serializes it into the attribute block and the
+source↔DOM map locates the line; the edit is written to the document without jumping scroll,
+moving the cursor onto the edited image's line (D11 — which also anchors undo). The document
+change re-triggers the adapter, which re-renders through the
+same core. No editing component writes display state directly — closing the loop through the
+source is what guarantees both views and any later reload stay consistent (AD1, F2).</p>
+<hr />
+<h2 id="4-building-blocks">4. Building blocks<a class="headerlink" href="#4-building-blocks" title="Permanent link">&para;</a></h2>
+<p>Each block (<strong>AB</strong>) is a concept with a single responsibility; blocks interact only across the
+arrows in §1, with the data flow of §3. The concrete realization (files, functions, data
+shapes) is the implementation plan's job, not this document's.</p>
+<h3 id="41-model-source-layer">4.1 Model &amp; source layer<a class="headerlink" href="#41-model-source-layer" title="Permanent link">&para;</a></h3>
+<p>The boundary between Markdown text and everything above it. Pure where possible (AD7).</p>
+<ul>
+<li><strong>AB1 — Transform model</strong> — owns the canonical transform model and its bidirectional mapping
+  to/from the portable attribute block (AD2, T2); the single place that knows the block's
+  syntax, identical for the Markdown (T2.1) and wikilink (T2.2) form. Hands the parsed transform
+  and classes to the render core.</li>
+<li><strong>AB2 — Link form &amp; native-size normalization</strong> — keeps the link type as written, converts
+  between the Markdown (T2.1) and wiki (T2.2) form when Obsidian's central setting demands it
+  (carrying the attribute block across intact), and folds a Markdown native size into the block
+  while leaving a wikilink's native size as-is (F5, F6).</li>
+<li><strong>AB3 — Source↔DOM mapping</strong> — maps a rendered image to its position in the Markdown source so
+  the right occurrence is rewritten / rendered, without jumping scroll; the cursor is placed on
+  the edited image's line (D11).
+  A file embedded more than once is disambiguated <strong>position-exact</strong>, not by first basename match:
+  in live preview / the editing actions via CM6 <code>posAtDOM</code> (the exact line), and on the reading-view
+  render path by <strong>occurrence order</strong> (the n-th rendered embed of a basename = its n-th source
+  occurrence) (F2; the Bug-48 failure mode otherwise).</li>
+<li><strong>AB4 — Snippet class discovery</strong> — reads the vault's CSS snippets, extracts image-targeting
+  classes, filters out internal and platform classes, and refreshes on load and on change (F16).
+  Also <strong>ships installable example decoration snippets</strong> (opt-in, resettable) that surface
+  through the same path (F16.1).</li>
+</ul>
+<h3 id="42-render-core-shared-by-both-views">4.2 Render core (shared by both views)<a class="headerlink" href="#42-render-core-shared-by-both-views" title="Permanent link">&para;</a></h3>
+<p>The shared realization of AD3/AD4 — given a transform and classes, produce the uniform DOM and
+the correct geometry.</p>
+<ul>
+<li><strong>AB5 — Geometry (pure)</strong> — the box and inner-image geometry as pure functions of the image's
+  <strong>intrinsic ratio</strong> and the transform — no DOM measurement. The <strong>single source</strong> consumed by the
+  render core (to derive the box's <code>aspect-ratio</code>) and the <strong>canvas export</strong>. Unit-tested (AD7).</li>
+<li><strong>AB6 — Uniform 3-layer box</strong> — builds the same outer / inner-frame / <code>&lt;img&gt;</code> structure for
+  every image (AD3) and gives the <strong>outer</strong> an <strong><code>aspect-ratio</code></strong> derived from the intrinsic ratio
+  (+ angle), <strong>applied to the DOM, not written to the source</strong> (AD6); the inner content follows in
+  outer-relative units, and the <strong>inner-frame</strong> clips uniformly. Orientation (<code>rotate</code> + <code>flip</code>)
+  sits on the inner-frame; the image's content visuals (<code>filter</code>, a crop's pan/zoom <code>transform</code>)
+  sit on the <code>&lt;img&gt;</code> (AD2). <em>(Implemented — the render core builds the three layers; orientation on
+  the inner-frame, the crop placement + filter on the <code>&lt;img&gt;</code>.)</em></li>
+<li>
+<p><strong>AB7 — Caption</strong> — renders the alt text as a Markdown caption below the image via the platform
+  renderer (AD9). It is a child of the <strong>embed</strong> (below the box, never inside it) and is sized to
+  the box width by the <strong>embed's own CSS</strong> — the embed shrink-wraps to the box and the caption is
+  constrained to that width — so it needs <strong>no JS width-sync / ResizeObserver</strong>. Text extraction is
+  pure and tested (F22, D9). When the image is too small to carry a caption below it, the
+  caption is shown on a delayed hover instead (D9.1).</p>
+</li>
+<li>
+<p><strong>AB7a — Portable runtime (the T3 portability mechanism).</strong> <em>(T3, T4, T5, F25; IMPLEMENTED —
+  <code>src/render-core.ts</code> is the Obsidian-free core, <code>src/runtime.ts</code> → the <code>lie-runtime.js</code> bundle.)</em>
+  The framework-free read-render core (the T4/T5 goal) is <strong>lifted out as a standalone JS bundle</strong>
+  (a second build entry) that shares the model + geometry and the <strong>3-layer
+  builder</strong>; the structural <strong>render CSS is inlined as a string</strong> —
+  CSS-in-JS, so a single <code>&lt;script&gt;</code> include suffices, and it is the <strong>same source</strong> the plugin
+  injects (R0). <strong>One format, three consumers</strong>: the no-JS fallback, this runtime, and the
+  toolbar writer — there is no parallel format. On a foreign page the runtime <strong>hydrates claimed
+  <code>&lt;img&gt;</code>s</strong> (on load and as nodes are inserted) by building the <strong>3-layer structure</strong>
+  (AD3) and routing the CSS per layer.
+  <strong>Identification rule:</strong> an <code>&lt;img&gt;</code> is claimed <strong>iff</strong> it carries a distinctive runtime-only key
+  (<code>rotate</code> / <code>flip</code> / <code>transform</code> / <code>aspect-ratio</code> / <code>filter</code>) <strong>or</strong> the explicit claim marker;
+  <code>align</code> / <code>width</code> / <code>style</code> / <code>class</code> alone do <strong>not</strong> claim (native CSS already handles them, and
+  an align-only image needs no runtime structure). A bare <code>filter=</code> IS claimed — a browser ignores
+  the bare attribute, so the runtime must apply it (the <code>style="filter:…"</code> escape needs no runtime).
+  The bare-key choice (no prefix) accepts a small collision risk for brevity (T2.3). Where the bundle is injectable (e.g. MkDocs) fidelity is
+  100%; otherwise the no-JS fallback keeps <code>align</code>/<code>width</code> and degrades the runtime-only transforms
+  to the original image (F25). kramdown/Jekyll never attach the bare-brace block to the DOM, so
+  there it is unsupported (shows the original) — a documented limitation.
+  <strong>Split &amp; CSS.</strong> The shared core is <strong>Obsidian-free</strong> (parse/serialize, geometry, the layer
+  builder, the <strong>render CSS as a string</strong>, identification); the plugin's view adapters and editing
+  UI import it, the standalone bundle adds only a scan-and-hydrate entry. The render CSS is injected
+  from the core by <strong>both</strong> consumers — one source, so the plugin and the standalone render
+  identically (R0), and the standalone is a single <code>.js</code> include needing no separate stylesheet.
+  The editing-<strong>chrome</strong> CSS (toolbar / panels / crop editor) stays plugin-only in <code>styles.css</code>
+  (Obsidian auto-loads it; the runtime never needs it).</p>
+</li>
+</ul>
+<h3 id="43-view-adapters">4.3 View adapters<a class="headerlink" href="#43-view-adapters" title="Permanent link">&para;</a></h3>
+<p>Thin per-mode bindings (AD4); they decide <em>where/when</em> to invoke the render core, not <em>how</em> an
+image looks.</p>
+<ul>
+<li><strong>AB8 — Reading-view adapter</strong> — runs on rendered sections, hands each embed to the render
+  core, attaches the editing chrome.</li>
+<li><strong>AB9 — Live-preview adapter</strong> — a CodeMirror-6 editor extension that, for every image embed
+  (standalone or mid-text), <strong>leaves the line's text intact</strong>, draws the plugin's uniform widget, and
+  <strong>CSS-suppresses Obsidian's native image UNIFORMLY</strong> (every embed, AD5). The widget renders in every
+  case: a <code>{…}</code> embed → an <strong>inline widget IN its <code>.cm-line</code></strong> (so a <code>lie-float-left/right</code> float escapes the
+  non-BFC line and wraps text, F18); a <strong>bare</strong> embed (no <code>{…}</code>, block-promoted, no cm-line) → a
+  <strong><code>block:true</code> widget</strong> next to the image-suppressed native embed. It hosts <strong>no</strong> editable field for
+  the raw link: the <strong>reveal-for-looking</strong> (F8) is a display-only fake link plus the <code>{…}</code>, shown/hidden
+  by CSS on cm-line hover and always-mode and yielding to the native source while editing; <strong>editing</strong>
+  (F9) is Obsidian's own cursor-reveal of the source as real document text (one editing root → native
+  caret, selection, copy). Inline (mid-text) embeds get the same widget; only chrome placement differs
+  (AD3). The old duplicate-native-embed hazard is gone because the native image is uniformly hidden, not
+  fought.</li>
+</ul>
+<h3 id="44-editing-ui">4.4 Editing UI<a class="headerlink" href="#44-editing-ui" title="Permanent link">&para;</a></h3>
+<p>The chrome attached by the adapters; all panels share one host (AD8). None of these mutate
+display state — each produces an edit that round-trips through the model layer (AD1).</p>
+<ul>
+<li><strong>AB10 — Toolbar</strong> — hover/selection-revealed control bar with the defined order, grouping and
+  divider-wrapping (D1, D2, F7); the entry point to every editing action. Sits inset at the
+  image top, or <strong>above</strong> the image when it is too small to hold the bar (D1.1). It is one
+  toolbar with two presentations: a static inset bar on the image and the established body-level
+  presentation above it. The static inset bar remains the measurement instance; the body-level
+  bar is output only. A bounded reflow compares the visible image height with the actually
+  reflowed toolbar height including its 8px inset, and selects the above presentation only when
+  the inset bar would cover more than 60% of the image height. CSS styles both presentations;
+  reflow chooses between them. Image layout and position (inline, block or floated), host kind,
+  and existing layout markers never enter that decision.</li>
+<li><strong>AB11 — Shared sub-menu host</strong> — the one component realizing AD8 (greyed toolbar; per-panel
+  <strong>reset</strong>, <strong>cancel (✗)</strong> and <strong>accept (✓)</strong> icons; Esc=cancel / Enter=accept; open/close toggle;
+  <strong>auto-persist on leave</strong> with cancel/Esc discarding via the owner's revert; the one active region
+  of image + toolbar + panel); its placement logic and exit-reason routing (<code>submenuExitEffect</code>) are
+  pure and tested.</li>
+<li><strong>AB11a — Region-hover binder</strong> (<code>region-hover.ts</code>) — the shared DOM helper realizing D6.2/D6.4:
+  <code>bindRegionHover</code> treats a set of elements as ONE hover region (one signal, grace-bridged,
+  nesting-robust) and <code>couplePaletteToRegion</code> wires the body-level palettes (group popup / class
+  dropdown) into it without greying. Used by AB11 (modal) and AB10's popups (palettes). The pure
+  click-away decision lives in <code>toolbar-region-logic.ts</code> (<code>clickDismissesToolbar</code>, tested).</li>
+<li><strong>AB12 — Crop editor</strong> — edits the <strong>LIVE 3-layer DOM in place</strong> (no clone): the user
+  moves/scales/rotates the original under a fixed cut window, the editor driving the SAME
+  <code>toCropResult</code> placement the render core commits (centre origin) so <strong>preview == committed</strong>.
+  Handles (corner aspect-locked + edge single-axis + rotate) act on the inner <code>&lt;img&gt;</code> — and on its
+  dimmed portal copy (the ghost) in lockstep, both driven by the same placement; the cut
+  window + footprint box stay fixed (presets reshape the cut). For the crop duration it renders the
+  dimmed surround in a <strong>body portal whose clip-path hole exposes the in-host cut window</strong> — the
+  result image stays clipped in place (no clone, no reflow). Quantization to whole pixels / fixed angle steps <strong>during</strong> the interaction is pure and
+  tested; the structural facts are CDP-verified, the drag feel manual
+  (F12, D8). On <strong>macOS</strong> the editor additionally subscribes Electron's native <code>rotate-gesture</code>
+  window event so a two-finger trackpad turn rotates the
+  content about the cut centre — same accumulate/quantize as the handle, which stays the cross-
+  platform fallback; the listener is scoped to the crop session and removed on every exit path
+  (leak-checked). macOS-only — no gesture code runs elsewhere.</li>
+<li><strong>AB13 — Filter panel</strong> — the docked panel with a live histogram and sliders grouped by purpose
+  (brightness, contrast, saturation, hue, blur, grayscale, sepia) plus named presets; reads/writes
+  the declarative <code>filter</code> contract (F11, D7).</li>
+<li><strong>AB14 — Size sub-menu</strong> — the size presets (icon/small/medium/large/original) plus manual
+  width/height entry fields side by side, hung under the toolbar through the shared host
+  (F10, F24, D6.1).</li>
+<li><strong>AB15 — Export</strong> — replays the <strong>same</strong> box geometry, transform and filter (from AB5) onto a
+  canvas whose bounds clip the result like the inner-frame — the <strong>same visual</strong> as displayed, but
+  sized from the <strong>original image's native resolution</strong> (highest quality; the display size does not
+  reduce it, F13), with <strong>no</strong> parallel crop/rotate math. The canvas loads the <strong>original</strong> at
+  native resolution and replays the transform: the <code>filter</code> string passes through 1:1; rotate / scale /
+  translate become the canvas matrix; the crop is the source rectangle drawn; the output canvas is the
+  rotated bounding box. Export and the CSS
+  adapter <strong>share the transform model, not the renderer</strong> — two thin adapters over one model (the
+  same shape as the two view-render paths, AD4): no parallel structure. Composition is by
+  <strong>replaying the layer nesting</strong> (inner-frame transforms, then the img transform, then the draw); the
+  canvas matrix composes automatically, stored values are never rewritten, and the
+  only extra computation is the output bounding box. This is <strong>not</strong> DOM-to-image (a <code>foreignObject</code>
+  taints the canvas and only captures display resolution) and <strong>not</strong> canvas-as-display (which would
+  break R0/T3/T5). The <strong>export-fidelity limit</strong> is 2D-affine + standard filters: 3D / perspective,
+  clip-path, border-radius, box-shadow and non-standard filters are <strong>not</strong> exportable. Decoupled
+  from the save, which offers the native dialog with a free name pre-filled and never overwrites
+  silently (F13, AD9).</li>
+<li><strong>AB16 — Link reveal</strong> <em>(F8, F3, D16, D17)</em> — the reveal logic over the <strong>whole link</strong>, treated as
+  <strong>one unit</strong>: the link body (the native raw link <em>or</em> its stand-in) together with any trailing <code>{…}</code>
+  attribute block. Its <strong>natural state</strong> comes from the <strong>global default-state setting</strong> (AB19/F20):
+  <em>native</em> — revealed on the <strong>active (cursor) line</strong>, <em>auto</em> — revealed on the <strong>active (cursor) line</strong> or on <strong>hover</strong> of the image's line, or <em>always</em> —
+  revealed everywhere; over it sits a <strong>transient per-image <code>&lt;&gt;</code> dismiss</strong> (<strong>not persisted</strong>, F8;
+  auto-clears in native and auto mode on full disengagement (AD12), persists in always until toggled). There is
+  <strong>no</strong> per-line mode cycle. The plugin is the <strong>single authority</strong> over
+  the link's visibility (AD11) — for the <em>enforced outcome</em>; <strong>which side drives it, and when, is
+  AB16b</strong>.
+  The <strong>invariants hold in every case</strong>: the body's two renderings (native raw link vs
+  stand-in) are <strong>mutually exclusive</strong> (D16) and the body and its <code>{…}</code> show or hide <strong>as one whole,
+  atomically</strong> — never doubled, partial, out of sync, or flickering (D16/D17).</li>
+<li><strong>AB16a — Raw-link stand-in &amp; edit</strong> <em>(F8, F9, D5)</em> — the realization of the link body's two faces
+  under AB16. <strong>Reveal-for-looking</strong> (F8) is a display-only <strong>stand-in</strong> for the native raw source link — a "fake"
+  raw ink the plugin paints before the <code>{…}</code>, styled to read like the native raw link (D5). <strong>Editing</strong>
+  (F9) is <strong>not</strong> a plugin field — it is Obsidian's own native cursor-reveal of the raw link (AD5,
+  AD9), so caret, selection and copy stay native. There is no separate editing root.</li>
+<li><strong>AB16b — Who drives the reveal, when</strong> <em>(AD11, AD12, D16, D17)</em> — the link is <strong>one unit</strong>: its body
+  (the native raw link <em>or</em> its stand-in: <code>![](…)</code> or <code>![[…]]</code> ) and the attribute list <code>{…}</code> (if present) are <strong>always shown or hidden together</strong> — a shown link whose <code>{…}</code> is hidden, or the reverse, is a <strong>bug</strong> (D17). The driver of the <strong>visibility state</strong> is
+  <strong>not fixed</strong>:</li>
+<li>By default <strong>Obsidian</strong> drives the <strong>native raw link</strong> — a cursor-driven reveal: shown while the
+    cursor is <strong>within the body</strong> (<code>![](…)</code> or <code>![[…]]</code>), hidden otherwise.</li>
+<li>The plugin drives the <strong>stand-in</strong>: shown <em>for looking</em> (per the reveal state, AB16) whenever the
+    native raw link is <strong>not</strong> revealed, hidden when it <strong>is</strong> — so the two body faces are <strong>never
+    shown together</strong> (D16). It is required since we have no possibility to force reveal the <strong>native raw link</strong>.</li>
+<li>The attribute list (<code>{…}</code>) is <strong>native editable text</strong> (cursor on it → native edit) not a block widget like the <strong>stand-in</strong> fake link;
+    its visibility is driven by the plugin and it partly drives the <strong>stand-in</strong>.
+    So whenever the cursor sits <strong>anywhere on the link</strong> — raw link  <strong>or</strong> attribute list — the <strong>whole</strong> link stays
+    visible. When the cursor is on the attribute list, Obsidian hides the native raw link (the cursor is past the
+    native raw link), so the <strong>stand-in</strong> fake link carries the body while the attribute list is edited natively. The body's
+    <em>native raw link</em> ↔ <em>stand-in fake link</em> swap at the native raw link / attribute list boundary is <strong>seamless</strong> — the user never sees the fake link differ from the real native raw link.</li>
+<li>On the <code>&lt;&gt;</code> <strong>dismiss</strong> the plugin <strong>actively hides</strong> the link, <strong>suppressing the native raw link</strong>
+    too, so it stays hidden even when Obsidian's native image widget triggers a reveal (Bug 65).</li>
+<li>While the plugin is <strong>engaged with the image</strong> (AD12 — a <strong>crop</strong>, or an open <strong>filter / class /
+    sub-menu</strong> panel) the reveal state is <strong>pinned</strong>: it does not flip mid-interaction, whatever the
+    cursor does (Bug 86; crop is one case).</li>
+</ul>
+<p>Across all of these the plugin's decision is the <strong>final authority over the outcome</strong> (AB16):
+  Obsidian drives only the default body trigger, and the plugin can always override it — by suppressing
+  the native raw link, or by pinning the state.</p>
+<h3 id="45-plugin-shell-cross-cutting">4.5 Plugin shell &amp; cross-cutting<a class="headerlink" href="#45-plugin-shell-cross-cutting" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>AB17 — Lifecycle</strong> — registers the two view adapters, commands and settings; owns load/unload.</li>
+<li><strong>AB18 — Commands</strong> — image-context commands, active only when an image is in context (F19).</li>
+<li><strong>AB19 — Settings</strong> — a compact <strong>General</strong> group (hover toolbar, captions, default raw-link
+  reveal state, tall-float cap, the a11y <strong>button-outline</strong> mode — Auto/Always/Never, AB20), the
+  <strong>preset widths</strong>, and a <strong>CSS-classes</strong> section
+  driven as a 3-state machine (F20/F16.2): <strong>(A)</strong> no snippet enabled in Obsidian
+  (<code>customCss.enabledSnippets.size === 0</code>) → greyed master toggle + a notice/link to Appearance →
+  CSS snippets; <strong>(B)</strong> feature off → just the master toggle; <strong>(C)</strong> feature on → install/reset of
+  the bundled example snippet plus the grouped, searchable class overview. The overview's diff
+  status (changed/deleted) and collision detection are a <strong>pure logic</strong> unit (<code>snippet-classify.ts</code>,
+  AB4-adjacent) so they're unit-tested off-Obsidian; the per-file scan and per-class restore are the
+  I/O layer in <code>snippet-scanner.ts</code>. Plus the optional editing-toolbar integration (F16.1/F16.3).
+  Related rows are wrapped in Obsidian's <strong>native</strong> card groups (<code>div.setting-group</code> → <code>div.setting-
+  items</code>, the same structure the core CSS-snippets &amp; community-plugins pages use, styled uniformly by
+  the app/theme — no custom card CSS): the General toggles, the preset widths, the editing-toolbar
+  section, and the class overview. The overview is ONE group like the community-plugins list — a
+  heading with refresh / open-management icons, a native search box, then ALL classes in a single
+  list (a leading <code>braces</code> icon per row, the source file as each row's description). Rows are ordered
+  by file with our bundled classes pinned to the top and set off with an accent strip; their
+  changed/deleted status shows warning/error colours; restore is <strong>per-class</strong> only (no whole-file
+  reset).</li>
+<li><strong>AB20 — Style injection</strong> — installs the internal prefixed CSS: the alignment/inline classes
+  and their float routing (per Decision 28 the marker rides the OUTER box; off Obsidian
+  the runtime floats it DIRECTLY, in the plugin the host above the box floats via the tolerated
+  CM-context <code>:has</code>; the float escapes the non-BFC cm-line; a small z-index keeps the floated image
+  clickable), the box/overflow rules, the
+  <strong>tall-float cap</strong> (a tall float stacks as a block under a body-level setting class), and the
+  configurable preset-width variables, shared with the render
+  core (F15, F18, F24, T9). It also carries the <strong>live-preview reveal
+  CSS</strong> (AD5): the rule that hides Obsidian's native image <strong>uniformly in every embed</strong> (never the
+  plugin's own widget), and the
+  hover/active-line-keyed rules — plus the <code>&lt;&gt;</code>-toggle class and the global default-state class — that
+  hide the <code>{…}</code> and the fake raw link when rendered and reveal them otherwise. It also carries the <strong>a11y
+  button-outline</strong> rules: a setting (AB19) draws visible outlines on the toolbar/chrome buttons in
+  three modes — <em>Auto</em> (outlines only when the platform signals a need, via <code>prefers-contrast</code> /
+  <code>forced-colors</code>), <em>Always</em>, or <em>Never</em>. It carries <strong>no</strong>
+  transform/filter rules — <code>rotate</code>/<code>flip</code>/<code>transform</code>/<code>filter</code> are applied as inline CSS on their
+  layer by the render core / runtime (AD2/AD3), not by injected class rules — and <strong>no</strong> decoration
+  classes (shipped as snippets, F16).</li>
+<li><strong>AB21 — Localization</strong> — follows Obsidian's locale, reusing platform strings, English fallback
+  (F21, AD9).</li>
+<li><strong>AB22 — Editing-toolbar integration</strong> — installs/removes the plugin's commands into the
+  separate editing-toolbar plugin's bar; optional, off by default, version-gated (F23, T10). The
+  plugin's <strong>brand icon</strong> is registered once via Obsidian's <code>addIcon</code> (<code>src/brand-icon.ts</code>,
+  <code>currentColor</code>) so it is a first-class glyph reusable by name — used by this submenu (NOT a
+  settings-tab header, which would re-add the R22 plugin-name heading); the same artwork ships as
+  <code>docs/img/logo.svg</code> (fixed colour) for the README, docs and favicon.</li>
+<li><strong>AB23 — Dev bridge</strong> — CDP relay, dev builds only, tree-shaken from production.</li>
+</ul>
+<hr />
+<h2 id="5-requirement-block-decision-traceability">5. Requirement → block / decision traceability<a class="headerlink" href="#5-requirement-block-decision-traceability" title="Permanent link">&para;</a></h2>
+<p>Confirms every requirement is realized by a building block or decision (and surfaces any gap).</p>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Realized by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F1 Non-destructive</td>
+<td>AD1, AD2 · Transform model</td>
+</tr>
+<tr>
+<td>F2 Source is truth</td>
+<td>AD1, AD5 · view adapters re-render from source</td>
+</tr>
+<tr>
+<td>F3 Block never shown as text</td>
+<td>AD5 · <code>{…}</code> CSS-hidden when rendered (keyed on the active line), shown when editing</td>
+</tr>
+<tr>
+<td>F4 Both views</td>
+<td>AD4 · Render core + two adapters · AD10 (LP embed detection from Obsidian's parse)</td>
+</tr>
+<tr>
+<td>F5 Link form follows Obsidian</td>
+<td>AD9 · Link form normalization</td>
+</tr>
+<tr>
+<td>F6 Native size folded in</td>
+<td>Link form normalization</td>
+</tr>
+<tr>
+<td>F7 Toolbar activation</td>
+<td>Toolbar (selection + hover)</td>
+</tr>
+<tr>
+<td>F8 Raw-link reveal</td>
+<td>AB16 (link reveal) · AB16a (stand-in) · AB16b (drivers) · AD11 · AD12 · Settings (default state)</td>
+</tr>
+<tr>
+<td>F9 Raw-link edit</td>
+<td>AB16a · Obsidian's native cursor-reveal of the raw link (AD5)</td>
+</tr>
+<tr>
+<td>F10 Transform set</td>
+<td>Render core · Toolbar · Size sub-menu</td>
+</tr>
+<tr>
+<td>F11 Filters</td>
+<td>Filter panel · AD2 contract</td>
+</tr>
+<tr>
+<td>F12 Crop (live quantization)</td>
+<td>Crop editor (+pure logic)</td>
+</tr>
+<tr>
+<td>F13 Export</td>
+<td>Export · AD9 (native dialog)</td>
+</tr>
+<tr>
+<td>F14 Shared sub-menu</td>
+<td>AD8 · Shared sub-menu host</td>
+</tr>
+<tr>
+<td>F15 Built-in classes (align &amp; inline)</td>
+<td>Style injection · Toolbar/commands</td>
+</tr>
+<tr>
+<td>F16 Vault-snippet classes</td>
+<td>Snippet discovery (+bundled examples) · Settings</td>
+</tr>
+<tr>
+<td>F16.1 Bundled snippets opt-in (install/reset)</td>
+<td>Snippet discovery · Settings</td>
+</tr>
+<tr>
+<td>F17 Inline images</td>
+<td>AD5 · Live-preview adapter (inline-mode of the same uniform widget)</td>
+</tr>
+<tr>
+<td>F18 Float &amp; text wrap</td>
+<td>AD2/AD3/render core (align marker + float on the flow participant — the outer/host, not the img; Decision 28)</td>
+</tr>
+<tr>
+<td>F19 Commands</td>
+<td>Commands</td>
+</tr>
+<tr>
+<td>F20 Settings</td>
+<td>Settings</td>
+</tr>
+<tr>
+<td>F21 Localization</td>
+<td>AD9 · i18n</td>
+</tr>
+<tr>
+<td>F22 Captions</td>
+<td>Caption block · AD9</td>
+</tr>
+<tr>
+<td>F23 Editing-toolbar command install</td>
+<td>Editing-toolbar integration · Settings</td>
+</tr>
+<tr>
+<td>F24 Size presets</td>
+<td>Size sub-menu · Style injection (preset-width vars)</td>
+</tr>
+<tr>
+<td>F25 Never emit plugin-only Markdown</td>
+<td>AD1, AD2 · Transform model (storage format)</td>
+</tr>
+<tr>
+<td>D1 Toolbar placement</td>
+<td>Toolbar</td>
+</tr>
+<tr>
+<td>D1.1 Too-small → toolbar above</td>
+<td>Toolbar</td>
+</tr>
+<tr>
+<td>D2 Order &amp; divider-wrapping</td>
+<td>Toolbar</td>
+</tr>
+<tr>
+<td>D3 Responsive &amp; column-capped</td>
+<td>AD3 · Geometry</td>
+</tr>
+<tr>
+<td>D4 Native resize handle</td>
+<td>AD3, AD9</td>
+</tr>
+<tr>
+<td>D5 Reveal appearance</td>
+<td>Raw-link reveal</td>
+</tr>
+<tr>
+<td>D6 Sub-menu appearance</td>
+<td>AD8 · Shared sub-menu host</td>
+</tr>
+<tr>
+<td>D6.1 Resize panel contents (presets + W/H fields)</td>
+<td>Size sub-menu</td>
+</tr>
+<tr>
+<td>D7 Filter panel docking</td>
+<td>Filter panel</td>
+</tr>
+<tr>
+<td>D8 In-place crop</td>
+<td>Crop editor</td>
+</tr>
+<tr>
+<td>D9 Caption appearance</td>
+<td>Caption block</td>
+</tr>
+<tr>
+<td>D9.1 Too-small → caption on hover</td>
+<td>Caption block</td>
+</tr>
+<tr>
+<td>D10 Native spacing</td>
+<td>Style injection (on the embed)</td>
+</tr>
+<tr>
+<td>D11 No disruption</td>
+<td>Source↔DOM map (write without scroll jump; cursor → image line, undo anchor)</td>
+</tr>
+<tr>
+<td>D12 Icon set &amp; brand</td>
+<td>Toolbar · Editing-toolbar integration (brand icon, AB22)</td>
+</tr>
+<tr>
+<td>D13 Hover micro-animations</td>
+<td>Style injection (AB20, reduced-motion gated)</td>
+</tr>
+<tr>
+<td>D14 Button outlines (A11y)</td>
+<td>Settings (AB19) · Style injection (AB20, button-outline rules)</td>
+</tr>
+<tr>
+<td>D15 Selection frame</td>
+<td>Style injection (AB20) · Crop editor (frame persists while cropping)</td>
+</tr>
+<tr>
+<td>T1 No runtime deps</td>
+<td>Crop/histogram/export all in-house (canvas)</td>
+</tr>
+<tr>
+<td>T2 Portable storage</td>
+<td>AD2 · Transform model (bare-key block, T2.3)</td>
+</tr>
+<tr>
+<td>T3 Portable rendering</td>
+<td>AD2 · AB7a Portable runtime (own JS+CSS bundle)</td>
+</tr>
+<tr>
+<td>T4 Two paths, one result</td>
+<td>AD4</td>
+</tr>
+<tr>
+<td>T5 Uniform wrapper</td>
+<td>AD3</td>
+</tr>
+<tr>
+<td>T6 One path per mode</td>
+<td>AD5</td>
+</tr>
+<tr>
+<td>T7 Robustness</td>
+<td>AD6</td>
+</tr>
+<tr>
+<td>T8 Testable by extraction</td>
+<td>AD7 · the <code>*-logic</code> units</td>
+</tr>
+<tr>
+<td>T9 Naming &amp; conventions</td>
+<td>Style injection (prefix) · build config</td>
+</tr>
+<tr>
+<td>T10 Editing-toolbar integration</td>
+<td>Editing-toolbar integration</td>
+</tr>
+<tr>
+<td>T11 Robust to hand-edited / partial source</td>
+<td>AD6 (original ratio = ground truth; graceful fallback)</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+          <div class="md-top" data-md-component="top" hidden>
+  <div class="md-top__center">
+    <button type="button" class="md-top__button md-top__button--main" data-md-action="top">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+      <span>Back to top</span>
+    </button>
+    
+      
+      
+      <label class="md-top__button md-top__side md-top__side--nav" for="__drawer" >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-panel-left" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+      </label>
+    
+    
+      
+      
+      <label class="md-top__button md-top__side md-top__side--toc" for="__toc" >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-panel-right" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+      </label>
+    
+  </div>
+</div>
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../requirements/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Requirements">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Requirements
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../implementation-plan/" class="md-footer__link md-footer__link--next" aria-label="Next: Implementation plan">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Implementation plan
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://jaywhj.github.io/mkdocs-materialx/" target="_blank" rel="noopener">
+      MaterialX
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "code": null, "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "navigation.footer", "toc.follow", "search.highlight", "search.suggest", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "code.collapse": "Collapse", "code.download": "Download", "code.expand": "Expand remaining # lines", "code.select": "Toggle line selection", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.fc193f93.min.js"></script>
+      
+        <script src="../../assets/lie-runtime.js"></script>
+      
+    
+  </body>
+</html>

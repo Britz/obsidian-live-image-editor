@@ -1,0 +1,1665 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Non-destructive image editing for Obsidian — crop, rotate, flip, resize and filter images live, without ever modifying the original file.">
+      
+      
+        <meta name="author" content="britz">
+      
+      
+        <link rel="canonical" href="https://britz.github.io/obsidian-live-image-editor/development/release-compliance/">
+      
+      
+        <link rel="prev" href="../issues/">
+      
+      
+        <link rel="next" href="../../examples/">
+      
+      
+        
+      
+      
+      
+      
+        
+        
+        
+          <link rel="icon" href="../../img/logo.svg">
+        
+      
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-materialx-10.1.7">
+    
+    
+      
+        <title>Release compliance - Live Image Editor</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ad98c137.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.a45159b5.min.css">
+      
+    
+    
+
+    
+
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple" data-mx-topbar="glass">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="toc" type="checkbox" id="__toc" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <label class="md-overlay" for="__toc"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#release-compliance" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Live Image Editor" class="md-header__button md-logo" aria-label="Live Image Editor" data-md-component="logo">
+      
+  <img src="../../img/logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Live Image Editor
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Release compliance
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10.25 2a8.25 8.25 0 0 1 6.34 13.53l5.69 5.69a.749.749 0 0 1-.326 1.275.75.75 0 0 1-.734-.215l-5.69-5.69A8.25 8.25 0 1 1 10.25 2M3.5 10.25a6.75 6.75 0 1 0 13.5 0 6.75 6.75 0 0 0-13.5 0"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10.25 2a8.25 8.25 0 0 1 6.34 13.53l5.69 5.69a.749.749 0 0 1-.326 1.275.75.75 0 0 1-.734-.215l-5.69-5.69A8.25 8.25 0 1 1 10.25 2M3.5 10.25a6.75 6.75 0 1 0 13.5 0 6.75 6.75 0 0 0-13.5 0"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Britz/obsidian-live-image-editor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Britz/obsidian-live-image-editor
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../user-guide/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  User Guide
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../examples/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Live Image Editor" class="md-nav__button md-logo" aria-label="Live Image Editor" data-md-component="logo">
+      
+  <img src="../../img/logo.svg" alt="logo">
+
+    </a>
+    Live Image Editor
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Britz/obsidian-live-image-editor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Britz/obsidian-live-image-editor
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../methodology/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Methodology
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../implementation-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implementation plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../test-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Test plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../issues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issues & lessons
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release compliance
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release compliance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc">
+      
+        <li class="md-nav__item">
+  <a href="#fulfilled-rules-in-detail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fulfilled rules in detail
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automated-plugin-review-pass-v06x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automated plugin-review pass (v0.6.x)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#submission-checklist-manual-at-release-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Submission checklist (manual, at release time)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../examples/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/01-rotate-flip/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rotate & flip
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/02-crop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/03-size-presets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Size & presets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/04-filters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/05-layout-float-wrap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layout, float & wrap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/06-captions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Captions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/07-classes-snippets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classes & snippets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc">
+      
+        <li class="md-nav__item">
+  <a href="#fulfilled-rules-in-detail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fulfilled rules in detail
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automated-plugin-review-pass-v06x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automated plugin-review pass (v0.6.x)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#submission-checklist-manual-at-release-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Submission checklist (manual, at release time)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+    <a href="https://github.com/Britz/obsidian-live-image-editor/edit/main/docs/development/release-compliance.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="release-compliance">Release compliance<a class="headerlink" href="#release-compliance" title="Permanent link">&para;</a></h1>
+<p>The <strong>community-directory submission gate</strong>. It sits <strong>parallel to the <a href="../test-plan/">test plan</a></strong>
+— the test plan verifies <em>behaviour</em>, this verifies <em>shippability</em> — and holds the <strong>release
+requirements</strong> (the former standalone <code>RC1–RC11</code>, now the <code>R1–R30</code> audit).</p>
+<p>Before each community-directory submission the plugin is audited against Obsidian's <strong>three official
+rule sources</strong> — every rule below is drawn from one of them:</p>
+<ul>
+<li><strong><a href="https://docs.obsidian.md/Developer+policies">Developer policies</a></strong> (<strong>DP</strong>) — the hard
+  directory rules every plugin must obey: no ads, no telemetry, no obfuscation, no self-updating
+  code, disclose any out-of-vault file access, and so on.</li>
+<li><strong><a href="https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines">Plugin guidelines</a></strong> (<strong>PG</strong>) —
+  the review checklist of recommended practices: use <code>setHeading()</code>, sentence-case UI strings,
+  <code>normalizePath()</code> user paths, no hardcoded styling, release resources on unload, and so on.</li>
+<li><strong><a href="https://docs.obsidian.md/Plugins/Releasing/Submit+your+plugin">Submit your plugin</a></strong> +
+  <strong><a href="https://docs.obsidian.md/Plugins/Releasing/Submission+requirements+for+plugins">Submission requirements</a></strong>
+  (<strong>SR</strong>) — the manifest/packaging checks the submission bot and human reviewers run: <code>id</code>/<code>name</code>
+  naming, <code>version</code>/<code>minAppVersion</code>, <code>isDesktopOnly</code>, the release artifacts, and so on.</li>
+</ul>
+<p>The plugin is <strong>accepted into Obsidian's community plugin directory</strong>:
+<strong><a href="https://community.obsidian.md/plugins/live-image-editor">https://community.obsidian.md/plugins/live-image-editor</a></strong>.</p>
+<p>Last audited <strong>2026-06-05</strong>. There is <strong>no hard-policy violation</strong> — no ads, telemetry, obfuscation,
+or self-update; an MIT <a href="https://github.com/Britz/obsidian-live-image-editor/blob/main/LICENSE"><code>LICENSE</code></a> is present; no trademark clash. <strong>All review-checklist
+rules (R1–R30) are now met</strong> — the former open items (R20–R30) were closed in the v0.4.2
+release-compliance pass. The only remaining steps are the manual packaging actions in the
+<a href="#submission-checklist-manual-at-release-time">Submission checklist</a> below.</p>
+<p><strong>Status:</strong> <span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span> fulfilled — listed in the community directory</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Requirement</th>
+<th>Source</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R1</td>
+<td>No ads (dynamic or static)</td>
+<td>DP</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R2</td>
+<td>No client-side telemetry; no network calls in the production build</td>
+<td>DP</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R3</td>
+<td>No self-update mechanism</td>
+<td>DP</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R4</td>
+<td><code>LICENSE</code> present and declared</td>
+<td>SR</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R5</td>
+<td>No <code>innerHTML</code> / <code>outerHTML</code> / <code>insertAdjacentHTML</code></td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R6</td>
+<td>No <code>var</code> (only <code>const</code> / <code>let</code>)</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R7</td>
+<td>No global <code>app</code> / <code>window.app</code> (uses <code>this.app</code>)</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R8</td>
+<td>No deprecated <code>workspace.activeLeaf</code></td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R9</td>
+<td><code>async</code>/<code>await</code> over raw Promise chains</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R10</td>
+<td><code>onunload</code> does not detach leaves</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R11</td>
+<td>No default hotkeys; <code>checkCallback</code> used correctly</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R12</td>
+<td><code>console.*</code> only in the dev-only bridge</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R13</td>
+<td><code>registerEvent</code> / <code>registerMarkdownPostProcessor</code> for auto-cleanup</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R14</td>
+<td>Manifest <code>id</code> / <code>name</code> follow the naming rules</td>
+<td>SR</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R15</td>
+<td><code>fundingUrl</code> omitted (no donations)</td>
+<td>SR</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R16</td>
+<td>Command IDs not prefixed with the plugin id</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R17</td>
+<td><code>version</code> is <code>x.y.z</code>; <code>minAppVersion</code> set</td>
+<td>SR</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R18</td>
+<td>Template sample code removed</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R19</td>
+<td>Toolbar / UI strings sentence case</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R20</td>
+<td>Disclose out-of-vault file writes in this README</td>
+<td>DP</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R21</td>
+<td>Reconcile <code>isDesktopOnly: false</code> with the Electron/Node usage</td>
+<td>SR</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R22</td>
+<td>Remove the plugin-name top-level heading in settings</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R23</td>
+<td>Use <code>setHeading()</code> instead of raw HTML headings</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R24</td>
+<td>Sentence-case the command names (and route via i18n)</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R25</td>
+<td>Sentence-case the remaining UI headings</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R26</td>
+<td>Run user / constructed paths through <code>normalizePath()</code></td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R27</td>
+<td>Polish the manifest description (no em-dash; action verb)</td>
+<td>SR</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R28</td>
+<td>Move static inline styles to CSS classes</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R29</td>
+<td>Prefer the Vault API over the Adapter API where a <code>TFile</code> exists</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>R30</td>
+<td>Verify listener teardown (or switch to <code>registerDomEvent</code>)</td>
+<td>PG</td>
+<td><span class="twemoji lie-ok"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span></td>
+</tr>
+<tr>
+<td>W1</td>
+<td><a href="#w-has"><code>:has()</code> in CSS</a> — architecturally required</td>
+<td>Review</td>
+<td><span class="twemoji lie-warn"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></svg></span></td>
+</tr>
+<tr>
+<td>W2</td>
+<td><a href="#w-important"><code>!important</code> in CSS</a> — overrides core / gated rules</td>
+<td>Review</td>
+<td><span class="twemoji lie-warn"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></svg></span></td>
+</tr>
+<tr>
+<td>W3</td>
+<td><a href="#w-deprecations"><code>setWarning()</code> / <code>display()</code> deprecations</a> — 1.12.7 floor</td>
+<td>Review</td>
+<td><span class="twemoji lie-warn"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></svg></span></td>
+</tr>
+<tr>
+<td>W4</td>
+<td><a href="#w-active-doc"><code>document</code> → <code>activeDocument</code> in the runtime</a> — off-Obsidian, false positive</td>
+<td>Review</td>
+<td><span class="twemoji lie-info"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span></td>
+</tr>
+<tr>
+<td>W5</td>
+<td><a href="#w-vault-enum">Vault enumeration (<code>vault.getFiles</code> / <code>getMarkdownFiles</code>)</a> — F26 picker</td>
+<td>Review</td>
+<td><span class="twemoji lie-warn"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></svg></span></td>
+</tr>
+<tr>
+<td>W6</td>
+<td><a href="#w-net"><code>net</code> import in the dev-only bridge</a> — tree-shaken, false positive</td>
+<td>Review</td>
+<td><span class="twemoji lie-info"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span></td>
+</tr>
+<tr>
+<td>W7</td>
+<td><a href="#w-instanceof">raw <code>instanceof</code> in the runtime bundle</a> — off-Obsidian, false positive</td>
+<td>Review</td>
+<td><span class="twemoji lie-info"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span></td>
+</tr>
+<tr>
+<td>W8</td>
+<td><a href="#w-runtime-asset"><code>lie-runtime.js</code> extra release asset</a> — intentional standalone runtime, ignored by Obsidian</td>
+<td>Review</td>
+<td><span class="twemoji lie-info"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span></td>
+</tr>
+</tbody>
+</table>
+<p>Rows <strong>W1–W8</strong> are the warnings/remarks the automated review still surfaces (and that may show on the
+directory page). None fails the review; each links to its one-sentence justification in
+<a href="#automated-plugin-review-pass-v06x">Automated plugin-review pass</a> below, with the full detail in the
+<a href="reviews">review reports</a>. <span class="twemoji lie-warn"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></svg></span> = kept by deliberate decision ·
+<span class="twemoji lie-info"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span> = false positive (not in the shipped plugin).</p>
+<h2 id="fulfilled-rules-in-detail">Fulfilled rules in detail<a class="headerlink" href="#fulfilled-rules-in-detail" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>R1 — No ads</strong> (DP). The UI shows no advertisements, sponsored content, or dynamically loaded promotions.</li>
+<li><strong>R2 — No telemetry, no network</strong> (DP). The production bundle makes no network requests — <code>fetch</code>, <code>requestUrl</code>, and <code>XMLHttpRequest</code> appear zero times — and collects or sends nothing about usage.</li>
+<li><strong>R3 — No self-update</strong> (DP). Nothing downloads or updates the plugin at runtime; the only socket server (the CDP debug relay) is dev-only, gated behind <code>__LIE_DEV__</code>, and tree-shaken out of the shipped <code>main.js</code> (verified: 0 hits).</li>
+<li><strong>R4 — License</strong> (SR). An MIT <a href="https://github.com/Britz/obsidian-live-image-editor/blob/main/LICENSE"><code>LICENSE</code></a> is present and declared.</li>
+<li><strong>R5 — No raw HTML injection</strong> (PG). The DOM is built with Obsidian's <code>createEl</code>/<code>createDiv</code> helpers; no <code>innerHTML</code>/<code>outerHTML</code>/<code>insertAdjacentHTML</code>.</li>
+<li><strong>R6 — No <code>var</code></strong> (PG). Only <code>const</code>/<code>let</code>.</li>
+<li><strong>R7 — No global <code>app</code></strong> (PG). The plugin always uses <code>this.app</code>, never the deprecated global <code>app</code>/<code>window.app</code>.</li>
+<li><strong>R8 — No <code>activeLeaf</code></strong> (PG). Avoids the deprecated <code>workspace.activeLeaf</code>.</li>
+<li><strong>R9 — async/await</strong> (PG). Asynchronous flows use <code>async</code>/<code>await</code>, not raw Promise chains.</li>
+<li><strong>R10 — Clean <code>onunload</code></strong> (PG). <code>onunload</code> does not detach the plugin's leaves (Obsidian manages that).</li>
+<li><strong>R11 — No default hotkeys</strong> (PG). Commands register no default hotkeys and use <code>checkCallback</code>, so they only appear when an image is actionable.</li>
+<li><strong>R12 — Logging only in dev</strong> (PG). <code>console.*</code> calls live solely in the dev-only bridge, never in production paths.</li>
+<li><strong>R13 — Auto-cleanup</strong> (PG). Events and the markdown post-processor register through <code>registerEvent</code>/<code>registerMarkdownPostProcessor</code>, so Obsidian releases them on unload.</li>
+<li><strong>R14 — Manifest naming</strong> (SR). <code>id</code> is <code>live-image-editor</code> (lowercase-dashes, no "obsidian"/"plugin"); <code>name</code> is <code>Live Image Editor</code> (no "Obsidian"/"Plugin").</li>
+<li><strong>R15 — No funding solicitation</strong> (SR). <code>fundingUrl</code> is omitted; the plugin asks for no donations.</li>
+<li><strong>R16 — Command IDs</strong> (PG). Command IDs are not prefixed with the plugin id (Obsidian adds the prefix itself).</li>
+<li><strong>R17 — Versioning</strong> (SR). <code>version</code> is semver <code>x.y.z</code> and <code>minAppVersion</code> is set in the manifest.</li>
+<li><strong>R18 — No sample code</strong> (PG). The template scaffolding (<code>MyPlugin</code>/<code>SampleSettingTab</code>/<code>SampleModal</code>) is removed.</li>
+<li><strong>R19 — Sentence case</strong> (PG). Toolbar and panel strings are already sentence case.</li>
+<li><strong>R20 — Out-of-vault file writes disclosed</strong> (DP). See <a href="../../#file-system-access-platform-support">File system access &amp; platform support</a> below — the export save dialog can write the rendered image anywhere the user chooses, including outside the vault.</li>
+<li><strong>R21 — <code>isDesktopOnly: false</code> reconciled</strong> (SR). The Electron/Node access (export save dialog, macOS rotate gesture) is dynamic + feature-detected with mobile fallbacks, so the plugin genuinely runs on mobile; <code>false</code> is kept and the degradation is documented (code comment in <code>export.ts</code> + the platform note below).</li>
+<li><strong>R22 — No plugin-name heading</strong> (PG; <em>Bug 68</em>). The top-level <code>&lt;h2&gt;</code> plugin-name heading in the settings tab was removed.</li>
+<li><strong>R23 — <code>setHeading()</code></strong> (PG; <em>Bug 69</em>). Section headings use <code>new Setting(...).setHeading()</code> instead of raw <code>&lt;h3&gt;</code> elements.</li>
+<li><strong>R24 — Sentence-case commands</strong> (PG; <em>Bug 70</em>). The size/align command names are sentence case (<code>Size: small</code>, <code>Align: left</code>, …) and routed through i18n.</li>
+<li><strong>R25 — Sentence-case headings</strong> (PG; <em>Bug 71</em>). The remaining UI headings (<code>CSS snippets</code>, <code>Editing toolbar integration</code>) are sentence case.</li>
+<li><strong>R26 — <code>normalizePath()</code></strong> (PG; <em>Bug 72</em>). User-entered (export fallback) and constructed (snippet) paths pass through <code>normalizePath()</code>.</li>
+<li><strong>R27 — Manifest description</strong> (SR). Leads with an action verb and contains no em-dash or special characters.</li>
+<li><strong>R28 — No hardcoded styling</strong> (PG). The one static inline style (the version-warning colour) moved to a <code>.lie-settings-warning</code> CSS class; only runtime-computed geometry remains inline.</li>
+<li><strong>R29 — Vault API</strong> (PG). <code>suggestExportPath</code> uses <code>Vault.getAbstractFileByPath()</code> rather than the adapter; the unavoidable <code>configDir/snippets</code> adapter calls (config-dir files are not vault <code>TFile</code>s) are left as-is.</li>
+<li><strong>R30 — Listener teardown</strong> (PG). Every direct <code>document</code>/<code>window</code> listener is interaction-scoped with matching teardown (popup close, crop exit, drag end, submenu/toolbar detach, <code>{ once: true }</code>); plugin-lifetime listeners already use <code>registerDomEvent</code>. <code>registerDomEvent</code> is intentionally <strong>not</strong> used for the per-interaction listeners (it holds until unload, so it cannot detach a per-drag <code>pointermove</code>).</li>
+</ul>
+<h2 id="automated-plugin-review-pass-v06x">Automated plugin-review pass (v0.6.x)<a class="headerlink" href="#automated-plugin-review-pass-v06x" title="Permanent link">&para;</a></h2>
+<p>Obsidian's automated submission review — the <code>eslint-plugin-obsidianmd</code> recommended ruleset, a CSS
+scan for <code>:has</code> / <code>!important</code>, and a behaviour scan — is reproduced locally as <strong>separate, dev-only</strong>
+passes: <code>npm run lint:obsidian</code> (a dedicated <code>eslint.obsidian.config.mjs</code>) and <code>npm run lint:css</code>
+(stylelint). The <strong>shipped</strong> linter (<code>npm run lint</code> / <code>eslint.config.mjs</code>) is kept exactly as-is
+(requirement T9), so reproducing the review never touches the gate. <code>lint:obsidian</code> reports <strong>0
+errors</strong> (only the documented warnings below remain).</p>
+<p>The official review now <strong>passes</strong> (0 errors). Everything it still surfaces is a non-failing
+<strong>warning</strong> (<span class="twemoji lie-warn"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></svg></span> — kept by deliberate decision) or a <strong>false
+positive</strong> (<span class="twemoji lie-info"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span> — never reaches the shipped plugin). Each is justified below;
+full per-item, line-referenced detail is in the review reports — latest
+<a href="../reviews/review-0.6.10/"><code>review-0.6.10.md</code></a> (commit <code>5aae54e</code>); earlier
+<a href="../reviews/review-0.6.9/"><code>review-0.6.9.md</code></a>, <a href="../reviews/review-0.6.8/"><code>review-0.6.8.md</code></a>,
+<a href="../reviews/review-0.6.5/"><code>review-0.6.5.md</code></a>, <a href="../reviews/review-0.6.2/"><code>review-0.6.2.md</code></a>; the
+original failing pass in <a href="../reviews/review-0.6.0/"><code>review-0.6.0.md</code></a> /
+<a href="../reviews/review-0.6.1/"><code>review-0.6.1.md</code></a>).</p>
+<ul>
+<li><span class="twemoji lie-warn"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></svg></span> <strong id="w-has"><code>:has()</code></strong> (CSS scan) — only used where unavoidable (the runtime itself is <code>:has</code>-free; target is Electron/Chromium, full support):</li>
+<li>the reveal slaving <code>.cm-line:has(&gt; .cm-formatting)</code> reacts to Obsidian's own editor DOM;</li>
+<li>the alignment-float host rules <code>.host:has(.lie-image-area.lie-…)</code> style a flow-participant host the plugin does not own, reacting to the box's marker.</li>
+<li><span class="twemoji lie-warn"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></svg></span> <strong id="w-important"><code>!important</code></strong> (CSS scan) — each beats an Obsidian-core or higher-specificity rule (removing them would rely on fragile cascade order):</li>
+<li><code>.lie-frame &gt; img { max-width:none }</code> beats the theme's <code>img { max-width }</code>;</li>
+<li>the crop-frame + handle suppression (<code>.lie-cropping</code>), the dismissed/native reveal and the tall-float cap each beat their higher-specificity counterparts.</li>
+<li><span class="twemoji lie-warn"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></svg></span> <strong id="w-deprecations"><code>setWarning()</code> / <code>display()</code> deprecations</strong> (<code>@typescript-eslint/no-deprecated</code>) — their replacements (<code>setDestructive</code> / <code>getSettingDefinitions</code>) are <code>@since 1.13.0</code>, but <code>minAppVersion</code> is <strong>1.12.7</strong>, where <code>display()</code> is the sanctioned fallback. Kept until the floor is raised.</li>
+<li><span class="twemoji lie-info"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span> <strong id="w-active-doc"><code>document</code> → <code>activeDocument</code></strong> (<code>obsidianmd/prefer-active-doc</code>) — the in-Obsidian plugin source was converted in <strong>Change 40</strong> (0.6.9); every remaining hit is in <strong><code>runtime.ts</code></strong>, the framework-free off-Obsidian bundle (compiled to <code>lie-runtime.js</code>, never part of the shipped <code>main.js</code>), where Obsidian's <code>activeDocument</code> global does not exist — the same exception class as its raw <code>instanceof</code>. (The runtime itself SHIMS <code>activeDocument</code>/<code>activeWindow</code> for the shared core it bundles — Bug 119, [0.6.13] — which adds a couple of bare <code>document</code>/<code>window</code> hits on the shim line, the same off-Obsidian false-positive class. The separate in-plugin <code>window</code> → <code>activeWindow</code> conversion stays open under <strong>Feature 39</strong>, not currently surfaced by the review.)</li>
+<li><span class="twemoji lie-warn"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></svg></span> <strong id="w-vault-enum">Vault enumeration</strong> (<code>vault.getFiles</code> / <code>getMarkdownFiles</code>) — the F26 Replace-image picker needs the full image-candidate set up front; already filtered to image extensions; no narrower public API.</li>
+<li><span class="twemoji lie-info"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span> <strong id="w-net"><code>net</code> import</strong> (<code>dev-bridge.ts</code>) — the dev-only CDP relay is gated behind <code>__LIE_DEV__</code> and tree-shaken out of production (0 hits). Never ships.</li>
+<li><span class="twemoji lie-info"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span> <strong id="w-instanceof">Raw <code>instanceof</code></strong> (<code>runtime.ts</code>) — the framework-free off-Obsidian bundle imports no <code>obsidian</code>, so the <code>.instanceOf()</code> helper does not exist there; raw <code>instanceof</code> against standard DOM is correct.</li>
+<li><span class="twemoji lie-info"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span> <strong id="w-runtime-asset"><code>lie-runtime.js</code> extra release asset</strong> (Releases scan) — the GitHub release also attaches the <strong>standalone runtime</strong> (<code>lie-runtime.js</code>) for off-Obsidian use; Obsidian's installer downloads only <code>main.js</code> / <code>manifest.json</code> / <code>styles.css</code>, so it ignores this asset. Deliberate — the runtime ships via the release, not the plugin.</li>
+</ul>
+<h2 id="submission-checklist-manual-at-release-time">Submission checklist (manual, at release time)<a class="headerlink" href="#submission-checklist-manual-at-release-time" title="Permanent link">&para;</a></h2>
+<p>Not code — the packaging steps performed when cutting a community-directory release:</p>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> GitHub release with <code>main.js</code> + <code>manifest.json</code> (+ <code>styles.css</code>) attached <strong>as binaries</strong>.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Release <strong>tag == manifest <code>version</code></strong>, with <strong>no <code>v</code> prefix</strong> (tag <code>0.4.0</code>, not <code>v0.4.0</code>).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Manifest at <strong>HEAD of the default branch</strong> is the submitted one (<code>main</code>).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> PR to <code>obsidianmd/obsidian-releases</code> editing <code>community-plugins.json</code>, <strong>one plugin per PR</strong>.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> GitHub account linked to the Obsidian profile; agree to the Developer policies in the form.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+          <div class="md-top" data-md-component="top" hidden>
+  <div class="md-top__center">
+    <button type="button" class="md-top__button md-top__button--main" data-md-action="top">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+      <span>Back to top</span>
+    </button>
+    
+      
+      
+      <label class="md-top__button md-top__side md-top__side--nav" for="__drawer" >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-panel-left" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+      </label>
+    
+    
+      
+      
+      <label class="md-top__button md-top__side md-top__side--toc" for="__toc" >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-panel-right" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+      </label>
+    
+  </div>
+</div>
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../issues/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Issues &amp; lessons">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Issues & lessons
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../examples/" class="md-footer__link md-footer__link--next" aria-label="Next: Overview">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Overview
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://jaywhj.github.io/mkdocs-materialx/" target="_blank" rel="noopener">
+      MaterialX
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "code": null, "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "navigation.footer", "toc.follow", "search.highlight", "search.suggest", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "code.collapse": "Collapse", "code.download": "Download", "code.expand": "Expand remaining # lines", "code.select": "Toggle line selection", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.fc193f93.min.js"></script>
+      
+        <script src="../../assets/lie-runtime.js"></script>
+      
+    
+  </body>
+</html>
