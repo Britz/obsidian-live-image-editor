@@ -257,28 +257,6 @@ _**134 bugs total** — all resolved (→ [`CHANGELOG.md`](../../CHANGELOG.md)) 
       whether this reproduces WITHOUT focus emulation (a real focused window); if it does, check
       whether the plugin's click/dismiss path or caret handling keeps the selection inside the cell
       editor. (`verify-table-host` reports it as a WARN, not gated.)
-- [ ] **Bug 134 — v0.6.15 routes Reading View and normal-sized post-processor hosts through the
-      tiny-image floating-toolbar path.** Bug 123 expanded the delegated `mouseover` from floated
-      wrappers to every `.internal-embed.image-embed.lie-embed`; that selector also reaches Reading
-      View. `onImageSelected` then treats the absence of `.lie-wrapper:not(.lie-float)` as the reason
-      to call `ImageToolbar.show`, so a wrapperless host is effectively conflated with a genuinely
-      tiny image. _Differential evidence (0.6.14 → 0.6.15, identical environment, real pointer):_ all
-      four **Reading** journeys (normal/table/callout/footnote) had no body toolbar in the baseline;
-      the candidate creates a 566×38 `.lie-toolbar-floating` on `body`, exactly 8px above the image.
-      In Reading View the editing toolbar itself is forbidden. For Live Preview Table/Callout, the
-      candidate's normal-sized images likewise get the above-image variant exactly 8px away instead
-      of the in-image variant; real Size/Filter/Crop button clicks reach and open their panels, but
-      the hover/owner region remains unconnected. The Live Preview baseline does **not** support a
-      blanket no-toolbar claim: its Table state reported a floating/above placement at a much larger
-      gap, while its panel journeys found no visible buttons. The normal CM6 widget is unchanged and
-      green. Because the Table/Callout panels do open in the candidate, the broader report
-      “submenus/modals do not work” is **not** generally reproduced; the tiny custom-size panel travel
-      does fail, and the exact additional host/sequence remains to reproduce before extending the
-      claim. A missing Live Preview footnote host and the tiny-image placement are already present in
-      the baseline or are not proven as v0.6.15 deltas, so they are not separate release-regression
-      claims here. _Guard gap:_ the old host check accepted floating OR in-image placement and opened
-      panels through private methods; it did not pin view mode, real-click reachability, geometry or
-      the connected interaction region. (2026-08-02, user+CDP differential.)
 ---
 
 ## Meta level

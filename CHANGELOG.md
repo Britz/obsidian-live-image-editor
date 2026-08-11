@@ -11,10 +11,11 @@ Every entry is numbered in one global per-category sequence — **Decision**, **
 Decision › Change › Feature › Bug, each category newest-first (highest number on top). Numbers are
 never reused. (Open/unsolved items and the hard-won lessons live in `docs/development/issues.md`.)
 
-## [0.6.16] - 2026-07-29
+## [0.6.17] - 2026-08-11
 
-Post-processor image mapping is now position-exact and its attribute-block boundary uses the shared quote- and escape-aware scanner.
+Toolbar placement is geometry-driven again across every Live Preview host, Reading View remains editing-UI-free, and post-processor image mapping is now position-exact with the shared quote- and escape-aware attribute scanner. Version 0.6.16 was never published, so its completed fixes ship in this release.
 
+- **Bug 134 — Toolbar placement no longer conflates host/layout type with image size.** _Cause:_ the v0.6.15 hover path reached Reading View and routed every wrapperless post-processor host through the tiny-image body toolbar; the older `lie-float`/`offsetParent` decision also coupled presentation to layout and measured an unreliable ancestor. _Fix:_ Reading View is excluded from every editing entry point; each Live Preview owner gets the same static inset toolbar, and a pure decision switches to the existing body-level presentation only when the reflowed toolbar plus its 8px inset would cover more than 60% of the exact visible image height. Host type, inline/block/float layout and image position are never inputs. Presentation changes synchronize the one toolbar controller after reflow, while size/filter/crop/class sessions lock the current presentation so panels keep a connected owner. The fixed 24-journey host guard is 124/124 green across normal, tiny, table, callout and footnote hosts plus all Reading View negatives; 403 unit tests, build and lint are green.
 - **Bug 133 — Post-processor attribute blocks now use the shared quote- and escape-aware scanner.** The DOM cleanup's bespoke single-brace regex stopped at a quoted `}` and diverged from source parsing; Live Preview and Reading View now use `scanAttributeBlock` for the same boundary, with regression coverage for quoted `}` blocks.
 - **Bug 131 — Repeated table-cell embeds now map position-exactly and fail closed.** The Reading adapter's document-wide occurrence walk could count unrelated render copies and write an earlier same-file embed; each post-processor host now pairs only within its source-bounded render context against current-document addresses, with strict cardinality, order and source-identity checks and no basename/occurrence fallback. Real Obsidian table journeys cover same-file variants, writes and no-ops, mode transitions, and stability.
 
